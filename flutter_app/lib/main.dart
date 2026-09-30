@@ -1,12 +1,10 @@
 import 'dart:async';
 import 'dart:io';
-import 'dart:io';
 import 'dart:convert';
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:file_saver/file_saver.dart';
-import 'package:path_provider/path_provider.dart';
 import 'package:path_provider/path_provider.dart';
 import 'market_features.dart';
 
@@ -66,8 +64,6 @@ class _TerminalState extends State<Terminal> {
   String selectedDrawingTool = '';
   final List<Offset> drawingPoints = <Offset>[];
   String selectedMarketDetail = 'NIFTY';
-  String aiActiveTab = '';
-  final List<String> aiMemory = <String>[];
   String aiActiveTab = '';
   final List<String> aiMemory = <String>[];
   Map<String,dynamic>? terminalData;
