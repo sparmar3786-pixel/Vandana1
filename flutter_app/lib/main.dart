@@ -664,7 +664,7 @@ class _TerminalState extends State<Terminal> {
         Padding(padding:const EdgeInsets.only(right:6),child:ChoiceChip(label:Text(x),selected:selectedComponentIndex==x,onSelected:(_){
           setState(()=>selectedComponentIndex=x);
           fetchIndexComponents(x);
-          if(x!='SENSEX') openNamedIndex(x=='NIFTY'?'NIFTY 50':x);
+          openNamedIndex(x=='NIFTY'?'NIFTY 50':x);
         })),
     ])),
     const SizedBox(height:10),
