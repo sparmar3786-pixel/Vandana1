@@ -80,6 +80,71 @@ def angel_login(body:AngelLoginRequest,x_token:str=Header(None)):
 def angel_status(x_token:str=Header(None)):
     auth(x_token); return {"connected":client.api is not None,"message":state["angel_message"],"last_update":state["last_update"],"error":state["error"]}
 
+
+def angel_required():
+    if client.api is None:
+        raise HTTPException(503,"Angel One is not connected. Connect from Angel API screen first.")
+
+@app.get("/v1/angel/market")
+def angel_market(x_token:str=Header(None)):
+    auth(x_token); angel_required()
+    try:
+        return client.index_quote()
+    except Exception as e:
+        raise HTTPException(502,str(e))
+
+@app.get("/v1/angel/candles")
+def angel_candles(exchange:str="NSE",token:str="99926000",interval:str="FIVE_MINUTE",days:int=1,x_token:str=Header(None)):
+    auth(x_token); angel_required()
+    allowed={"ONE_MINUTE","THREE_MINUTE","FIVE_MINUTE","TEN_MINUTE","FIFTEEN_MINUTE","THIRTY_MINUTE","ONE_HOUR","ONE_DAY"}
+    if interval not in allowed: raise HTTPException(400,"Unsupported interval")
+    try: return client.candles(exchange,token,interval,days)
+    except Exception as e: raise HTTPException(502,str(e))
+
+@app.get("/v1/angel/option-chain")
+def angel_option_chain(count:int=10,x_token:str=Header(None)):
+    auth(x_token); angel_required()
+    try: return client.option_chain_rows(count=count)
+    except Exception as e: raise HTTPException(502,str(e))
+
+@app.get("/v1/angel/oi")
+def angel_oi(token:str,interval:str="THREE_MINUTE",hours:int=6,x_token:str=Header(None)):
+    auth(x_token); angel_required()
+    try: return client.oi_history(token,interval,hours)
+    except Exception as e: raise HTTPException(502,str(e))
+
+@app.get("/v1/angel/search")
+def angel_search(exchange:str="NSE",q:str="",x_token:str=Header(None)):
+    auth(x_token); angel_required()
+    if not q.strip(): raise HTTPException(400,"Search query is required")
+    try: return client.search(exchange,q.strip())
+    except Exception as e: raise HTTPException(502,str(e))
+
+@app.get("/v1/angel/portfolio")
+def angel_portfolio(x_token:str=Header(None)):
+    auth(x_token); angel_required()
+    try: return client.portfolio()
+    except Exception as e: raise HTTPException(502,str(e))
+
+@app.get("/v1/angel/gainers-losers")
+def angel_gainers_losers(datatype:str="PercPriceGainers",expirytype:str="NEAR",x_token:str=Header(None)):
+    auth(x_token); angel_required()
+    try: return client.gainers_losers(datatype,expirytype)
+    except Exception as e: raise HTTPException(502,str(e))
+
+@app.get("/v1/angel/oi-buildup")
+def angel_oi_buildup(datatype:str="Long Built Up",expirytype:str="NEAR",x_token:str=Header(None)):
+    auth(x_token); angel_required()
+    try: return client.oi_buildup(datatype,expirytype)
+    except Exception as e: raise HTTPException(502,str(e))
+
+@app.get("/v1/angel/greeks")
+def angel_greeks(name:str="NIFTY",expiry:str="",x_token:str=Header(None)):
+    auth(x_token); angel_required()
+    if not expiry: raise HTTPException(400,"Expiry is required")
+    try: return client.option_greeks(name,expiry)
+    except Exception as e: raise HTTPException(502,str(e))
+
 @app.get("/v1/nse/mcp/tools")
 def nse_mcp_tools(x_token:str=Header(None)):
     auth(x_token)
@@ -115,7 +180,7 @@ def terminal_snapshot_endpoint(x_token:str=Header(None)): auth(x_token); return 
 
 def terminal_snapshot():
     last=eng.last if isinstance(eng.last,dict) else {}; nse_view=eng.nse_view if isinstance(eng.nse_view,dict) else {}
-    return {"ts":time.time(),"market_open":market_open(),"connection":{"angel":client.api is not None,"nse":state["nse_error"] is None,"server":True,"last_update":state["last_update"],"error":state["error"],"nse_error":state["nse_error"],"angel_message":state["angel_message"]},"market":{"symbol":C.SYMBOL,"spot":last.get("spot"),"atm":last.get("strike"),"action":last.get("action","WAIT"),"ltp":last.get("ltp")},"signals":last,"oi_lab":nse_view,"option_chain":last.get("chain",last.get("opts")),"charts":{"spot":last.get("spot"),"ltp":last.get("ltp"),"timestamp":state["last_update"]},"nse":nse_view,"nse_mcp":{"status":"official NSE Streamable HTTP MCP","endpoint":nse_mcp.url,"connected":state["nse_mcp_error"] is None,"error":state["nse_mcp_error"],"csv_endpoint":"/v1/nse/option-chain.csv"},"angel_api":{"connected":client.api is not None,"message":state["angel_message"]},"data":last,"instruments":{"source":"Angel One SmartAPI instrument master","loaded":bool(client.chain),"expiry":str(client.expiry) if client.expiry else None,"strike_count":len(client.strikes)},"watchlist":{"source":"Angel One SmartAPI","items":[]},"search":{"source":"Angel One SmartAPI","items":[]},"commodity":{"source":"Angel One SmartAPI","items":[]},"market_details":nse_view,"news":{"source":"server-side news adapter","items":[]},"settings":{"symbol":C.SYMBOL,"poll_sec":C.POLL_SEC,"nse_poll_sec":C.NSE_POLL_SEC},"more":{"paper_only":True,"orders_enabled":False},"error":state["error"],"nse_error":state["nse_error"]}
+    return {"ts":time.time(),"market_open":market_open(),"connection":{"angel":client.api is not None,"nse":state["nse_error"] is None,"server":True,"last_update":state["last_update"],"error":state["error"],"nse_error":state["nse_error"],"angel_message":state["angel_message"]},"market":{"symbol":C.SYMBOL,"spot":last.get("spot"),"atm":last.get("strike"),"action":last.get("action","WAIT"),"ltp":last.get("ltp")},"signals":last,"oi_lab":nse_view,"option_chain":last.get("chain",last.get("opts")),"charts":{"spot":last.get("spot"),"ltp":last.get("ltp"),"timestamp":state["last_update"],"source":"Angel One SmartAPI","endpoint":"/v1/angel/candles"},"nse":nse_view,"angel_data":{"market_endpoint":"/v1/angel/market","candles_endpoint":"/v1/angel/candles","option_chain_endpoint":"/v1/angel/option-chain","oi_endpoint":"/v1/angel/oi","search_endpoint":"/v1/angel/search","portfolio_endpoint":"/v1/angel/portfolio","gainers_losers_endpoint":"/v1/angel/gainers-losers","oi_buildup_endpoint":"/v1/angel/oi-buildup","greeks_endpoint":"/v1/angel/greeks"},"nse_mcp":{"status":"official NSE Streamable HTTP MCP","endpoint":nse_mcp.url,"connected":state["nse_mcp_error"] is None,"error":state["nse_mcp_error"],"csv_endpoint":"/v1/nse/option-chain.csv"},"angel_api":{"connected":client.api is not None,"message":state["angel_message"]},"data":last,"instruments":{"source":"Angel One SmartAPI instrument master","loaded":bool(client.chain),"expiry":str(client.expiry) if client.expiry else None,"strike_count":len(client.strikes)},"watchlist":{"source":"Angel One SmartAPI","items":[]},"search":{"source":"Angel One SmartAPI","items":[]},"commodity":{"source":"Angel One SmartAPI","items":[]},"market_details":nse_view,"news":{"source":"server-side news adapter","items":[]},"settings":{"symbol":C.SYMBOL,"poll_sec":C.POLL_SEC,"nse_poll_sec":C.NSE_POLL_SEC},"more":{"paper_only":True,"orders_enabled":False},"error":state["error"],"nse_error":state["nse_error"]}
 
 if __name__=="__main__":
     uvicorn.run(app,host="0.0.0.0",port=8000)
