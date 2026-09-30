@@ -1,11 +1,13 @@
 import unittest
-from strategy_registry import STRATEGIES, evaluate_strategies
+from strategy_registry import STRATEGIES, ALL_STRATEGIES, evaluate_strategies
 
 class MasterStrategyRegistryTests(unittest.TestCase):
     def test_master_registry_contains_all_377_modules(self):
         self.assertEqual(len(STRATEGIES), 377)
         self.assertEqual([s["id"] for s in STRATEGIES], list(range(1, 378)))
         self.assertEqual(len({s["name"] for s in STRATEGIES}), 377)
+        self.assertEqual(len(ALL_STRATEGIES), 424)
+        self.assertEqual([s["id"] for s in ALL_STRATEGIES], list(range(1, 425)))
 
     def test_core_option_classification_is_evaluable(self):
         rows = [{
