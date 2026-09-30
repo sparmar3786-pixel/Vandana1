@@ -167,7 +167,7 @@ class _TerminalState extends State<Terminal> {
     if (selected == 6) return searchPage();
     if (selected == 7) return chartsPage();
     if (selected == 8) return optionChain();
-    if (selected == 9) return marketDetailsPage();
+    if (selected == 9) return newsPage();
     if (selected == 10) return marketDetailsPage();
     if (selected == 11) return angelApi();
     if (selected == 13) return nseMcpPage();
@@ -214,7 +214,7 @@ class _TerminalState extends State<Terminal> {
         ]),
       ]))),
       const SizedBox(height:10),
-      infoCard('Data policy','Real API/data only. No fabricated market values. Algorithm and Buy/Sell logic remain deferred.',Colors.blue),
+      infoCard('Data policy','Real API/data only. No fabricated market values. Signal setup is displayed only when the live backend qualifies it.',Colors.blue),
     ]);
   }
 
