@@ -127,8 +127,11 @@ class _TerminalState extends State<Terminal> {
 
   @override Widget build(BuildContext context) => Theme(
     data: lightMode ? ThemeData.light(useMaterial3: true) : ThemeData.dark(useMaterial3: true),
-    child: WillPopScope(
-    onWillPop: () async { if (selected != 0) { setState(() => selected = 0); return false; } return true; },
+    child: PopScope<Object?>(
+    canPop: selected == 0,
+    onPopInvokedWithResult: (didPop, result) {
+      if (!didPop && selected != 0 && mounted) setState(() => selected = 0);
+    },
     child: Scaffold(
     appBar: AppBar(
       leading: selected == 0 ? null : IconButton(onPressed: () => setState(() => selected = 0), icon: const Icon(Icons.arrow_back)),
@@ -590,6 +593,83 @@ class _TerminalState extends State<Terminal> {
         }
       }
     } catch (_) {} finally { if (mounted) setState(() => strategyBusy = false); }
+  }
+
+  Widget signals() {
+    final action = signal?['action']?.toString() ?? 'WAIT';
+    final reason = signal?['reason']?.toString() ?? 'Live signal payload pending.';
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(12,10,12,20),
+      children: [
+        const Text('Signals', style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
+        const SizedBox(height: 4),
+        const Text('Engine-backed signal terminal. No signal is forced when evidence is insufficient.', style: TextStyle(fontSize: 12)),
+        const SizedBox(height: 10),
+        Card(
+          child: Padding(
+            padding: const EdgeInsets.all(14),
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              const Text('CURRENT ENGINE STATE', style: TextStyle(fontWeight: FontWeight.bold)),
+              const SizedBox(height: 8),
+              Text(action.replaceAll('_', ' '), style: const TextStyle(fontSize: 25, fontWeight: FontWeight.w800)),
+              const SizedBox(height: 6),
+              Text(reason),
+              const SizedBox(height: 10),
+              if (signal != null) ...[
+                row('Symbol', signal!['symbol']),
+                row('Spot', signal!['spot']),
+                row('LTP', signal!['ltp']),
+                row('Strike', signal!['strike']),
+                row('Entry', signal!['entry']),
+                row('Stop Loss', signal!['sl']),
+                row('Target', signal!['target']),
+              ] else
+                const Text('Connect Angel One and wait for the live engine payload.'),
+            ]),
+          ),
+        ),
+        const SizedBox(height: 10),
+        FilledButton.icon(
+          onPressed: fetchTerminal,
+          icon: const Icon(Icons.refresh),
+          label: const Text('REFRESH SIGNAL'),
+        ),
+        const SizedBox(height: 8),
+        infoCard('Signal policy', 'CALL BUY / PUT BUY only when the engine has qualifying evidence; otherwise WAIT or NO QUALIFYING TRADE.', Colors.blue),
+      ],
+    );
+  }
+
+  Widget nseMcp() {
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(12,10,12,20),
+      children: [
+        const Text('NSE MCP', style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
+        const SizedBox(height: 4),
+        const Text('Official NSE Streamable HTTP MCP data bridge.', style: TextStyle(fontSize: 12)),
+        const SizedBox(height: 10),
+        Card(
+          child: ListTile(
+            leading: Icon(nseMcpStatus == 'Connected' ? Icons.check_circle : Icons.cloud_off,
+              color: nseMcpStatus == 'Connected' ? Colors.green : Colors.orange),
+            title: const Text('NSE MCP STATUS'),
+            subtitle: Text(nseMcpStatus),
+          ),
+        ),
+        const SizedBox(height: 10),
+        FilledButton.icon(
+          onPressed: downloadNseCsv,
+          icon: const Icon(Icons.download),
+          label: const Text('DOWNLOAD NSE OPTION-CHAIN CSV'),
+        ),
+        if (csvStatus.isNotEmpty) Padding(
+          padding: const EdgeInsets.only(top: 10),
+          child: Text(csvStatus),
+        ),
+        const SizedBox(height: 8),
+        infoCard('Data rule', 'The app displays only data returned by the configured NSE/Angel backend. Missing data stays unavailable.', Colors.blue),
+      ],
+    );
   }
 
   Widget strategiesPage() {
