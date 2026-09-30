@@ -67,6 +67,7 @@ class _TerminalState extends State<Terminal> {
   @override void initState() {
     super.initState();
     fetchTerminal();
+    fetchStrategies();
     timer = Timer.periodic(const Duration(seconds: 5), (_) => fetchTerminal());
   }
   @override void dispose() { timer?.cancel(); super.dispose(); }
