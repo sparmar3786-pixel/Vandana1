@@ -53,6 +53,8 @@ class _TerminalState extends State<Terminal> {
   List<dynamic> liveOIBuild = <dynamic>[];
   String selectedChartToken = '99926000';
   String selectedChartExchange = 'NSE';
+  String selectedChartIndex = 'NIFTY 50';
+  static const List<String> chartIndexOptions = <String>['NIFTY 50','BANK NIFTY','FINNIFTY','MIDCAP SELECT','SENSEX','BANKEX'];
   String selectedInterval = 'FIVE_MINUTE';
   static const Map<String,String> intervalMap = <String,String>{'1m':'ONE_MINUTE','2m':'TWO_MINUTE','3m':'THREE_MINUTE','5m':'FIVE_MINUTE','10m':'TEN_MINUTE','15m':'FIFTEEN_MINUTE','30m':'THIRTY_MINUTE','1H':'ONE_HOUR','1D':'ONE_DAY'};
   bool angelDataBusy = false;
@@ -296,6 +298,8 @@ class _TerminalState extends State<Terminal> {
     }
   }
 
+  Future<void> selectChartIndex(String name) async { setState(() => selectedChartIndex = name); await openNamedIndex(name); }
+
   Future<void> openQuoteChart(dynamic q) async {
     final token=(q['symbolToken']??q['symboltoken']??q['token']??'').toString();
     if(token.isEmpty)return;
@@ -464,6 +468,7 @@ class _TerminalState extends State<Terminal> {
       ])],
     ))),
     const SizedBox(height:12),const Text('CE / PE • INDICES WITH LIVE QUALIFYING ENTRY',style:TextStyle(fontWeight:FontWeight.bold)),
+    ...liveMarket.where((q){if(q is! Map)return false;final m=Map<String,dynamic>.from(q);final n=(m['tradingSymbol']??m['tradingsymbol']??m['symbol']??'').toString();final score=numericField(m,const ['signalScore','score','priorityScore']);final side=(m['optionSide']??m['side']??m['action']??'').toString().toUpperCase();return chartIndexOptions.any((x)=>indexMatches(x,n))&&(score!=null&&score>=50||side.contains('CALL')||side.contains('PUT'));}).map((q){final m=Map<String,dynamic>.from(q);final n=(m['tradingSymbol']??m['tradingsymbol']??m['symbol']??'Index').toString();return Card(child:ListTile(leading:const Icon(Icons.bolt,color:Colors.green),title:Text(n),subtitle:Text('Entry chance • '+(m['optionSide']??m['side']??m['action']??'WATCH').toString()+' • LTP '+formatMarketPrice(m['ltp'])),trailing:const Text('LIVE'),onTap:()=>openQuoteChart(m)));}),
     if(signal!=null&&(signal!['action']?.toString().toUpperCase().contains('CALL')==true||signal!['action']?.toString().toUpperCase().contains('PUT')==true))
       Card(child:ListTile(
         leading:const Icon(Icons.bolt,color:Colors.green),
@@ -478,6 +483,8 @@ class _TerminalState extends State<Terminal> {
 
   Widget chartsPage() => ListView(padding:const EdgeInsets.fromLTRB(8,8,8,20),children:<Widget>[
     Row(children:[const Expanded(child:Text('Chart',style:TextStyle(fontSize:23,fontWeight:FontWeight.bold))),IconButton(onPressed:fetchCandles,icon:const Icon(Icons.refresh))]),
+    const SizedBox(height:6),
+    Card(child:Padding(padding:const EdgeInsets.all(10),child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[const Text('SELECT INDEX',style:TextStyle(fontWeight:FontWeight.bold)),const SizedBox(height:6),DropdownButtonFormField<String>(value:selectedChartIndex,decoration:const InputDecoration(border:OutlineInputBorder()),items:[for(final x in chartIndexOptions)DropdownMenuItem<String>(value:x,child:Text(x))],onChanged:(v){if(v!=null)selectChartIndex(v);})]))),
     const SizedBox(height:6),
     Row(children:[
       Expanded(child:OutlinedButton.icon(onPressed:()=>showModalBottomSheet<void>(context:context,builder:(_)=>_choiceSheet('TIME',intervalMap.keys.toList(),(x){setState(()=>selectedInterval=intervalMap[x]!);fetchCandles();})),icon:const Icon(Icons.schedule),label:const Text('TIME'))),
@@ -521,14 +528,14 @@ class _TerminalState extends State<Terminal> {
     if(liveOptionRows.isEmpty)infoCard('Live option chain','Load '+optionFilter+'. No strike/OI/Greek value is fabricated.',Colors.orange),
     if(liveOptionRows.isNotEmpty)Card(child:SingleChildScrollView(scrollDirection:Axis.horizontal,child:DataTable(
       headingRowColor:WidgetStateProperty.all(Colors.black26),
-      columns:const [DataColumn(label:Text('CALL LTP')),DataColumn(label:Text('CALL OI')),DataColumn(label:Text('STRIKE')),DataColumn(label:Text('PUT OI')),DataColumn(label:Text('PUT LTP')),DataColumn(label:Text('Δ')),DataColumn(label:Text('Θ')),DataColumn(label:Text('Γ')),DataColumn(label:Text('VEGA')),DataColumn(label:Text('POP')),DataColumn(label:Text('FLOW'))],
+      columns:const [DataColumn(label:Text('CALL LTP')),DataColumn(label:Text('CALL OI')),DataColumn(label:Text('STRIKE')),DataColumn(label:Text('PUT OI')),DataColumn(label:Text('PUT LTP')),DataColumn(label:Text('CALL Δ')),DataColumn(label:Text('CALL Θ')),DataColumn(label:Text('CALL Γ')),DataColumn(label:Text('CALL VEGA')),DataColumn(label:Text('CALL POP')),DataColumn(label:Text('PUT Δ')),DataColumn(label:Text('PUT Θ')),DataColumn(label:Text('PUT Γ')),DataColumn(label:Text('PUT VEGA')),DataColumn(label:Text('PUT POP')),DataColumn(label:Text('FLOW'))],
       rows:[for(final strike in <dynamic>{for(final r in liveOptionRows)r['strike']}.toList()..sort((a,b)=>(a as num).compareTo(b as num)))DataRow(cells:[
         DataCell(Text(_chainValue(strike,'CE','ltp'),style:const TextStyle(color:Colors.green))),
         DataCell(_coloredOiCell(strike,'CE')),
         DataCell(Container(padding:const EdgeInsets.symmetric(horizontal:7,vertical:4),decoration:BoxDecoration(borderRadius:BorderRadius.circular(6),color:Colors.blue.withOpacity(.16)),child:Text(strike.toString(),style:const TextStyle(fontWeight:FontWeight.bold,color:Colors.blue)))),
         DataCell(_coloredOiCell(strike,'PE')),
         DataCell(Text(_chainValue(strike,'PE','ltp'),style:const TextStyle(color:Colors.red))),
-        DataCell(Text(_chainGreek(strike,'delta'))),DataCell(Text(_chainGreek(strike,'theta'))),DataCell(Text(_chainGreek(strike,'gamma'))),DataCell(Text(_chainGreek(strike,'vega'))),DataCell(Text(_chainGreek(strike,'pop'))),DataCell(Text(_chainFlow(strike))),
+        DataCell(Text(_chainGreek(strike,'CE','delta'))),DataCell(Text(_chainGreek(strike,'CE','theta'))),DataCell(Text(_chainGreek(strike,'CE','gamma'))),DataCell(Text(_chainGreek(strike,'CE','vega'))),DataCell(Text(_chainGreek(strike,'CE','pop'))),DataCell(Text(_chainGreek(strike,'PE','delta'))),DataCell(Text(_chainGreek(strike,'PE','theta'))),DataCell(Text(_chainGreek(strike,'PE','gamma'))),DataCell(Text(_chainGreek(strike,'PE','vega'))),DataCell(Text(_chainGreek(strike,'PE','pop'))),DataCell(Text(_chainFlow(strike))),
       ])],
     ))),
     FilledButton.icon(onPressed:fetchOptionRows,icon:const Icon(Icons.table_view),label:Text('LOAD FULL '+optionFilter+' CHAIN')),
@@ -564,8 +571,8 @@ class _TerminalState extends State<Terminal> {
     final arrow=oi==null||price==null?'':oi>0&&price>0?' ↑↑':oi>0&&price<0?' ↑↓':oi<0&&price<0?' ↓↓':oi<0&&price>0?' ↓↑':'';
     return Text(_chainOi(strike,type)+arrow,style:TextStyle(color:color,fontWeight:FontWeight.bold));
   }
-  String _chainGreek(dynamic strike,String key){
-    for(final r in liveOptionRows){if(r['strike']==strike&&(r['type']=='CE'||r['type']=='PE'))return (r[key]??'—').toString();}
+  String _chainGreek(dynamic strike,String type,String key){
+    for(final r in liveOptionRows){if(r['strike']==strike&&r['type']==type)return (r[key]??'—').toString();}
     return '—';
   }
   String _chainFlow(dynamic strike){
