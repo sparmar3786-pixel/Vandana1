@@ -8,6 +8,7 @@ import 'package:file_saver/file_saver.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 import 'market_features.dart';
+import 'strategy_registry.dart';
 
 void main() => runApp(const AlgoApp());
 
@@ -31,14 +32,14 @@ class _TerminalState extends State<Terminal> {
   static const screens = <String>[
     'Dashboard','Indian Indices','Commodity','Signals','OI Lab','Risk Reward','Search',
     'Charts','Option Chain','News','AI Analysis','Angel API','NSE',
-    'NSE MCP','Data','Instruments','Settings','More'
+    'NSE MCP','Data','Instruments','Settings','More','Strategy Engine'
   ];
   static const icons = <IconData>[
     Icons.dashboard, Icons.show_chart, Icons.precision_manufacturing,
     Icons.notifications_active, Icons.analytics, Icons.star, Icons.search,
     Icons.candlestick_chart, Icons.table_chart, Icons.article, Icons.info_outline,
     Icons.key, Icons.language, Icons.hub, Icons.storage, Icons.list_alt,
-    Icons.tune, Icons.more_horiz
+    Icons.tune, Icons.more_horiz, Icons.account_tree
   ];
   int selected = 0;
   String backendUrl = 'https://vandana1-angel-api.onrender.com';
@@ -183,6 +184,7 @@ class _TerminalState extends State<Terminal> {
     if (selected == 13) return nseMcpPage();
     if (selected == 16) return settingsPage();
     if (selected == 17) return morePage();
+    if (selected == 18) return StrategyRegistry.page(context);
     return dataPage(screens[selected]);
   }
 
@@ -859,6 +861,13 @@ async function ask(w,prompt){
   ]);
 
   Widget morePage() => ListView(padding: const EdgeInsets.all(16), children: <Widget>[
+    Card(child: ListTile(
+      leading: const Icon(Icons.account_tree),
+      title: const Text('FULL STRATEGY ENGINE'),
+      subtitle: Text(StrategyRegistry.totalCount.toString() + ' registered strategy/rule modules'),
+      trailing: const Icon(Icons.chevron_right),
+      onTap: () => setState(() => selected = 18),
+    )),
     const Text('More', style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
     const SizedBox(height: 12),
     infoCard('Order mode','No order placement. Paper signals only.',Colors.orange),
