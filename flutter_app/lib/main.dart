@@ -51,11 +51,10 @@ class _TerminalState extends State<Terminal> {
   String selectedChartToken = '99926000';
   String selectedChartExchange = 'NSE';
   String selectedInterval = 'FIVE_MINUTE';
-  static const intervalMap = <String,String>{'1m':'ONE_MINUTE','2m':'TWO_MINUTE','3m':'THREE_MINUTE','5m':'FIVE_MINUTE','10m':'TEN_MINUTE','15m':'FIFTEEN_MINUTE','30m':'THIRTY_MINUTE','1H':'ONE_HOUR','1D':'ONE_DAY'};
   bool angelDataBusy = false;
   bool lightMode = false;
-  String marketFilter = 'Indices';
-  String optionFilter = 'NIFTY';
+  String marketFilter = 'Trading';
+  String optionFilter = 'ALL';
   String commodityQuery = '';
   final Set<String> selectedIndicators = <String>{};
   Map<String,dynamic>? terminalData;
@@ -97,7 +96,7 @@ class _TerminalState extends State<Terminal> {
     setState(() => csvStatus = 'Fetching NSE option chain...');
     try {
       final response = await http.get(
-        Uri.parse(backendUrl + '/v1/nse/option-chain.csv?symbol=' + optionFilter),
+        Uri.parse(backendUrl + '/v1/nse/option-chain.csv?symbol=NIFTY'),
         headers: <String,String>{'x-token': apiToken},
       ).timeout(const Duration(seconds: 20));
       if (response.statusCode != 200) {
@@ -105,7 +104,7 @@ class _TerminalState extends State<Terminal> {
         return;
       }
       await FileSaver.instance.saveFile(
-        name: optionFilter + '_NSE_option_chain',
+        name: 'NIFTY_NSE_option_chain',
         bytes: response.bodyBytes,
         fileExtension: 'csv',
         mimeType: MimeType.csv,
@@ -118,11 +117,8 @@ class _TerminalState extends State<Terminal> {
 
   @override Widget build(BuildContext context) => Theme(
     data: lightMode ? ThemeData.light(useMaterial3: true) : ThemeData.dark(useMaterial3: true),
-    child: WillPopScope(
-    onWillPop: () async { if (selected != 0) { setState(() => selected = 0); return false; } return true; },
     child: Scaffold(
     appBar: AppBar(
-      leading: selected == 0 ? null : IconButton(onPressed: () => setState(() => selected = 0), icon: const Icon(Icons.arrow_back)),
       title: Text(screens[selected]),
       actions: <Widget>[
         IconButton(onPressed: fetchTerminal, icon: const Icon(Icons.refresh)),
@@ -139,7 +135,7 @@ class _TerminalState extends State<Terminal> {
             SizedBox(height: 10),
             Text('NSE Algo Signal', style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
             SizedBox(height: 4),
-            Text('18-screen live market terminal'),
+            Text('18-screen paper terminal'),
           ])),
           for (int i=0; i<screens.length; i++) ListTile(
             leading: Icon(icons[i]),
@@ -151,7 +147,7 @@ class _TerminalState extends State<Terminal> {
       )),
     ),
     body: buildScreen(),
-  )));
+  ));
 
   Widget buildScreen() {
     if (selected == 0) return dashboard();
@@ -163,7 +159,7 @@ class _TerminalState extends State<Terminal> {
     if (selected == 6) return searchPage();
     if (selected == 7) return chartsPage();
     if (selected == 8) return optionChain();
-    if (selected == 9) return marketDetailsPage();
+    if (selected == 9) return newsPage();
     if (selected == 10) return marketDetailsPage();
     if (selected == 11) return angelApi();
     if (selected == 13) return nseMcp();
@@ -193,7 +189,7 @@ class _TerminalState extends State<Terminal> {
       ]),
       const SizedBox(height:10),
       Card(child:Padding(padding:const EdgeInsets.all(14),child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
-        Row(children:[const Icon(Icons.bolt,size:18),const SizedBox(width:7),const Text('CURRENT SIGNAL',style:TextStyle(fontWeight:FontWeight.bold)),const Spacer(),const SizedBox.shrink()]),
+        Row(children:[const Icon(Icons.bolt,size:18),const SizedBox(width:7),const Text('CURRENT SIGNAL',style:TextStyle(fontWeight:FontWeight.bold)),const Spacer(),Chip(label:Text('PAPER'))]),
         const SizedBox(height:4),Text(action.replaceAll('_',' '),style:const TextStyle(fontSize:25,fontWeight:FontWeight.bold)),
         const SizedBox(height:6),
         if(signal!=null) ...[row('Symbol',signal!['symbol']),row('Spot',signal!['spot']),row('LTP',signal!['ltp'])] else const Text('No live signal payload received.',style:TextStyle(fontSize:12)),
@@ -227,26 +223,6 @@ class _TerminalState extends State<Terminal> {
         if(mounted) setState(()=>liveMarket=rows is List ? rows : <dynamic>[]);
       }
     } catch (_) {}
-  }
-
-  Future<void> openNamedIndex(String name) async {
-    String norm(String x)=>x.toUpperCase().replaceAll(RegExp(r'[^A-Z0-9]'),'');
-    final target=norm(name);
-    dynamic hit;
-    for(final q in liveMarket){
-      final s=norm((q['tradingSymbol']??q['tradingsymbol']??q['symbol']??q['indexName']??'').toString());
-      if((name=='NIFTY 50' && s.contains('NIFTY')) || (name=='BANK NIFTY' && s.contains('BANKNIFTY')) ||
-         (name=='FINNIFTY' && s.contains('FINNIFTY')) || (name=='MIDCAP SELECT' && (s.contains('MIDCP')||s.contains('MIDCAP'))) ||
-         (name=='SENSEX' && s.contains('SENSEX')) || (name=='BANKEX' && s.contains('BANKEX')) || s.contains(target)){ hit=q; break; }
-    }
-    if(hit!=null){ await openQuoteChart(hit); return; }
-    await fetchAngelMarket();
-    for(final q in liveMarket){
-      final s=norm((q['tradingSymbol']??q['tradingsymbol']??q['symbol']??q['indexName']??'').toString());
-      if((name=='NIFTY 50' && s.contains('NIFTY')) || (name=='BANK NIFTY' && s.contains('BANKNIFTY')) ||
-         (name=='FINNIFTY' && s.contains('FINNIFTY')) || (name=='MIDCAP SELECT' && (s.contains('MIDCP')||s.contains('MIDCAP'))) ||
-         (name=='SENSEX' && s.contains('SENSEX')) || (name=='BANKEX' && s.contains('BANKEX')) || s.contains(target)){ await openQuoteChart(q); return; }
-    }
   }
 
   Future<void> openQuoteChart(dynamic q) async {
@@ -294,7 +270,7 @@ class _TerminalState extends State<Terminal> {
   Future<void> fetchOptionRows() async {
     setState(()=>angelDataBusy=true);
     try {
-      final r=await http.get(Uri.parse(backendUrl+'/v1/angel/option-chain?symbol='+optionFilter+'&count=10'),headers:<String,String>{'x-token':apiToken}).timeout(const Duration(seconds:15));
+      final r=await http.get(Uri.parse(backendUrl+'/v1/angel/option-chain?count=10'),headers:<String,String>{'x-token':apiToken}).timeout(const Duration(seconds:15));
       if(r.statusCode==200){
         final d=jsonDecode(r.body);
         final rows=d is Map && d['rows'] is List ? d['rows'] : <dynamic>[];
@@ -329,37 +305,32 @@ class _TerminalState extends State<Terminal> {
 
   Widget marketPage() => ListView(padding:const EdgeInsets.fromLTRB(12,10,12,20),children:<Widget>[
     const Text('Market',style:TextStyle(fontSize:23,fontWeight:FontWeight.bold)),
-    const SizedBox(height:4),const Text('INDICES • NSE / BSE • tap any index to open its chart.',style:TextStyle(fontSize:12)),
+    const SizedBox(height:4),const Text('Indian trading indices — select an index to open its chart.',style:TextStyle(fontSize:12)),
     const SizedBox(height:10),
     SingleChildScrollView(scrollDirection:Axis.horizontal,child:Row(children:[
-      for(final f in const ['Indices','NSE','BSE']) Padding(
-        padding:const EdgeInsets.only(right:6),
-        child:ChoiceChip(label:Text(f),selected:marketFilter==f,onSelected:(_)=>setState(()=>marketFilter=f)),
-      ),
+      for(final f in const ['Trading','NSE','BSE'])Padding(padding:const EdgeInsets.only(right:6),child:ChoiceChip(label:Text(f),selected:marketFilter==f,onSelected:(_)=>setState(()=>marketFilter=f))),
     ])),
-    const SizedBox(height:10),
+    const SizedBox(height:8),
     Card(child:Padding(padding:const EdgeInsets.all(10),child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
       const Text('TRADING INDICES',style:TextStyle(fontWeight:FontWeight.bold)),
       const SizedBox(height:6),
-      Wrap(spacing:6,runSpacing:6,children:[
-        for(final x in const ['NIFTY 50','BANK NIFTY','FINNIFTY','MIDCAP SELECT','SENSEX','BANKEX'])
-          ActionChip(label:Text(x),onPressed:()=>openNamedIndex(x)),
+      Wrap(spacing:6,runSpacing:6,children:const[
+        Chip(label:Text('NIFTY 50')),Chip(label:Text('BANK NIFTY')),Chip(label:Text('FINNIFTY')),
+        Chip(label:Text('MIDCAP SELECT')),Chip(label:Text('SENSEX')),Chip(label:Text('BANKEX')),
       ]),
     ]))),
-    const SizedBox(height:10),
-    ...liveMarket.where((q){
-      final ex=(q['exchange']??q['exchangeType']??'').toString().toUpperCase();
-      return marketFilter=='Indices' || ex==marketFilter;
-    }).map((q)=>Card(child:ListTile(
+    const SizedBox(height:8),
+    ...liveMarket.map((q)=>Card(child:ListTile(
       leading:const Icon(Icons.show_chart),
-      title:Text((q['tradingSymbol']??q['tradingsymbol']??q['symbol']??q['indexName']??'-').toString(),style:const TextStyle(fontWeight:FontWeight.bold)),
+      title:Text((q['tradingSymbol']??q['tradingsymbol']??q['symbol']??'-').toString(),style:const TextStyle(fontWeight:FontWeight.bold)),
       subtitle:Text('LTP '+(q['ltp']??'—').toString()+' • '+(q['exchange']??'').toString()),
       trailing:Text((q['percentChange']??q['netChange']??'—').toString()),
       onTap:()=>openQuoteChart(q),
     ))),
-    if(liveMarket.isEmpty) infoCard('Live indices','Connect Angel One to load current index prices and chart tokens.',Colors.orange),
-    FilledButton.icon(onPressed:fetchAngelMarket,icon:const Icon(Icons.refresh),label:const Text('REFRESH INDICES')),
+    if(liveMarket.isEmpty) infoCard('Live index payload','Connect Angel One to populate current prices. The trading-index layout is ready.',Colors.orange),
+    FilledButton.icon(onPressed:fetchAngelMarket,icon:const Icon(Icons.refresh),label:const Text('REFRESH ANGEL INDICES')),
   ]);
+
   Widget commodityPage() => ListView(padding:const EdgeInsets.fromLTRB(12,10,12,20),children:<Widget>[
     const Text('Commodity',style:TextStyle(fontSize:23,fontWeight:FontWeight.bold)),
     const SizedBox(height:4),const Text('MCX instruments are kept separate from Indian indices.',style:TextStyle(fontSize:12)),
@@ -415,84 +386,49 @@ class _TerminalState extends State<Terminal> {
       ...((terminalData!['search']['data'] is List ? terminalData!['search']['data'] : <dynamic>[]).map((x)=>Card(child:ListTile(title:Text((x['tradingsymbol']??'-').toString()),subtitle:Text((x['exchange']??'').toString()+' • Token '+(x['symboltoken']??'-').toString()))))),
   ]);
 
-  Widget chartsPage() => ListView(padding:const EdgeInsets.fromLTRB(8,8,8,20),children:<Widget>[
-    Row(children:[
-      const Expanded(child:Text('Charts',style:TextStyle(fontSize:23,fontWeight:FontWeight.bold))),
-      IconButton(onPressed:fetchCandles,icon:const Icon(Icons.refresh)),
-    ]),
+  Widget chartsPage() => ListView(padding:const EdgeInsets.fromLTRB(12,10,12,20),children:<Widget>[
+    Row(children:[const Expanded(child:Text('Charts',style:TextStyle(fontSize:23,fontWeight:FontWeight.bold))),IconButton(onPressed:fetchCandles,icon:const Icon(Icons.refresh))]),
+    infoCard('Angel One chart','Historical candles • pinch/zoom • landscape full-screen supported.',Colors.blue),
     const SizedBox(height:6),
-    Row(children:[
-      Expanded(child:FilledButton.icon(onPressed:()=>showModalBottomSheet<void>(context:context,builder:(_)=>_selectionSheet('TIME',const ['1m','2m','3m','5m','10m','15m','30m','1H','1D'],(x){setState(()=>selectedInterval=intervalMap[x]!);fetchCandles();})),icon:const Icon(Icons.schedule),label:Text('TIME • '+(intervalMap.entries.firstWhere((e)=>e.value==selectedInterval,orElse:()=>const MapEntry('5m','FIVE_MINUTE')).key)))),
-      const SizedBox(width:8),
-      Expanded(child:FilledButton.icon(onPressed:()=>showModalBottomSheet<void>(context:context,builder:(_)=>_selectionSheet('INDICATORS',const ['EMA 8','EMA 13','SMA 20','SMA 50','VWAP','RSI 14','MACD','Bollinger','Volume','ATR 14'],(x){setState(()=>selectedIndicators.contains(x)?selectedIndicators.remove(x):selectedIndicators.add(x));})),icon:const Icon(Icons.tune),label:Text('INDICATORS • '+selectedIndicators.length.toString()))),
+    Wrap(spacing:6,runSpacing:6,children:[
+      for(final x in const ['1m','3m','5m','10m','15m','30m','1H','1D'])ChoiceChip(label:Text(x),selected:selectedInterval=={'1m':'ONE_MINUTE','3m':'THREE_MINUTE','5m':'FIVE_MINUTE','10m':'TEN_MINUTE','15m':'FIFTEEN_MINUTE','30m':'THIRTY_MINUTE','1H':'ONE_HOUR','1D':'ONE_DAY'}[x],onSelected:(_){final m={'1m':'ONE_MINUTE','3m':'THREE_MINUTE','5m':'FIVE_MINUTE','10m':'TEN_MINUTE','15m':'FIFTEEN_MINUTE','30m':'THIRTY_MINUTE','1H':'ONE_HOUR','1D':'ONE_DAY'};setState(()=>selectedInterval=m[x]!);fetchCandles();}),
     ]),
-    const SizedBox(height:10),
-    Card(child:Padding(padding:const EdgeInsets.all(5),child:SizedBox(
-      height:460,
-      child: liveCandles.isEmpty
-        ? Center(child:Text(angelDataBusy?'Loading live candles...':'Select an index or commodity to load its chart.'))
-        : CustomPaint(painter:CandlePainter(liveCandles,Set<String>.from(selectedIndicators)),size:Size.infinite),
-    ))),
     const SizedBox(height:8),
-    infoCard('Chart source',selectedChartExchange+' • token '+selectedChartToken,Colors.blue),
-  ]);
-  Widget _selectionSheet(String title,List<String> items,void Function(String) onTap){
-    return SafeArea(child:Padding(padding:const EdgeInsets.all(16),child:Column(mainAxisSize:MainAxisSize.min,crossAxisAlignment:CrossAxisAlignment.start,children:[
-      Text(title,style:const TextStyle(fontSize:18,fontWeight:FontWeight.bold)),const SizedBox(height:10),
-      Wrap(spacing:6,runSpacing:6,children:[for(final x in items)FilterChip(label:Text(x),selected:title=='TIME'?selectedInterval==intervalMap[x]:selectedIndicators.contains(x),onSelected:(_){onTap(x);Navigator.pop(context);})]),
-      const SizedBox(height:8),
-    ])));
-  }
-
-  Widget optionChain() => ListView(padding:const EdgeInsets.fromLTRB(8,8,8,20),children:<Widget>[
-    Row(children:[
-      const Expanded(child:Text('Option Chain',style:TextStyle(fontSize:23,fontWeight:FontWeight.bold))),
-      IconButton(onPressed:fetchOptionRows,icon:const Icon(Icons.refresh)),
-      IconButton(onPressed:downloadNseCsv,icon:const Icon(Icons.download),tooltip:'Download NSE CSV'),
+    const Text('INDICATORS',style:TextStyle(fontWeight:FontWeight.bold)),
+    Wrap(spacing:6,runSpacing:6,children:[
+      for(final x in const ['EMA 8','EMA 13','SMA 20','SMA 50','VWAP','RSI 14','MACD','Bollinger','Volume','ATR 14'])FilterChip(label:Text(x),selected:selectedIndicators.contains(x),onSelected:(v)=>setState(()=>v?selectedIndicators.add(x):selectedIndicators.remove(x))),
     ]),
-    const SizedBox(height:6),
+    const SizedBox(height:8),
+    Card(child:Padding(padding:const EdgeInsets.all(8),child:Column(children:[
+      SizedBox(height:300,width:double.infinity,child:liveCandles.isEmpty?const Center(child:Text('No candle payload yet.')):CustomPaint(painter:CandlePainter(liveCandles,selectedIndicators))),
+      const SizedBox(height:4),const Text('Tip: open an index/commodity from Market or Search for full-screen landscape chart.',style:TextStyle(fontSize:11)),
+    ]))),
+    FilledButton.icon(onPressed:fetchCandles,icon:const Icon(Icons.candlestick_chart),label:Text(angelDataBusy?'LOADING...':'REFRESH ANGEL CHART')),
+  ]);
+
+  Widget optionChain() => ListView(padding:const EdgeInsets.fromLTRB(12,10,12,20),children:<Widget>[
+    Row(children:[const Expanded(child:Text('Option Chain',style:TextStyle(fontSize:23,fontWeight:FontWeight.bold))),IconButton(onPressed:fetchOptionRows,icon:const Icon(Icons.refresh))]),
+    const Text('Trading underlyings only • CE / PE • OI / LTP / Volume',style:TextStyle(fontSize:12)),
+    const SizedBox(height:8),
     SingleChildScrollView(scrollDirection:Axis.horizontal,child:Row(children:[
-      for(final x in const ['NIFTY','BANKNIFTY','FINNIFTY','MIDCPNIFTY','SENSEX','BANKEX'])
-        Padding(padding:const EdgeInsets.only(right:6),child:ChoiceChip(label:Text(x),selected:optionFilter==x,onSelected:(_){setState(()=>optionFilter=x);fetchOptionRows();})),
+      for(final f in const ['ALL','NIFTY','BANKNIFTY','FINNIFTY','MIDCPNIFTY','SENSEX','BANKEX'])Padding(padding:const EdgeInsets.only(right:6),child:ChoiceChip(label:Text(f),selected:optionFilter==f,onSelected:(_)=>setState(()=>optionFilter=f))),
     ])),
     const SizedBox(height:8),
-    if(csvStatus.isNotEmpty) Text(csvStatus,style:const TextStyle(fontSize:11)),
-    if(liveOptionRows.isEmpty) infoCard('Live option chain','Select an index and connect Angel One. LTP and OI are read directly from SmartAPI.',Colors.orange),
-    if(liveOptionRows.isNotEmpty) _optionTable(),
+    Card(child:Padding(padding:const EdgeInsets.all(10),child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
+      const Text('UNDERLYING GROUPS',style:TextStyle(fontWeight:FontWeight.bold)),
+      const SizedBox(height:6),
+      Wrap(spacing:6,runSpacing:6,children:const[Chip(label:Text('NSE • NIFTY')),Chip(label:Text('NSE • BANK NIFTY')),Chip(label:Text('NSE • FINNIFTY')),Chip(label:Text('BSE • SENSEX')),Chip(label:Text('BSE • BANKEX'))]),
+    ]))),
+    if(liveOptionRows.isEmpty) infoCard('Option chain','Live CE/PE payload will appear here after the selected underlying is available from Angel One.',Colors.orange),
+    ...liveOptionRows.map((r)=>Card(child:ListTile(
+      title:Text((r['strike']??'-').toString()+' '+(r['type']??'').toString()),
+      subtitle:Text('LTP '+(r['ltp']??'—').toString()+' • OI '+(r['oi']??'—').toString()+' • Vol '+(r['volume']??'—').toString()),
+      trailing:IconButton(onPressed:()=>openQuoteChart(r),icon:const Icon(Icons.candlestick_chart)),
+    ))),
+    FilledButton.icon(onPressed:fetchOptionRows,icon:const Icon(Icons.download_for_offline),label:Text(angelDataBusy?'LOADING...':'LOAD ANGEL OPTION CHAIN')),
+    const SizedBox(height:6),
+    OutlinedButton.icon(onPressed:connection=='Connected'?downloadNseCsv:null,icon:const Icon(Icons.download),label:const Text('DOWNLOAD NSE CSV')),
   ]);
-
-  Widget _optionTable(){
-    final grouped=<dynamic,Map<String,dynamic>>{};
-    for(final r in liveOptionRows){
-      final s=r['strike'];
-      grouped.putIfAbsent(s,()=> <String,dynamic>{});
-      grouped[s]![r['type'].toString()]=r;
-    }
-    final strikes=grouped.keys.toList()..sort((a,b)=>(a as num).compareTo(b as num));
-    return Card(child:SingleChildScrollView(scrollDirection:Axis.horizontal,child:DataTable(
-      columns:const [
-        DataColumn(label:Text('CALL LTP')),DataColumn(label:Text('CALL OI')),
-        DataColumn(label:Text('STRIKE')),DataColumn(label:Text('PUT OI')),DataColumn(label:Text('PUT LTP')),
-      ],
-      rows:[for(final s in strikes) DataRow(cells:[
-        DataCell(Text(_v(grouped[s]?['CE'],'ltp'))),
-        DataCell(_oiCell(grouped[s]?['CE'])),
-        DataCell(Text(s.toString(),style:const TextStyle(fontWeight:FontWeight.bold))),
-        DataCell(_oiCell(grouped[s]?['PE'])),
-        DataCell(Text(_v(grouped[s]?['PE'],'ltp'))),
-      ])],
-    )));
-  }
-
-  String _v(dynamic r,String k)=>r is Map?(r[k]??'—').toString():'—';
-  Widget _oiCell(dynamic r){
-    final v=r is Map?r['oi']:null;
-    final n=v is num?v.toDouble():double.tryParse(v?.toString()??'');
-    final d=r is Map?r['oiChange']:null;
-    final positive=d is num&&d>0, negative=d is num&&d<0;
-    return Text((positive?'+':negative?'-':'')+(n?.toStringAsFixed(0)??'—'),style:TextStyle(color:positive?Colors.green:negative?Colors.red:null,fontWeight:FontWeight.w600));
-  }
-
 
   Widget newsPage() => ListView(padding:const EdgeInsets.fromLTRB(12,10,12,20),children:<Widget>[
     Row(children:[const Expanded(child:Text('News',style:TextStyle(fontSize:23,fontWeight:FontWeight.bold))),IconButton(onPressed:fetchTerminal,icon:const Icon(Icons.refresh))]),
@@ -507,38 +443,46 @@ class _TerminalState extends State<Terminal> {
 
   Widget marketDetailsPage() => ListView(padding:const EdgeInsets.fromLTRB(12,10,12,20),children:<Widget>[
     const Text('Market Details',style:TextStyle(fontSize:23,fontWeight:FontWeight.bold)),
-    const SizedBox(height:8),
-    SingleChildScrollView(scrollDirection:Axis.horizontal,child:Row(children:[
-      for(final x in const ['NIFTY','BANK NIFTY','SENSEX'])
-        Padding(padding:const EdgeInsets.only(right:6),child:ChoiceChip(label:Text(x),selected:(terminalData?['market_details_selected']??'NIFTY')==x,onSelected:(_){
-          setState(()=>terminalData={...?terminalData,'market_details_selected':x});
-          openNamedIndex(x=='NIFTY'?'NIFTY 50':x);
-        })),
-    ])),
+    const SizedBox(height:4),const Text('Sector breadth and buying/selling view — values only when live payload is available.',style:TextStyle(fontSize:12)),
     const SizedBox(height:10),
-    Card(child:Padding(padding:const EdgeInsets.all(12),child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
-      const Text('NEWS',style:TextStyle(fontWeight:FontWeight.bold)),
-      const SizedBox(height:6),
-      const Text('Verified/server-side market news appears here when the news adapter supplies source + timestamp.'),
-      const SizedBox(height:8),
-      ListTile(leading:const Icon(Icons.article_outlined),title:const Text('Live news feed'),subtitle:const Text('No fabricated headlines.')),
-    ]))),
+    Wrap(spacing:6,children:const[Chip(label:Text('NIFTY')),Chip(label:Text('BANK NIFTY')),Chip(label:Text('SENSEX'))]),
     const SizedBox(height:8),
-    Row(children:[
-      Expanded(child:_breadthBox('GREEN','Live payload pending',Colors.green)),
-      const SizedBox(width:8),
-      Expanded(child:_breadthBox('RED','Live payload pending',Colors.red)),
-    ]),
+    Card(child:Padding(padding:const EdgeInsets.all(12),child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
+      const Text('SECTOR BREADTH',style:TextStyle(fontWeight:FontWeight.bold)),
+      const SizedBox(height:8),
+      Row(children:[Expanded(child:_breadthBox('GREEN / BUYING','Live payload pending',Colors.green)),const SizedBox(width:8),Expanded(child:_breadthBox('RED / SELLING','Live payload pending',Colors.red))]),
+    ]))),
     const SizedBox(height:8),
     Card(child:Padding(padding:const EdgeInsets.all(12),child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
       const Text('SECTOR BREAKDOWN',style:TextStyle(fontWeight:FontWeight.bold)),
       const SizedBox(height:6),
-      for(final s in const ['IT','BANKING','AUTO','METAL','PHARMA','FMCG','ENERGY','REALTY'])
-        ListTile(dense:true,leading:const Icon(Icons.circle,size:9),title:Text(s),subtitle:const Text('Live % change pending'),trailing:const Text('—')),
+      for(final s in const ['IT','BANKING','AUTO','METAL','PHARMA','FMCG','ENERGY','REALTY'])ListTile(dense:true,leading:const Icon(Icons.circle,size:9),title:Text(s),subtitle:const Text('Live % change pending'),trailing:const Text('—')),
     ]))),
-    infoCard('Index selection','Tap NIFTY, BANK NIFTY or SENSEX above. The selected instrument is sent to the chart.',Colors.blue),
+    infoCard('Reason / driver','Sector reason, advance/decline and percentage change will be shown from the live market-detail payload. No values are fabricated.',Colors.blue),
   ]);
 
+  Widget signals() {
+    final action = signal?['action']?.toString() ?? 'WAIT';
+    final raw = signal?['reasons'];
+    final reasons = raw is List ? raw.map((e) => e.toString()).join('\n') : 'No live signal reasons received.';
+    return ListView(padding: const EdgeInsets.all(16), children: <Widget>[
+      const Text('Signals', style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
+      const SizedBox(height: 12),
+      infoCard(action.replaceAll('_',' '), reasons, Colors.blue),
+      const SizedBox(height: 12),
+      infoCard('Engine','Paper-signal engine. Live values appear only when the backend supplies them.',Colors.orange),
+    ]);
+  }
+
+  Widget nseMcp() => ListView(padding:const EdgeInsets.fromLTRB(12,10,12,20),children:<Widget>[
+    Row(children:[const Expanded(child:Text('NSE MCP',style:TextStyle(fontSize:23,fontWeight:FontWeight.bold))),IconButton(onPressed:fetchTerminal,icon:const Icon(Icons.refresh))]),
+    infoCard('Official MCP','mcp.nseindia.in/cmmkt/mcp',Colors.blue),
+    infoCard('Connection',nseMcpStatus,nseMcpStatus=='Connected'?Colors.green:Colors.orange),
+    Card(child:ListTile(leading:const Icon(Icons.hub),title:const Text('Live market tools'),subtitle:const Text('MCP tool list and supported live data will appear here.'),trailing:const Icon(Icons.chevron_right))),
+    Card(child:ListTile(leading:const Icon(Icons.table_chart),title:const Text('Live option chain'),subtitle:const Text('NSE MCP → Render → APK. Data may be delayed when the source is delayed.'),trailing:const Icon(Icons.chevron_right))),
+    FilledButton.icon(onPressed:connection=='Connected'?downloadNseCsv:null,icon:const Icon(Icons.download),label:const Text('DOWNLOAD NSE OPTION CHAIN CSV')),
+    infoCard('Security','MCP access is server-side; APK does not store NSE/Angel credentials.',Colors.green),
+  ]);
 
   Widget angelApi() => AngelApiForm(
     backendUrl: backendUrl,
@@ -554,17 +498,22 @@ class _TerminalState extends State<Terminal> {
     const SizedBox(height:8),
     Card(child:SwitchListTile(title:const Text('Light mode'),subtitle:const Text('Switch between dark and light workspace'),value:lightMode,onChanged:(v)=>setState(()=>lightMode=v))),
     infoCard('Backend URL',backendUrl,Colors.blue),
-    const SizedBox(height:8),
-    Card(child:ListTile(leading:const Icon(Icons.schedule),title:const Text('TIME'),subtitle:const Text('Select chart timeframe'),onTap:()=>showModalBottomSheet<void>(context:context,builder:(_)=>_selectionSheet('TIME',const ['1m','2m','3m','5m','10m','15m','30m','1H','1D'],(x){setState(()=>selectedInterval=intervalMap[x]!);fetchCandles();})))),
-    Card(child:ListTile(leading:const Icon(Icons.tune),title:const Text('INDICATORS'),subtitle:const Text('Select chart indicators'),onTap:()=>showModalBottomSheet<void>(context:context,builder:(_)=>_selectionSheet('INDICATORS',const ['EMA 8','EMA 13','SMA 20','SMA 50','VWAP','RSI 14','MACD','Bollinger','Volume','ATR 14'],(x){setState(()=>selectedIndicators.contains(x)?selectedIndicators.remove(x):selectedIndicators.add(x));})))),
+    infoCard('Mode','Design / data workspace • algorithm deferred',Colors.orange),
+    Card(child:Padding(padding:const EdgeInsets.all(12),child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
+      const Text('TIMEFRAMES',style:TextStyle(fontWeight:FontWeight.bold)),const SizedBox(height:7),
+      Wrap(spacing:5,children:const[Chip(label:Text('1m')),Chip(label:Text('3m')),Chip(label:Text('5m')),Chip(label:Text('10m')),Chip(label:Text('15m')),Chip(label:Text('30m')),Chip(label:Text('1H')),Chip(label:Text('1D'))]),
+    ]))),
+    Card(child:Padding(padding:const EdgeInsets.all(12),child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
+      const Text('INDICATORS — SELECT TO SHOW',style:TextStyle(fontWeight:FontWeight.bold)),const SizedBox(height:7),
+      Wrap(spacing:5,runSpacing:5,children:[for(final x in const ['EMA 8','EMA 13','VWAP','RSI 14','MACD','Bollinger','Volume','ATR 14'])FilterChip(label:Text(x),selected:selectedIndicators.contains(x),onSelected:(v)=>setState(()=>v?selectedIndicators.add(x):selectedIndicators.remove(x)))]),
+    ]))),
     FilledButton.icon(onPressed:openSettings,icon:const Icon(Icons.dns),label:const Text('EDIT SERVER CONNECTION')),
   ]);
-
 
   Widget morePage() => ListView(padding: const EdgeInsets.all(16), children: <Widget>[
     const Text('More', style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
     const SizedBox(height: 12),
-    infoCard('Order mode','No order placement. Live market workspace.',Colors.orange),
+    infoCard('Order mode','No order placement. Paper signals only.',Colors.orange),
     infoCard('Security','Keep Angel credentials server-side and never commit secrets.',Colors.blue),
     infoCard('Navigation',screens.join(', '),Colors.blue),
   ]);
