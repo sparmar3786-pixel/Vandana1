@@ -1,5 +1,5 @@
 """Network/API gateway for NSE Algo Signal. PAPER signals only; no order placement."""
-import threading,time,datetime as dt
+import threading,time,datetime as dt,os
 from typing import Optional
 from fastapi import FastAPI,Header,HTTPException,Response
 from pydantic import BaseModel
@@ -10,10 +10,14 @@ from signals import Engine
 from nse_client import NSEClient
 import nse_features
 from nse_mcp import NSEMCP,result_to_csv
+from ai_model import p_up,label
 
 app=FastAPI(title="NSE Algo Signal API"); eng=Engine(); client=AngelClient(); nse=NSEClient(); nse_mcp=NSEMCP()
 state={"error":None,"nse_error":None,"last_update":None,"angel_message":"Not connected","nse_mcp_error":None}
 prev_chain={"c":None}; workers_started=False
+
+class AIValidationRequest(BaseModel):
+    payload:dict = {}
 
 class AngelLoginRequest(BaseModel):
     clientId:str
@@ -113,6 +117,19 @@ def angel_candles(exchange:str="NSE",token:str="99926000",interval:str="FIVE_MIN
     try: return client.candles(exchange,token,interval,days)
     except Exception as e: raise HTTPException(502,str(e))
 
+@app.get("/v1/option-chain")
+def unified_option_chain(symbol:str="NIFTY",count:int=10,x_token:str=Header(None)):
+    auth(x_token); angel_required()
+    aliases={"NIFTY 50":"NIFTY","NIFTYBANK":"BANKNIFTY","BANK NIFTY":"BANKNIFTY","MIDCAP SELECT":"MIDCPNIFTY"}
+    key=symbol.upper().replace(" ","")
+    key=aliases.get(symbol.upper(), aliases.get(key,key))
+    try:
+        result=client.option_chain_rows(symbol=key,count=max(5,min(count,25)))
+        rows=result.get("rows",[]) if isinstance(result,dict) else []
+        return {**result,"source":"Angel One SmartAPI","rows":rows}
+    except Exception as e:
+        raise HTTPException(502,"Option chain unavailable: "+str(e))
+
 @app.get("/v1/angel/option-chain")
 def angel_option_chain(symbol:str="NIFTY",count:int=200,x_token:str=Header(None)):
     auth(x_token); angel_required()
@@ -186,6 +203,37 @@ def nse_option_chain_csv(symbol:str="NIFTY",expiry:Optional[str]=None,x_token:st
     except Exception as e:
         state["nse_mcp_error"]=str(e)
         raise HTTPException(502,str(e))
+
+@app.get("/v1/ai/status")
+def ai_status(x_token:str=Header(None)):
+    auth(x_token)
+    configured=[]
+    for env,name,model in [("OPENAI_API_KEY","GPT-5.6 Luna","gpt-5.6-luna"),("ANTHROPIC_API_KEY","Claude Sonnet 4.6","claude-sonnet-4-6"),("OPENAI_API_KEY","GPT-5.6 Sol","gpt-5.6-sol"),("DEEPSEEK_API_KEY","DeepSeek Chat","deepseek-chat"),("GEMINI_API_KEY","Gemini 2.5 Flash","gemini-2.5-flash"),("XAI_API_KEY","Grok 4","grok-4")]:
+        configured.append({"name":name,"model":os.getenv(model.upper().replace("-","_"),model) if False else model,"configured":bool(os.getenv(env)),"status":"configured" if os.getenv(env) else "server key required"})
+    return {"providers":configured,"configured":sum(1 for p in configured if p["configured"]),"total":len(configured),"local_fallback":True}
+
+@app.post("/v1/ai/validate")
+def ai_validate(body:AIValidationRequest,x_token:str=Header(None)):
+    auth(x_token)
+    f=eng.nse_view if isinstance(eng.nse_view,dict) else {}
+    try: prob,source=p_up(f) if f else (0.5,"NSE-rules")
+    except Exception: prob,source=0.5,"NSE-rules"
+    state_name="CALL BUY" if prob>=0.58 else "PUT BUY" if prob<=0.42 else "WAIT"
+    if not f: state_name="NO QUALIFYING TRADE"
+    providers=[]
+    for env,name,model in [("OPENAI_API_KEY","GPT-5.6 Luna","gpt-5.6-luna"),("ANTHROPIC_API_KEY","Claude Sonnet 4.6","claude-sonnet-4-6"),("OPENAI_API_KEY","GPT-5.6 Sol","gpt-5.6-sol"),("DEEPSEEK_API_KEY","DeepSeek Chat","deepseek-chat"),("GEMINI_API_KEY","Gemini 2.5 Flash","gemini-2.5-flash"),("XAI_API_KEY","Grok 4","grok-4")]:
+        ok=bool(os.getenv(env)); providers.append({"name":name,"model":model,"configured":ok,"status":"configured" if ok else "server key required"})
+    providers.append({"name":"NSE Local AI Fallback","model":source,"configured":True,"status":"validated","state":state_name,"probability":prob,"text":f"STATE: {state_name}\\nEvidence source: {source}.\\nProbability: {prob:.3f}.\\nExternal six-provider cross-verification requires server API keys."})
+    return {"final":state_name,"cross_verified":False,"reason":"Local NSE rule/ML fallback; external six-provider cross-verification requires server API keys.","configured":sum(1 for p in providers if p["configured"]),"total":len(providers),"providers":providers}
+
+@app.get("/v1/diagnostics")
+def diagnostics(x_token:str=Header(None)):
+    auth(x_token); providers=ai_status(x_token)["providers"]; ev=getattr(eng,"strategy_evidence",[]) if hasattr(eng,"strategy_evidence") else []
+    return {"angel":{"connected":client.api is not None,"message":state["angel_message"]},"nse":{"available":state["nse_error"] is None,"error":state["nse_error"]},"ai":{"configured":sum(1 for p in providers if p["configured"]),"providers":providers},"strategies":{"registered":len(ev),"evaluated":len(ev),"active":sum(1 for x in ev if isinstance(x,dict) and x.get("state")=="active"),"unavailable":sum(1 for x in ev if isinstance(x,dict) and x.get("state")=="unavailable"),"not_evaluated":0}}
+
+@app.get("/v1/audit/latest")
+def latest_audit(x_token:str=Header(None)):
+    auth(x_token); last=eng.last if isinstance(eng.last,dict) else {}; return {"action":last.get("action","WAIT"),"reasons":last.get("reasons",[]),"timestamp":state["last_update"]}
 
 @app.get("/signal")
 def signal(x_token:str=Header(None)): auth(x_token); return terminal_snapshot()
