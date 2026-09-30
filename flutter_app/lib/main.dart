@@ -698,7 +698,7 @@ async function ask(w,prompt){
       Text(aiActiveTab.isEmpty?'Double-tap a tab/card to start.':'AI active for: '+aiActiveTab,style:const TextStyle(fontWeight:FontWeight.bold)),
       Text('Memory folder: app documents/ai_memory/market_memory.json • entries: '+aiMemory.length.toString(),style:const TextStyle(fontSize:11)),
       const SizedBox(height:8),
-      FilledButton.icon(onPressed:aiActiveTab.isEmpty?null:()=>_openPuterAi(aiActiveTab),icon:const Icon(Icons.auto_awesome),label:const Text('RUN 3-LAYER AI WITH PUTER')),
+      FilledButton.icon(onPressed:aiActiveTab.isEmpty?null:()=>_openPuterAi(aiActiveTab),icon:const Icon(Icons.auto_awesome),label:const Text('RUN 6 AI VALIDATION WITH PUTER')),
       if(aiMemory.isNotEmpty)Text('Latest: '+aiMemory.last,style:const TextStyle(fontSize:10)),
     ]))),
     Card(child:ListTile(leading:const Icon(Icons.verified_user),title:const Text('Cross-verification'),subtitle:Text(aiActiveTab.isEmpty?'Not started':'Collection → verification → validation queued for '+aiActiveTab),trailing:Icon(aiActiveTab.isEmpty?Icons.radio_button_unchecked:Icons.check_circle,color:aiActiveTab.isEmpty?Colors.grey:Colors.green))),
