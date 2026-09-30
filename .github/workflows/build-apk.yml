@@ -1,0 +1,36 @@
+name: Build NSE Algo Trading APK
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  apk:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+      - name: Generate Android project and permissions
+        working-directory: flutter_app
+        run: |
+          flutter create . --platforms=android --project-name algo_terminal
+          M=android/app/src/main/AndroidManifest.xml
+          sed -i 's#<application#<uses-permission android:name="android.permission.INTERNET"/>
+    <application android:usesCleartextTraffic="true"#' "$M"
+          grep -n "INTERNET\|Cleartext" "$M"
+      - name: Build release APK
+        working-directory: flutter_app
+        run: |
+          flutter pub get
+          flutter build apk --release
+      - uses: actions/upload-artifact@v4
+        with:
+          name: NSE-Algo-Trading-APK
+          path: flutter_app/build/app/outputs/flutter-apk/app-release.apk
