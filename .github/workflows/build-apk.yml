@@ -1,7 +1,7 @@
 name: Build NSE Algo Trading APK
 on:
   push:
-    branches: [main, feature-v2-ui-polish-market-chart, feature-v2-ui-polish-market-chart-fixed, feature/strategy-master-377]
+    branches: [main, feature-v2-ui-polish-market-chart, feature-v2-ui-polish-market-chart-fixed, feature/strategy-master-377, vandana4]
   workflow_dispatch:
 
 permissions:
