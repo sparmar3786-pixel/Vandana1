@@ -226,12 +226,12 @@ class _TerminalState extends State<Terminal> {
 const data=JSON.stringify("PLACEHOLDER");
 const out=document.getElementById('out'), status=document.getElementById('status');
 const wanted=[
- {n:1,name:'GPT-5.6 Luna',id:'gpt-5.6-luna',keys:['gpt-5.6-luna','gpt-5.6 luna','luna']},
- {n:2,name:'Claude Sonnet 4.6',id:'claude-sonnet-4-6',keys:['claude-sonnet-4-6','claude sonnet 4.6']},
- {n:3,name:'GPT-5.6 Sol',id:'gpt-5.6-sol',keys:['gpt-5.6-sol','gpt-5.6 sol','sol']},
- {n:4,name:'DeepSeek Chat',id:'deepseek-chat',keys:['deepseek-chat','deepseek chat']},
- {n:5,name:'Gemini 2.5 Flash',id:'gemini-2.5-flash',keys:['gemini-2.5-flash','gemini 2.5 flash']},
- {n:6,name:'Grok 4',id:'grok-4',keys:['grok-4','grok 4']}
+ {n:1,name:'GPT-5.6 Luna',id:'gpt-5.6-luna',provider:'openai',family:['gpt-5.6','luna'],keys:['gpt-5.6-luna','gpt-5.6 luna','luna']},
+ {n:2,name:'Claude Sonnet 4.6',id:'claude-sonnet-4-6',provider:'anthropic',family:['claude-sonnet','sonnet'],keys:['claude-sonnet-4-6','claude sonnet 4.6']},
+ {n:3,name:'GPT-5.6 Sol',id:'gpt-5.6-sol',provider:'openai',family:['gpt-5.6','sol'],keys:['gpt-5.6-sol','gpt-5.6 sol','sol']},
+ {n:4,name:'DeepSeek Chat',id:'deepseek-chat',provider:'deepseek',family:['deepseek-chat','deepseek'],keys:['deepseek-chat','deepseek chat']},
+ {n:5,name:'Gemini 2.5 Flash',id:'gemini-2.5-flash',provider:'google',family:['gemini-2.5-flash','gemini 2.5','gemini'],keys:['gemini-2.5-flash','gemini 2.5 flash']},
+ {n:6,name:'Grok 4',id:'grok-4',provider:'xai',family:['grok-4','grok'],keys:['grok-4','grok 4']}
 ];
 let available=[];
 async function resolveModel(w){
@@ -240,11 +240,16 @@ async function resolveModel(w){
   const rows=Array.isArray(available)?available:[];
   const exact=rows.find(x=>w.keys.some(k=>String(x?.id||'').toLowerCase()===k));
   if(exact?.id) return exact.id;
-  const match=rows.find(x=>{
+  const keyMatch=rows.find(x=>{
     const s=(String(x?.id||'')+' '+String(x?.name||'')+' '+JSON.stringify(x?.aliases||[])).toLowerCase();
     return w.keys.some(k=>s.includes(k));
   });
-  return match?.id||w.id;
+  if(keyMatch?.id) return keyMatch.id;
+  const provider=w.provider;
+  const providerRows=provider?rows.filter(x=>String(x?.provider||'').toLowerCase()===provider):[];
+  const providerMatch=providerRows.find(x=>w.family.some(k=>(String(x?.id||'')+' '+String(x?.name||'')).toLowerCase().includes(k)));
+  if(providerMatch?.id) return providerMatch.id;
+  return w.id;
  }catch(_){return w.id;}
 }
 async function ask(w,prompt){
@@ -690,15 +695,19 @@ async function ask(w,prompt){
               ),
             )),
     Card(child:Padding(padding:const EdgeInsets.all(12),child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
-      const Text('THREE-LAYER AI',style:TextStyle(fontWeight:FontWeight.bold)),
-      _aiLayer('1 • AI BOT','Collects market, option-chain, OI, Greeks, trend and watchlist data.',Colors.cyan),
-      _aiLayer('2 • AI ADMIN','Verifies freshness, missing fields and contradictory signals.',Colors.amber),
-      _aiLayer('3 • AI CHATGPT','Cross-validates the verified snapshot and produces the final explanation using stored market-memory context.',Colors.green),
+      const Text('6-AI VALIDATION ENGINE',style:TextStyle(fontWeight:FontWeight.bold,fontSize:16)),
+      _aiLayer('1 • GPT-5.6 Luna','AI Bot — live data collection and candidate extraction.',Colors.cyan),
+      _aiLayer('2 • Claude Sonnet 4.6','AI Admin — verification and contradiction check.',Colors.amber),
+      _aiLayer('3 • GPT-5.6 Sol','AI ChatGPT — independent final validation.',Colors.green),
+      _aiLayer('4 • DeepSeek Chat','AI Quant — OI, Greeks and mathematical cross-check.',Colors.deepPurple),
+      _aiLayer('5 • Gemini 2.5 Flash','AI Market Analyst — chart and market-structure cross-check.',Colors.orange),
+      _aiLayer('6 • Grok 4','AI Risk Auditor — challenges setup, risk and unsupported conclusions.',Colors.red),
       const SizedBox(height:6),
+      const Text('Strike/LTP/OI/Greeks come only from live option-chain data. AI cannot invent a strike or trade level.',style:TextStyle(fontSize:11)),
       Text(aiActiveTab.isEmpty?'Double-tap a tab/card to start.':'AI active for: '+aiActiveTab,style:const TextStyle(fontWeight:FontWeight.bold)),
       Text('Memory folder: app documents/ai_memory/market_memory.json • entries: '+aiMemory.length.toString(),style:const TextStyle(fontSize:11)),
       const SizedBox(height:8),
-      FilledButton.icon(onPressed:aiActiveTab.isEmpty?null:()=>_openPuterAi(aiActiveTab),icon:const Icon(Icons.auto_awesome),label:const Text('RUN 6 AI VALIDATION WITH PUTER')),
+      FilledButton.icon(onPressed:aiActiveTab.isEmpty?null:()=>_openPuterAi(aiActiveTab),icon:const Icon(Icons.auto_awesome),label:const Text('RUN ALL 6 AI')),
       if(aiMemory.isNotEmpty)Text('Latest: '+aiMemory.last,style:const TextStyle(fontSize:10)),
     ]))),
     Card(child:ListTile(leading:const Icon(Icons.verified_user),title:const Text('Cross-verification'),subtitle:Text(aiActiveTab.isEmpty?'Not started':'Collection → verification → validation queued for '+aiActiveTab),trailing:Icon(aiActiveTab.isEmpty?Icons.radio_button_unchecked:Icons.check_circle,color:aiActiveTab.isEmpty?Colors.grey:Colors.green))),
