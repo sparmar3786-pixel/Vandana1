@@ -526,7 +526,7 @@ class _TerminalState extends State<Terminal> {
     ]),
     const SizedBox(height:6),
     Row(children:[
-      Expanded(child:OutlinedButton.icon(onPressed:()=>setState((){selected=8;optionFilter=selectedChartSymbol;chartTool='None';}),icon:const Icon(Icons.table_chart),label:Text('OPTION '+selectedChartSymbol))),
+      Expanded(child:OutlinedButton.icon(onPressed:(){setState((){selected=8;optionFilter=selectedChartSymbol;chartTool='None';});fetchOptionRows();},icon:const Icon(Icons.table_chart),label:Text('OPTION '+selectedChartSymbol))),
       const SizedBox(width:6),
       Expanded(child:OutlinedButton.icon(onPressed:()=>setState((){chartPointA=null;chartPointB=null;chartTool='None';}),icon:const Icon(Icons.clear),label:const Text('CLEAR DRAWING'))),
     ]),
