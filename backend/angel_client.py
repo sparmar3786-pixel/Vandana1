@@ -50,54 +50,21 @@ class AngelClient:
 
     def index_quote(self, symbols=None):
         api=self.require_api()
-        master=self._master()
-        wanted=["NIFTY","BANKNIFTY","FINNIFTY","MIDCPNIFTY","SENSEX","BANKEX"]
-        selected=[]
-        for name in wanted:
-            rows=[r for r in master if str(r.get("name","")).upper()==name and str(r.get("exch_seg","")).upper() in ("NSE","BSE")]
-            if rows:
-                selected.append(rows[0])
-        if not selected:
-            raise RuntimeError("No supported index instruments found in Angel instrument master.")
-        by_exchange={}
-        for r in selected:
-            by_exchange.setdefault(str(r["exch_seg"]),[]).append(str(r["token"]))
-        result=api.getMarketData("FULL",by_exchange)
-        fetched=(result.get("data") or {}).get("fetched") or []
-        meta={str(r["token"]):r for r in selected}
-        for q in fetched:
-            m=meta.get(str(q.get("symbolToken")))
-            if m:
-                q["exchange"]=m.get("exch_seg")
-                q["tradingSymbol"]=m.get("symbol") or m.get("name")
-                q["indexName"]=m.get("name")
+        symbols=symbols or {
+            "NIFTY":"99926000","BANKNIFTY":"99926009","FINNIFTY":"99926037",
+            "SENSEX":"99919000"
+        }
+        tokens=list(symbols.values())
+        result=api.getMarketData("FULL", {"NSE": [t for t in tokens if t!="99919000"], "BSE":["99919000"]})
         return result
 
     def candles(self, exchange, token, interval="FIVE_MINUTE", days=1):
         api=self.require_api()
         now=dt.datetime.now(dt.timezone(dt.timedelta(hours=5,minutes=30)))
         start=now-dt.timedelta(days=max(1,min(int(days),30)))
-        api_interval="ONE_MINUTE" if interval=="TWO_MINUTE" else interval
-        p={"exchange":exchange,"symboltoken":str(token),"interval":api_interval,
+        p={"exchange":exchange,"symboltoken":str(token),"interval":interval,
            "fromdate":start.strftime("%Y-%m-%d %H:%M"),"todate":now.strftime("%Y-%m-%d %H:%M")}
-        result=api.getCandleData(p)
-        if interval!="TWO_MINUTE":
-            return result
-        bucket={}
-        for row in result.get("data") or []:
-            if not isinstance(row,list) or len(row)<6: continue
-            try:
-                t=dt.datetime.fromisoformat(str(row[0]))
-                key=t.replace(minute=(t.minute//2)*2,second=0,microsecond=0).isoformat()
-            except Exception:
-                key=str(row[0])[:16]
-            if key not in bucket:
-                bucket[key]=[key,row[1],row[2],row[3],row[4],row[5]]
-            else:
-                b=bucket[key]
-                b[2]=max(b[2],row[2]); b[3]=min(b[3],row[3]); b[4]=row[4]
-                b[5]=(b[5] or 0)+(row[5] or 0)
-        return {"status":True,"message":"SUCCESS","data":[bucket[k] for k in sorted(bucket)]}
+        return api.getCandleData(p)
 
     def oi_history(self, token, interval="THREE_MINUTE", hours=6):
         api=self.require_api()
@@ -170,59 +137,35 @@ class AngelClient:
                              "volume":q.get("tradeVolume"),"oi":q.get("opnInterest")})
         return {"data":{"fetched":rows,"unfetched":[]},"instruments":selected}
 
-    def option_chain_rows(self, symbol=None, around=None, count=10):
+    def option_chain_rows(self, around=None, count=10):
         self.require_api()
-        symbol=(symbol or C.SYMBOL).upper()
-        exchange="BFO" if symbol in ("SENSEX","BANKEX") else "NFO"
-        master=self._master()
-        rows=[r for r in master if str(r.get("name","")).upper()==symbol and r.get("exch_seg")==exchange and r.get("instrumenttype")=="OPTIDX"]
-        def exp(r): return dt.datetime.strptime(r["expiry"],"%d%b%Y").date()
-        today=dt.date.today()
-        expiries=sorted({exp(r) for r in rows if r.get("expiry") and exp(r)>=today})
-        if not expiries: raise RuntimeError(f"No active {symbol} option expiry found.")
-        expiry=expiries[0]
-        chain={}
-        for r in rows:
-            if exp(r)!=expiry: continue
-            try: strike=float(r["strike"])/100
-            except Exception: continue
-            typ=str(r.get("symbol",""))[-2:]
-            if typ in ("CE","PE"): chain[(strike,typ)]={"token":r["token"],"symbol":r["symbol"]}
-        strikes=sorted({k[0] for k in chain})
-        index_rows=[r for r in master if str(r.get("name","")).upper()==symbol and str(r.get("exch_seg","")).upper() in ("NSE","BSE")]
-        if not index_rows: raise RuntimeError(f"No live index token found for {symbol}.")
-        idx=index_rows[0]
-        q=self.api.getMarketData("LTP",{str(idx["exch_seg"]):[str(idx["token"])]})
-        fetched=(q.get("data") or {}).get("fetched") or []
-        if not fetched: raise RuntimeError(f"No spot quote returned for {symbol}.")
-        spot=float(fetched[0]["ltp"])
-        atm=around if around is not None else min(strikes,key=lambda s:abs(s-spot))
-        idx_atm=min(range(len(strikes)),key=lambda i:abs(strikes[i]-atm))
-        selected=strikes[max(0,idx_atm-int(count)):idx_atm+int(count)+1]
+        if not self.chain:
+            self.build_chain()
+        spot=self.spot()
+        atm=around if around is not None else min(self.strikes,key=lambda s:abs(s-spot))
+        idx=min(range(len(self.strikes)),key=lambda i:abs(self.strikes[i]-atm))
+        selected=self.strikes[max(0,idx-int(count)):idx+int(count)+1]
         token_map={}
         for s in selected:
             for t in ("CE","PE"):
-                item=chain.get((s,t))
+                item=self.chain.get((s,t))
                 if item: token_map[item["token"]]=(s,t,item["symbol"])
-        rows_out=[]
+        rows=[]
         toks=list(token_map)
         for j in range(0,len(toks),50):
-            rr=self.api.getMarketData("FULL",{exchange:toks[j:j+50]})
-            for q in rr.get("data",{}).get("fetched",[]):
+            r=self.api.getMarketData("FULL",{"NFO":toks[j:j+50]})
+            for q in r.get("data",{}).get("fetched",[]):
                 item=token_map.get(str(q.get("symbolToken")))
                 if not item: continue
                 s,t,sym=item
-                row={"strike":s,"type":t,"symbol":sym,"token":str(q.get("symbolToken")),
-                     "ltp":q.get("ltp"),"open":q.get("open"),"high":q.get("high"),
-                     "low":q.get("low"),"close":q.get("close"),"oi":q.get("opnInterest"),
-                     "volume":q.get("tradeVolume"),"buyQty":q.get("totalBuyQuantity"),
-                     "sellQty":q.get("totalSellQuantity")}
-                try:
-                    cur=float(q.get("opnInterest",0)); key=str(q.get("symbolToken")); prev=self.prev_oi.get(key)
-                    row["oiChange"]=None if prev is None else cur-prev; self.prev_oi[key]=cur
-                except Exception: pass
-                rows_out.append(row)
-        return {"symbol":symbol,"spot":spot,"atm":atm,"expiry":str(expiry),"rows":rows_out}
+                rows.append({
+                    "strike":s,"type":t,"symbol":sym,"token":str(q.get("symbolToken")),
+                    "ltp":q.get("ltp"),"open":q.get("open"),"high":q.get("high"),
+                    "low":q.get("low"),"close":q.get("close"),"oi":q.get("opnInterest"),
+                    "volume":q.get("tradeVolume"),"buyQty":q.get("totalBuyQuantity"),
+                    "sellQty":q.get("totalSellQuantity")
+                })
+        return {"symbol":C.SYMBOL,"spot":spot,"atm":atm,"expiry":str(self.expiry),"rows":rows}
 
     def snapshot(self):
         if self.api is None: raise RuntimeError("Angel session is not connected.")
