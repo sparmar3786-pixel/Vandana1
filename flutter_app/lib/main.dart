@@ -54,7 +54,7 @@ class _TerminalState extends State<Terminal> {
   static const intervalMap = <String,String>{'1m':'ONE_MINUTE','2m':'TWO_MINUTE','3m':'THREE_MINUTE','5m':'FIVE_MINUTE','10m':'TEN_MINUTE','15m':'FIFTEEN_MINUTE','30m':'THIRTY_MINUTE','1H':'ONE_HOUR','1D':'ONE_DAY'};
   bool angelDataBusy = false;
   bool lightMode = false;
-  String marketFilter = 'Trading';
+  String marketFilter = 'Indices';
   String optionFilter = 'ALL';
   String commodityQuery = '';
   final Set<String> selectedIndicators = <String>{};
@@ -448,22 +448,41 @@ class _TerminalState extends State<Terminal> {
     if(liveOptionRows.isNotEmpty) _optionTable(),
   ]);
   Widget newsPage() => ListView(padding:const EdgeInsets.fromLTRB(12,10,12,20),children:<Widget>[
-    Row(children:[const Expanded(child:Text('News',style:TextStyle(fontSize:23,fontWeight:FontWeight.bold))),IconButton(onPressed:fetchTerminal,icon:const Icon(Icons.refresh))]),
+    Row(children:[
+      const Expanded(child:Text('News',style:TextStyle(fontSize:23,fontWeight:FontWeight.bold))),
+      IconButton(onPressed:fetchTerminal,icon:const Icon(Icons.refresh)),
+    ]),
     const Text('Live/verified news feed • source and timestamp shown with each item.',style:TextStyle(fontSize:12)),
     const SizedBox(height:10),
-    Row(children:[Expanded(child:ChoiceChip(label:const Text('Market'),selected:true,onSelected:(_){ })),const SizedBox(width:8),const Text('Latest first')]),
-    const SizedBox(height:8),
-    infoCard('News feed','No fabricated headlines. Live cards will appear when the verified server-side news adapter supplies them.',Colors.orange),
-    Card(child:ListTile(leading:const Icon(Icons.article_outlined),title:const Text('Live news area'),subtitle:const Text('Headline • source • time • related index/stock'),trailing:const Icon(Icons.chevron_right))),
-    Card(child:ListTile(leading:const Ic  Widget _optionTable(){
+    Card(child:ListTile(
+      leading:const Icon(Icons.article_outlined),
+      title:const Text('Market news'),
+      subtitle:const Text('News is grouped under Market Details. Live cards appear when the verified server-side adapter supplies them.'),
+      trailing:const Icon(Icons.chevron_right),
+    )),
+    Card(child:ListTile(
+      leading:const Icon(Icons.notifications_none),
+      title:const Text('Market alerts'),
+      subtitle:const Text('News-driven alerts will be displayed here when available.'),
+      trailing:const Icon(Icons.chevron_right),
+    )),
+  ]);
+
+  Widget _optionTable(){
     final grouped=<dynamic,dynamic>{};
     for(final r in liveOptionRows){
-      final s=r['strike']; grouped.putIfAbsent(s,()=>{}); grouped[s][r['type']]=r;
+      final s=r['strike'];
+      grouped.putIfAbsent(s,()=> <dynamic,dynamic>{});
+      grouped[s][r['type']]=r;
     }
     final strikes=grouped.keys.toList()..sort((a,b)=>(a as num).compareTo(b as num));
     return Card(child:SingleChildScrollView(scrollDirection:Axis.horizontal,child:DataTable(
       columns:const [
-        DataColumn(label:Text('CALL LTP')),DataColumn(label:Text('CALL OI')),DataColumn(label:Text('STRIKE')),DataColumn(label:Text('PUT OI')),DataColumn(label:Text('PUT LTP')),
+        DataColumn(label:Text('CALL LTP')),
+        DataColumn(label:Text('CALL OI')),
+        DataColumn(label:Text('STRIKE')),
+        DataColumn(label:Text('PUT OI')),
+        DataColumn(label:Text('PUT LTP')),
       ],
       rows:[for(final s in strikes) DataRow(cells:[
         DataCell(Text(_v(grouped[s]['CE'],'ltp'))),
@@ -474,17 +493,25 @@ class _TerminalState extends State<Terminal> {
       ])],
     )));
   }
+
   String _v(dynamic r,String k)=>r is Map?(r[k]??'—').toString():'—';
+
   Widget _oiCell(dynamic r){
     final v=r is Map?r['oi']:null;
     final n=v is num?v.toDouble():double.tryParse(v?.toString()??'');
-    final positive=(r is Map && ((r['oiChange'] is num && r['oiChange']>0)||((r['netChangeOpnInterest'] is num)&&r['netChangeOpnInterest']>0)));
-    final negative=(r is Map && ((r['oiChange'] is num && r['oiChange']<0)||((r['netChangeOpnInterest'] is num)&&r['netChangeOpnInterest']<0)));
-    return Text((positive?'+':negative?'-':'')+(n?.toStringAsFixed(0)??'—'),style:TextStyle(color:positive?Colors.green:negative?Colors.red:null,fontWeight:FontWeight.w600));
+    final positive=r is Map && (
+      (r['oiChange'] is num && r['oiChange']>0) ||
+      (r['netChangeOpnInterest'] is num && r['netChangeOpnInterest']>0)
+    );
+    final negative=r is Map && (
+      (r['oiChange'] is num && r['oiChange']<0) ||
+      (r['netChangeOpnInterest'] is num && r['netChangeOpnInterest']<0)
+    );
+    return Text(
+      (positive?'+':negative?'-':'')+(n?.toStringAsFixed(0)??'—'),
+      style:TextStyle(color:positive?Colors.green:negative?Colors.red:null,fontWeight:FontWeight.w600),
+    );
   }
-
-on(Icons.notifications_none),title:const Text('Market alerts'),subtitle:const Text('News-driven alerts will be displayed here when available.'),trailing:const Icon(Icons.chevron_right))),
-  ]);
 
   Widget marketDetailsPage() => ListView(padding:const EdgeInsets.fromLTRB(12,10,12,20),children:<Widget>[
     const Text('Market Details',style:TextStyle(fontSize:23,fontWeight:FontWeight.bold)),
