@@ -215,14 +215,6 @@ class _TerminalState extends State<Terminal> {
     if(mounted)setState(()=>aiActiveTab=tab);
   }
 
-  DateTime get _nowIst=>DateTime.now().toUtc().add(const Duration(hours:5,minutes:30));
-  bool get _marketClosed=>isIndianMarketClosed(_nowIst);
-  Color _trendColor(String s)=>s=='UP'?Colors.green:s=='DOWN'?Colors.red:s=='CLOSE'?Colors.blue:Colors.grey;
-  String _trendLabel(Map<String,dynamic> q){final s=trendState(q,marketClosed:_marketClosed);return s=='UP'?'UP TREND':s=='DOWN'?'DOWN TREND':s=='CLOSE'?'CLOSE':'WAIT';}
-  Future<void> _loadAiMemory() async{try{final d=await getApplicationDocumentsDirectory();final f=File(d.path+'/ai_memory/market_memory.json');if(await f.exists()){final x=jsonDecode(await f.readAsString());if(x is List&&mounted)setState(()=>aiMemory.addAll(x.map((e)=>e.toString())));}}catch(_){}}
-  Future<void> _saveAiMemory(String item) async{if(item.trim().isEmpty)return;if(!aiMemory.contains(item))aiMemory.add(item);try{final d=await getApplicationDocumentsDirectory();final folder=Directory(d.path+'/ai_memory');if(!await folder.exists())await folder.create(recursive:true);await File(folder.path+'/market_memory.json').writeAsString(jsonEncode(aiMemory));}catch(_){}if(mounted)setState((){});}
-  Future<void> _activateAi(String tab) async{await _saveAiMemory(DateTime.now().toIso8601String()+' • '+tab+' • market snapshot selected');if(mounted)setState(()=>aiActiveTab=tab);}
-  Widget _aiLayer(String title,String text,Color color)=>Card(child:ListTile(leading:CircleAvatar(backgroundColor:color.withOpacity(.16),child:Icon(Icons.smart_toy,color:color)),title:Text(title,style:TextStyle(color:color,fontWeight:FontWeight.bold)),subtitle:Text(text)));
   Widget dashboard() {
     final q=liveMarket.isNotEmpty&&liveMarket.first is Map?Map<String,dynamic>.from(liveMarket.first):<String,dynamic>{};
     final trend=q.isEmpty?'UNKNOWN':trendState(q,marketClosed:_marketClosed);
