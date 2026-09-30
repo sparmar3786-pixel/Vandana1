@@ -5,17 +5,27 @@ bool indexMatches(String indexName, String symbol) {
   final s = normalizeIndexName(symbol);
   switch (indexName) {
     case 'NIFTY 50':
-      return s == 'NIFTY' || s.contains('NIFTY50');
+      // NIFTY-50 aliases only; BANKNIFTY must never match.
+      return s == 'NIFTY' ||
+          s == 'NIFTYEQ' ||
+          s == 'NIFTY50' ||
+          s == 'NIFTY50EQ';
     case 'BANK NIFTY':
-      return s.contains('BANKNIFTY') || s.contains('NIFTYBANK');
+      return s == 'BANKNIFTY' ||
+          s == 'NIFTYBANK' ||
+          s.startsWith('BANKNIFTY') ||
+          s.startsWith('NIFTYBANK');
     case 'FINNIFTY':
-      return s.contains('FINNIFTY');
+      return s == 'FINNIFTY' || s.startsWith('FINNIFTY');
     case 'MIDCAP SELECT':
-      return s.contains('MIDCP') || s.contains('MIDCAP');
+      return s == 'MIDCP' ||
+          s == 'MIDCAP' ||
+          s.startsWith('MIDCP') ||
+          s.startsWith('MIDCAP');
     case 'SENSEX':
-      return s.contains('SENSEX');
+      return s == 'SENSEX' || s.startsWith('SENSEX');
     case 'BANKEX':
-      return s.contains('BANKEX');
+      return s == 'BANKEX' || s.startsWith('BANKEX');
   }
   return false;
 }
