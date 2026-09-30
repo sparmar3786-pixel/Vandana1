@@ -74,6 +74,13 @@ class _TerminalState extends State<Terminal> {
     {'id':'grok-4','name':'Grok 4','model':'grok-4','configured':false,'status':'Server key required'},
   ];
   String optionFilter = 'NIFTY';
+  String selectedComponentIndex = 'NIFTY';
+  List<dynamic> indexComponents = <dynamic>[];
+  bool componentBusy = false;
+  String chartTool = 'None';
+  Offset? chartPointA;
+  Offset? chartPointB;
+  String selectedChartSymbol = 'NIFTY';
   String commodityQuery = '';
   final Set<String> selectedIndicators = <String>{};
   Map<String,dynamic>? terminalData;
@@ -85,6 +92,7 @@ class _TerminalState extends State<Terminal> {
     fetchStrategies();
     fetchAIStatus();
     fetchDiagnostics();
+    fetchIndexComponents('NIFTY');
     timer = Timer.periodic(const Duration(seconds: 5), (_) => fetchTerminal());
   }
   @override void dispose() { timer?.cancel(); super.dispose(); }
@@ -238,6 +246,14 @@ class _TerminalState extends State<Terminal> {
         ]),
       ]))),
       const SizedBox(height:10),
+      Card(child:ListTile(
+        leading:Icon((terminalData?['connection'] is Map && terminalData!['connection']['nse'] == true) ? Icons.check_circle : Icons.warning_amber_rounded,
+          color:(terminalData?['connection'] is Map && terminalData!['connection']['nse'] == true) ? Colors.green : Colors.orange),
+        title:const Text('NSE SIGNAL FEED'),
+        subtitle:Text(signal?['action']?.toString().replaceAll('_',' ') ?? 'WAIT • awaiting engine payload'),
+        trailing:IconButton(onPressed:fetchTerminal,icon:const Icon(Icons.refresh)),
+      )),
+      const SizedBox(height:10),
       infoCard('Data policy','Real API/data only. No fabricated market values. Strategy engine remains evidence-gated.',Colors.blue),
     ]);
   }
@@ -261,19 +277,24 @@ class _TerminalState extends State<Terminal> {
     String norm(String x)=>x.toUpperCase().replaceAll(RegExp(r'[^A-Z0-9]'),'');
     final target=norm(name);
     dynamic hit;
+    bool matches(String s){
+      if(name=='NIFTY 50') return s=='NIFTY'||s=='NIFTY50';
+      if(name=='BANK NIFTY') return s=='BANKNIFTY'||s=='NIFTYBANK';
+      if(name=='FINNIFTY') return s=='FINNIFTY'||s=='NIFTYFINSERVICE';
+      if(name=='MIDCAP SELECT') return s=='MIDCPNIFTY'||s=='NIFTYMIDCAPSELECT'||s=='MIDCAPSELECT';
+      if(name=='SENSEX') return s=='SENSEX'||s=='BSESENSEX';
+      if(name=='BANKEX') return s=='BANKEX'||s=='BSEBANKEX';
+      return s==target;
+    }
     for(final q in liveMarket){
       final s=norm((q['tradingSymbol']??q['tradingsymbol']??q['symbol']??q['indexName']??'').toString());
-      if((name=='NIFTY 50' && s.contains('NIFTY')) || (name=='BANK NIFTY' && s.contains('BANKNIFTY')) ||
-         (name=='FINNIFTY' && s.contains('FINNIFTY')) || (name=='MIDCAP SELECT' && (s.contains('MIDCP')||s.contains('MIDCAP'))) ||
-         (name=='SENSEX' && s.contains('SENSEX')) || (name=='BANKEX' && s.contains('BANKEX')) || s.contains(target)){ hit=q; break; }
+      if(matches(s)){ hit=q; break; }
     }
     if(hit!=null){ await openQuoteChart(hit); return; }
     await fetchAngelMarket();
     for(final q in liveMarket){
       final s=norm((q['tradingSymbol']??q['tradingsymbol']??q['symbol']??q['indexName']??'').toString());
-      if((name=='NIFTY 50' && s.contains('NIFTY')) || (name=='BANK NIFTY' && s.contains('BANKNIFTY')) ||
-         (name=='FINNIFTY' && s.contains('FINNIFTY')) || (name=='MIDCAP SELECT' && (s.contains('MIDCP')||s.contains('MIDCAP'))) ||
-         (name=='SENSEX' && s.contains('SENSEX')) || (name=='BANKEX' && s.contains('BANKEX')) || s.contains(target)){ await openQuoteChart(q); return; }
+      if(matches(s)){ await openQuoteChart(q); return; }
     }
   }
 
@@ -282,6 +303,14 @@ class _TerminalState extends State<Terminal> {
     if(token.isEmpty)return;
     selectedChartToken=token;
     selectedChartExchange=(q['exchange']??'NSE').toString();
+    final n=(q['indexName']??q['tradingSymbol']??q['tradingsymbol']??'NIFTY').toString().toUpperCase();
+    if(n.contains('BANK')) selectedChartSymbol='BANKNIFTY';
+    else if(n.contains('FIN')) selectedChartSymbol='FINNIFTY';
+    else if(n.contains('MID')) selectedChartSymbol='MIDCPNIFTY';
+    else if(n.contains('SENSEX')) selectedChartSymbol='SENSEX';
+    else if(n.contains('BANKEX')) selectedChartSymbol='BANKEX';
+    else selectedChartSymbol='NIFTY';
+    chartPointA=null; chartPointB=null; chartTool='None';
     setState(()=>selected=7);
     await fetchCandles();
   }
@@ -322,13 +351,47 @@ class _TerminalState extends State<Terminal> {
   Future<void> fetchOptionRows() async {
     setState(()=>angelDataBusy=true);
     try {
-      final r=await http.get(Uri.parse(backendUrl+'/v1/angel/option-chain?symbol='+optionFilter+'&count=10'),headers:<String,String>{'x-token':apiToken}).timeout(const Duration(seconds:15));
+      final r=await http.get(
+        Uri.parse(backendUrl+'/v1/option-chain?symbol='+Uri.encodeQueryComponent(optionFilter)+'&count=10'),
+        headers:<String,String>{'x-token':apiToken},
+      ).timeout(const Duration(seconds:20));
       if(r.statusCode==200){
         final d=jsonDecode(r.body);
         final rows=d is Map && d['rows'] is List ? d['rows'] : <dynamic>[];
         if(mounted) setState(()=>liveOptionRows=rows is List ? rows : <dynamic>[]);
+      } else if(mounted) {
+        setState(()=>liveOptionRows=<dynamic>[]);
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content:Text('Option chain HTTP '+r.statusCode.toString())));
       }
-    } catch (_) {} finally { if(mounted) setState(()=>angelDataBusy=false); }
+    } catch (e) {
+      if(mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content:Text('Option chain unavailable: '+e.toString())));
+    } finally { if(mounted) setState(()=>angelDataBusy=false); }
+  }
+
+  Future<void> fetchIndexComponents([String? index]) async {
+    final key=(index??selectedComponentIndex).toUpperCase();
+    if(key=='SENSEX'||key=='BANKEX') {
+      if(mounted) setState(()=>indexComponents=<dynamic>[]);
+      return;
+    }
+    if(mounted) setState(()=>componentBusy=true);
+    try {
+      final r=await http.get(
+        Uri.parse(backendUrl+'/v1/index-components?index='+Uri.encodeQueryComponent(key)),
+        headers:<String,String>{'x-token':apiToken},
+      ).timeout(const Duration(seconds:15));
+      if(r.statusCode==200){
+        final d=jsonDecode(r.body);
+        final rows=d is Map && d['rows'] is List ? d['rows'] : <dynamic>[];
+        if(mounted) setState(()=>indexComponents=rows is List ? rows : <dynamic>[]);
+      } else if(mounted) {
+        setState(()=>indexComponents=<dynamic>[]);
+      }
+    } catch (_) {
+      if(mounted) setState(()=>indexComponents=<dynamic>[]);
+    } finally {
+      if(mounted) setState(()=>componentBusy=false);
+    }
   }
 
   Future<void> fetchOIBuild() async {
@@ -449,20 +512,57 @@ class _TerminalState extends State<Terminal> {
       IconButton(onPressed:fetchCandles,icon:const Icon(Icons.refresh)),
     ]),
     const SizedBox(height:6),
+    SingleChildScrollView(scrollDirection:Axis.horizontal,child:Row(children:[
+      for(final x in const ['None','Horizontal','Vertical','Fib Retracement','Long Position','Short Position'])
+        Padding(padding:const EdgeInsets.only(right:5),child:ChoiceChip(
+          label:Text(x),selected:chartTool==x,onSelected:(_){setState(()=>chartTool=x);},
+        )),
+    ])),
+    const SizedBox(height:6),
     Row(children:[
       Expanded(child:FilledButton.icon(onPressed:()=>showModalBottomSheet<void>(context:context,builder:(_)=>_selectionSheet('TIME',const ['1m','2m','3m','5m','10m','15m','30m','1H','1D'],(x){setState(()=>selectedInterval=intervalMap[x]!);fetchCandles();})),icon:const Icon(Icons.schedule),label:Text('TIME • '+(intervalMap.entries.firstWhere((e)=>e.value==selectedInterval,orElse:()=>const MapEntry('5m','FIVE_MINUTE')).key)))),
-      const SizedBox(width:8),
+      const SizedBox(width:6),
       Expanded(child:FilledButton.icon(onPressed:()=>showModalBottomSheet<void>(context:context,builder:(_)=>_selectionSheet('INDICATORS',const ['EMA 8','EMA 13','SMA 20','SMA 50','VWAP','RSI 14','MACD','Bollinger','Volume','ATR 14'],(x){setState(()=>selectedIndicators.contains(x)?selectedIndicators.remove(x):selectedIndicators.add(x));})),icon:const Icon(Icons.tune),label:Text('INDICATORS • '+selectedIndicators.length.toString()))),
+    ]),
+    const SizedBox(height:6),
+    Row(children:[
+      Expanded(child:OutlinedButton.icon(onPressed:()=>setState((){selected=8;optionFilter=selectedChartSymbol;chartTool='None';}),icon:const Icon(Icons.table_chart),label:Text('OPTION '+selectedChartSymbol))),
+      const SizedBox(width:6),
+      Expanded(child:OutlinedButton.icon(onPressed:()=>setState((){chartPointA=null;chartPointB=null;chartTool='None';}),icon:const Icon(Icons.clear),label:const Text('CLEAR DRAWING'))),
     ]),
     const SizedBox(height:10),
     Card(child:Padding(padding:const EdgeInsets.all(5),child:SizedBox(
       height:460,
       child: liveCandles.isEmpty
         ? Center(child:Text(angelDataBusy?'Loading live candles...':'Select an index or commodity to load its chart.'))
-        : CustomPaint(painter:CandlePainter(liveCandles,Set<String>.from(selectedIndicators)),size:Size.infinite),
+        : GestureDetector(
+            behavior:HitTestBehavior.opaque,
+            onTapDown:(d){
+              if(chartTool=='Horizontal'||chartTool=='Vertical'){
+                setState(()=>chartPointA=d.localPosition);
+              }
+            },
+            onPanStart:(d){
+              if(chartTool!='None'&&chartTool!='Horizontal'&&chartTool!='Vertical') {
+                setState(()=>chartPointA=d.localPosition);
+              }
+            },
+            onPanUpdate:(d){
+              if(chartTool!='None'&&chartTool!='Horizontal'&&chartTool!='Vertical') {
+                setState(()=>chartPointB=d.localPosition);
+              }
+            },
+            onPanEnd:(_){
+              if(chartTool=='Horizontal'||chartTool=='Vertical') return;
+            },
+            child:CustomPaint(
+              painter:CandlePainter(liveCandles,Set<String>.from(selectedIndicators),tool:chartTool,pointA:chartPointA,pointB:chartPointB),
+              size:Size.infinite,
+            ),
+          ),
     ))),
     const SizedBox(height:8),
-    infoCard('Chart source',selectedChartExchange+' • token '+selectedChartToken,Colors.blue),
+    infoCard('Chart source',selectedChartExchange+' • token '+selectedChartToken+' • tool '+chartTool,Colors.blue),
   ]);
   Widget _selectionSheet(String title,List<String> items,void Function(String) onTap){
     return SafeArea(child:Padding(padding:const EdgeInsets.all(16),child:Column(mainAxisSize:MainAxisSize.min,crossAxisAlignment:CrossAxisAlignment.start,children:[
@@ -485,7 +585,7 @@ class _TerminalState extends State<Terminal> {
     ])),
     const SizedBox(height:8),
     if(csvStatus.isNotEmpty) Text(csvStatus,style:const TextStyle(fontSize:11)),
-    if(liveOptionRows.isEmpty) infoCard('Live option chain','Connect Angel One from Angel API. LTP and OI are read directly from SmartAPI; NSE CSV is only a separate download.',Colors.orange),
+    if(liveOptionRows.isEmpty) infoCard('Live option chain','Live chain uses Angel One first and falls back to NSE data for supported NSE indices. LTP/OI remain source-backed; no fabricated rows.',Colors.orange),
     if(liveOptionRows.isNotEmpty) _optionTable(),
   ]);
 
@@ -533,14 +633,38 @@ class _TerminalState extends State<Terminal> {
     Card(child:ListTile(leading:const Icon(Icons.notifications_none),title:const Text('Market alerts'),subtitle:const Text('News-driven alerts will be displayed here when available.'),trailing:const Icon(Icons.chevron_right))),
   ]);
 
+  double _componentChange(dynamic x){
+    if(x is! Map) return 0;
+    final v=x['pChange']??x['percentChange']??x['change'];
+    return v is num ? v.toDouble() : double.tryParse(v?.toString()??'0')??0;
+  }
+
+  Widget _componentSection(String title,List<dynamic> rows,Color color){
+    if(rows.isEmpty) return Padding(padding:const EdgeInsets.symmetric(vertical:6),child:Text(title+' • none'));
+    final sorted=[...rows]..sort((a,b)=>_componentChange(b).compareTo(_componentChange(a)));
+    return Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
+      Text(title,style:TextStyle(fontWeight:FontWeight.bold,color:color)),
+      const SizedBox(height:4),
+      for(final x in sorted.take(30)) ListTile(
+        dense:true,
+        leading:Icon(Icons.circle,size:9,color:color),
+        title:Text((x['symbol']??x['name']??'-').toString()),
+        subtitle:Text((x['name']??'').toString(),maxLines:1,overflow:TextOverflow.ellipsis),
+        trailing:Text((_componentChange(x)>=0?'+':'')+_componentChange(x).toStringAsFixed(2)+'%',
+          style:TextStyle(color:color,fontWeight:FontWeight.bold)),
+      ),
+    ]);
+  }
+
   Widget marketDetailsPage() => ListView(padding:const EdgeInsets.fromLTRB(12,10,12,20),children:<Widget>[
     const Text('Market Details',style:TextStyle(fontSize:23,fontWeight:FontWeight.bold)),
     const SizedBox(height:8),
     SingleChildScrollView(scrollDirection:Axis.horizontal,child:Row(children:[
       for(final x in const ['NIFTY','BANK NIFTY','SENSEX'])
-        Padding(padding:const EdgeInsets.only(right:6),child:ChoiceChip(label:Text(x),selected:(terminalData?['market_details_selected']??'NIFTY')==x,onSelected:(_){
-          setState(()=>terminalData={...?terminalData,'market_details_selected':x});
-          openNamedIndex(x=='NIFTY'?'NIFTY 50':x);
+        Padding(padding:const EdgeInsets.only(right:6),child:ChoiceChip(label:Text(x),selected:selectedComponentIndex==x,onSelected:(_){
+          setState(()=>selectedComponentIndex=x);
+          fetchIndexComponents(x);
+          if(x!='SENSEX') openNamedIndex(x=='NIFTY'?'NIFTY 50':x);
         })),
     ])),
     const SizedBox(height:10),
@@ -553,17 +677,28 @@ class _TerminalState extends State<Terminal> {
     ]))),
     const SizedBox(height:8),
     Row(children:[
-      Expanded(child:_breadthBox('GREEN','Live payload pending',Colors.green)),
+      Expanded(child:_breadthBox('GREEN',indexComponents.where((x)=>_componentChange(x)>0).length.toString()+' stocks',Colors.green)),
       const SizedBox(width:8),
-      Expanded(child:_breadthBox('RED','Live payload pending',Colors.red)),
+      Expanded(child:_breadthBox('RED',indexComponents.where((x)=>_componentChange(x)<0).length.toString()+' stocks',Colors.red)),
     ]),
     const SizedBox(height:8),
     Card(child:Padding(padding:const EdgeInsets.all(12),child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
-      const Text('SECTOR BREAKDOWN',style:TextStyle(fontWeight:FontWeight.bold)),
+      Row(children:[
+        Expanded(child:Text(selectedComponentIndex+' COMPONENTS',style:const TextStyle(fontWeight:FontWeight.bold))),
+        if(componentBusy) const SizedBox(width:18,height:18,child:CircularProgressIndicator(strokeWidth:2)),
+        IconButton(onPressed:()=>fetchIndexComponents(),icon:const Icon(Icons.refresh)),
+      ]),
       const SizedBox(height:6),
-      for(final s in const ['IT','BANKING','AUTO','METAL','PHARMA','FMCG','ENERGY','REALTY'])
-        ListTile(dense:true,leading:const Icon(Icons.circle,size:9),title:Text(s),subtitle:const Text('Live % change pending'),trailing:const Text('—')),
+      if(indexComponents.isEmpty && !componentBusy)
+        Text((selectedComponentIndex=='SENSEX')?'SENSEX constituents feed is not available from the NSE endpoint.':'No constituent data returned. Connect Angel/NSE and refresh.',style:const TextStyle(fontSize:11)),
+      if(indexComponents.isNotEmpty) ...[
+        _componentSection('GREEN • GAINERS',indexComponents.where((x)=>_componentChange(x)>0).toList(),Colors.green),
+        const Divider(),
+        _componentSection('RED • LOSERS',indexComponents.where((x)=>_componentChange(x)<0).toList(),Colors.red),
+      ],
     ]))),
+    const SizedBox(height:8),
+    infoCard('Index constituents','Live NSE constituent prices and percentage change are shown separately from the index chart.',Colors.blue),
     infoCard('Index selection','Tap NIFTY, BANK NIFTY or SENSEX above. The selected instrument is sent to the chart.',Colors.blue),
   ]);
 
