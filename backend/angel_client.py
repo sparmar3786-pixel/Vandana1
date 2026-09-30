@@ -5,12 +5,12 @@ from SmartApi import SmartConnect
 import config as C
 
 MASTER_URL="https://margincalculator.angelbroking.com/OpenAPI_File/files/OpenAPIScripMaster.json"
-INDEX={"NIFTY":"99926000","BANKNIFTY":"99926009","FINNIFTY":"99926037"}
+INDEX={"NIFTY":"99926000","BANKNIFTY":"99926009","FINNIFTY":"99926037","SENSEX":"99919000"}
 CACHE="scrip_master.json"
 
 class AngelClient:
     def __init__(self):
-        self.api=None; self.chain={}; self.strikes=[]; self.expiry=None
+        self.api=None; self.chain={}; self.strikes=[]; self.expiry=None; self.chain_symbol=C.SYMBOL; self.chain_exchange="NFO"
     def login(self, api_key=None, client_code=None, pin=None, totp=None):
         api_key=api_key or C.API_KEY; client_code=client_code or C.CLIENT; pin=pin or C.PIN
         totp=totp or (pyotp.TOTP(C.TOTP_SECRET).now() if C.TOTP_SECRET else None)
@@ -27,20 +27,48 @@ class AngelClient:
         fresh=os.path.exists(CACHE) and time.time()-os.path.getmtime(CACHE)<43200
         if not fresh: urllib.request.urlretrieve(MASTER_URL,CACHE)
         with open(CACHE) as f: return json.load(f)
-    def build_chain(self):
+    def _symbol_config(self, symbol):
+        s=(symbol or C.SYMBOL).upper().replace(" ","")
+        aliases={"NIFTY50":"NIFTY","NIFTY":"NIFTY","BANKNIFTY":"BANKNIFTY","FINNIFTY":"FINNIFTY",
+                 "MIDCPNIFTY":"MIDCPNIFTY","MIDCAPSELECT":"MIDCPNIFTY","SENSEX":"SENSEX","BANKEX":"BANKEX"}
+        s=aliases.get(s,s)
+        if s in ("SENSEX","BANKEX"): return s,"BFO"
+        return s,"NFO"
+
+    def build_chain(self, symbol=None):
+        symbol, exchange=self._symbol_config(symbol)
         today=dt.date.today()
-        rows=[r for r in self._master() if r["name"]==C.SYMBOL and r["exch_seg"]=="NFO" and r["instrumenttype"]=="OPTIDX"]
+        master=self._master()
+        rows=[r for r in master if str(r.get("name","")).upper()==symbol and r.get("exch_seg")==exchange and r.get("instrumenttype")=="OPTIDX"]
+        if not rows and symbol=="MIDCPNIFTY":
+            rows=[r for r in master if str(r.get("name","")).upper() in ("MIDCPNIFTY","MIDCPNIFTY") and r.get("exch_seg")==exchange and r.get("instrumenttype")=="OPTIDX"]
         def exp(r): return dt.datetime.strptime(r["expiry"],"%d%b%Y").date()
-        expiries=sorted({exp(r) for r in rows if exp(r)>=today})
-        if not expiries: raise RuntimeError(f"No active {C.SYMBOL} option expiry found.")
-        self.expiry=expiries[0]; self.chain={}
+        expiries=sorted({exp(r) for r in rows if r.get("expiry") and exp(r)>=today})
+        if not expiries: raise RuntimeError(f"No active {symbol} option expiry found in {exchange}.")
+        self.expiry=expiries[0]; self.chain={}; self.chain_symbol=symbol; self.chain_exchange=exchange
         for r in rows:
             if exp(r)!=self.expiry: continue
-            strike=float(r["strike"])/100; typ=r["symbol"][-2:]
-            self.chain[(strike,typ)]={"token":r["token"],"symbol":r["symbol"]}
+            strike=float(r["strike"])/100; typ=str(r["symbol"])[-2:]
+            if typ in ("CE","PE"): self.chain[(strike,typ)]={"token":r["token"],"symbol":r["symbol"]}
         self.strikes=sorted({k[0] for k in self.chain})
-    def spot(self):
-        r=self.api.getMarketData("LTP",{"NSE":[INDEX[C.SYMBOL]]})
+
+    def _index_token(self, symbol):
+        symbol,_=self._symbol_config(symbol)
+        if symbol in INDEX: return INDEX[symbol]
+        master=self._master()
+        aliases={"MIDCPNIFTY":["MIDCPNIFTY","MIDCAP SELECT","NIFTY MID SELECT"],"BANKEX":["BANKEX"]}
+        wanted=[symbol]+aliases.get(symbol,[])
+        for r in master:
+            if r.get("exch_seg") not in ("NSE","BSE") or r.get("instrumenttype")!="AMXIDX": continue
+            name=str(r.get("name","")).upper(); sym=str(r.get("symbol","")).upper()
+            if any(w.upper() in name or w.upper() in sym for w in wanted):
+                return str(r.get("token"))
+        raise RuntimeError(f"Index token not found for {symbol}.")
+
+    def spot(self, symbol=None):
+        symbol,exchange=self._symbol_config(symbol)
+        token=self._index_token(symbol)
+        r=self.api.getMarketData("LTP",{exchange:[token]})
         return float(r["data"]["fetched"][0]["ltp"])
 
     def require_api(self):
@@ -168,35 +196,36 @@ class AngelClient:
                              "volume":q.get("tradeVolume"),"oi":q.get("opnInterest")})
         return {"data":{"fetched":rows,"unfetched":[]},"instruments":selected}
 
-    def option_chain_rows(self, around=None, count=10):
+    def option_chain_rows(self, symbol=None, around=None, count=10):
         self.require_api()
-        if not self.chain:
-            self.build_chain()
-        spot=self.spot()
+        requested,_=self._symbol_config(symbol)
+        if not self.chain or self.chain_symbol!=requested:
+            self.build_chain(requested)
+        spot=self.spot(requested)
         atm=around if around is not None else min(self.strikes,key=lambda s:abs(s-spot))
         idx=min(range(len(self.strikes)),key=lambda i:abs(self.strikes[i]-atm))
-        selected=self.strikes[max(0,idx-int(count)):idx+int(count)+1]
+        count=max(10,min(int(count),250))
+        selected=self.strikes[max(0,idx-count):idx+count+1]
         token_map={}
-        for s in selected:
-            for t in ("CE","PE"):
-                item=self.chain.get((s,t))
-                if item: token_map[item["token"]]=(s,t,item["symbol"])
+        for strike in selected:
+            for typ in ("CE","PE"):
+                item=self.chain.get((strike,typ))
+                if item: token_map[item["token"]]=(strike,typ,item["symbol"])
         rows=[]
         toks=list(token_map)
         for j in range(0,len(toks),50):
-            r=self.api.getMarketData("FULL",{"NFO":toks[j:j+50]})
-            for q in r.get("data",{}).get("fetched",[]):
+            result=self.api.getMarketData("FULL",{self.chain_exchange:toks[j:j+50]})
+            for q in result.get("data",{}).get("fetched",[]) or []:
                 item=token_map.get(str(q.get("symbolToken")))
                 if not item: continue
-                s,t,sym=item
-                rows.append({
-                    "strike":s,"type":t,"symbol":sym,"token":str(q.get("symbolToken")),
-                    "ltp":q.get("ltp"),"open":q.get("open"),"high":q.get("high"),
-                    "low":q.get("low"),"close":q.get("close"),"oi":q.get("opnInterest"),
-                    "volume":q.get("tradeVolume"),"buyQty":q.get("totalBuyQuantity"),
-                    "sellQty":q.get("totalSellQuantity")
-                })
-        return {"symbol":C.SYMBOL,"spot":spot,"atm":atm,"expiry":str(self.expiry),"rows":rows}
+                strike,typ,sym=item
+                rows.append({"strike":strike,"type":typ,"symbol":sym,"token":str(q.get("symbolToken")),
+                             "ltp":q.get("ltp"),"open":q.get("open"),"high":q.get("high"),"low":q.get("low"),
+                             "close":q.get("close"),"oi":q.get("opnInterest"),"volume":q.get("tradeVolume"),
+                             "buyQty":q.get("totalBuyQuantity"),"sellQty":q.get("totalSellQuantity"),
+                             "netChange":q.get("netChange"),"priceChange":q.get("netChange")})
+        rows.sort(key=lambda r:(float(r["strike"]),0 if r["type"]=="CE" else 1))
+        return {"symbol":requested,"exchange":self.chain_exchange,"spot":spot,"atm":atm,"expiry":str(self.expiry),"rows":rows}
 
     def snapshot(self):
         if self.api is None: raise RuntimeError("Angel session is not connected.")
