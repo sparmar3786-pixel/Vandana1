@@ -430,19 +430,35 @@ class _TerminalState extends State<Terminal> {
     OutlinedButton.icon(onPressed:connection=='Connected'?downloadNseCsv:null,icon:const Icon(Icons.download),label:const Text('DOWNLOAD NSE CSV')),
   ]);
 
-  Widget newsPage() => ListView(padding:const EdgeInsets.all(16),children:<Widget>[
-    const Text('News',style:TextStyle(fontSize:24,fontWeight:FontWeight.bold)),
+  Widget newsPage() => ListView(padding:const EdgeInsets.fromLTRB(12,10,12,20),children:<Widget>[
+    Row(children:[const Expanded(child:Text('News',style:TextStyle(fontSize:23,fontWeight:FontWeight.bold))),IconButton(onPressed:fetchTerminal,icon:const Icon(Icons.refresh))]),
+    const Text('Live/verified news feed • source and timestamp shown with each item.',style:TextStyle(fontSize:12)),
+    const SizedBox(height:10),
+    Row(children:[Expanded(child:ChoiceChip(label:const Text('Market'),selected:true,onSelected:(_){ })),const SizedBox(width:8),const Text('Latest first')]),
     const SizedBox(height:8),
-    infoCard('Source','Server-side verified news adapter. Angel SmartAPI is not a news-feed API.',Colors.blue),
-    infoCard('Status','No fabricated headlines.',Colors.orange),
+    infoCard('News feed','No fabricated headlines. Live cards will appear when the verified server-side news adapter supplies them.',Colors.orange),
+    Card(child:ListTile(leading:const Icon(Icons.article_outlined),title:const Text('Live news area'),subtitle:const Text('Headline • source • time • related index/stock'),trailing:const Icon(Icons.chevron_right))),
+    Card(child:ListTile(leading:const Icon(Icons.notifications_none),title:const Text('Market alerts'),subtitle:const Text('News-driven alerts will be displayed here when available.'),trailing:const Icon(Icons.chevron_right))),
   ]);
 
-  Widget marketDetailsPage() => ListView(padding:const EdgeInsets.all(16),children:<Widget>[
-    const Text('Market Details',style:TextStyle(fontSize:24,fontWeight:FontWeight.bold)),
+  Widget marketDetailsPage() => ListView(padding:const EdgeInsets.fromLTRB(12,10,12,20),children:<Widget>[
+    const Text('Market Details',style:TextStyle(fontSize:23,fontWeight:FontWeight.bold)),
+    const SizedBox(height:4),const Text('Sector breadth and buying/selling view — values only when live payload is available.',style:TextStyle(fontSize:12)),
+    const SizedBox(height:10),
+    Wrap(spacing:6,children:const[Chip(label:Text('NIFTY')),Chip(label:Text('BANK NIFTY')),Chip(label:Text('SENSEX'))]),
     const SizedBox(height:8),
-    infoCard('Indices','Angel One live market payload',Colors.blue),
-    ...liveMarket.map(indexCard),
-    infoCard('OI / breadth','Angel OI APIs are available through the backend.',Colors.green),
+    Card(child:Padding(padding:const EdgeInsets.all(12),child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
+      const Text('SECTOR BREADTH',style:TextStyle(fontWeight:FontWeight.bold)),
+      const SizedBox(height:8),
+      Row(children:[Expanded(child:_breadthBox('GREEN / BUYING','Live payload pending',Colors.green)),const SizedBox(width:8),Expanded(child:_breadthBox('RED / SELLING','Live payload pending',Colors.red))]),
+    ]))),
+    const SizedBox(height:8),
+    Card(child:Padding(padding:const EdgeInsets.all(12),child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
+      const Text('SECTOR BREAKDOWN',style:TextStyle(fontWeight:FontWeight.bold)),
+      const SizedBox(height:6),
+      for(final s in const ['IT','BANKING','AUTO','METAL','PHARMA','FMCG','ENERGY','REALTY'])ListTile(dense:true,leading:const Icon(Icons.circle,size:9),title:Text(s),subtitle:const Text('Live % change pending'),trailing:const Text('—')),
+    ]))),
+    infoCard('Reason / driver','Sector reason, advance/decline and percentage change will be shown from the live market-detail payload. No values are fabricated.',Colors.blue),
   ]);
 
   Widget signals() {
@@ -458,13 +474,14 @@ class _TerminalState extends State<Terminal> {
     ]);
   }
 
-  Widget nseMcp() => ListView(padding: const EdgeInsets.all(16), children: <Widget>[
-    const Text('NSE MCP', style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
-    const SizedBox(height: 12),
-    infoCard('Official endpoint','https://mcp.nseindia.in/cmmkt/mcp',Colors.blue),
-    infoCard('Connection',nseMcpStatus,nseMcpStatus == 'Connected' ? Colors.green : Colors.orange),
-    infoCard('CSV route',backendUrl + '/v1/nse/option-chain.csv?symbol=NIFTY',Colors.blue),
-    const Text('MCP access is server-side; APK never stores NSE/Angel credentials.', style: TextStyle(color: Colors.grey)),
+  Widget nseMcp() => ListView(padding:const EdgeInsets.fromLTRB(12,10,12,20),children:<Widget>[
+    Row(children:[const Expanded(child:Text('NSE MCP',style:TextStyle(fontSize:23,fontWeight:FontWeight.bold))),IconButton(onPressed:fetchTerminal,icon:const Icon(Icons.refresh))]),
+    infoCard('Official MCP','mcp.nseindia.in/cmmkt/mcp',Colors.blue),
+    infoCard('Connection',nseMcpStatus,nseMcpStatus=='Connected'?Colors.green:Colors.orange),
+    Card(child:ListTile(leading:const Icon(Icons.hub),title:const Text('Live market tools'),subtitle:const Text('MCP tool list and supported live data will appear here.'),trailing:const Icon(Icons.chevron_right))),
+    Card(child:ListTile(leading:const Icon(Icons.table_chart),title:const Text('Live option chain'),subtitle:const Text('NSE MCP → Render → APK. Data may be delayed when the source is delayed.'),trailing:const Icon(Icons.chevron_right))),
+    FilledButton.icon(onPressed:connection=='Connected'?downloadNseCsv:null,icon:const Icon(Icons.download),label:const Text('DOWNLOAD NSE OPTION CHAIN CSV')),
+    infoCard('Security','MCP access is server-side; APK does not store NSE/Angel credentials.',Colors.green),
   ]);
 
   Widget angelApi() => AngelApiForm(
@@ -476,14 +493,21 @@ class _TerminalState extends State<Terminal> {
     onStatus: (v) => setState(() => angelLoginStatus = v),
   );
 
-  Widget settingsPage() => ListView(padding: const EdgeInsets.all(16), children: <Widget>[
-    const Text('Settings', style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
-    const SizedBox(height: 12),
+  Widget settingsPage() => ListView(padding:const EdgeInsets.fromLTRB(12,10,12,20),children:<Widget>[
+    const Text('Settings',style:TextStyle(fontSize:23,fontWeight:FontWeight.bold)),
+    const SizedBox(height:8),
+    Card(child:SwitchListTile(title:const Text('Light mode'),subtitle:const Text('Switch between dark and light workspace'),value:lightMode,onChanged:(v)=>setState(()=>lightMode=v))),
     infoCard('Backend URL',backendUrl,Colors.blue),
-    infoCard('Mode','Paper signals only',Colors.orange),
-    infoCard('Timeframes','1m 2m 3m 5m 10m 15m 30m 1h 2h 4h 1D',Colors.blue),
-    infoCard('Indicators','8 EMA / 13 EMA',Colors.blue),
-    FilledButton.icon(onPressed: openSettings, icon: const Icon(Icons.dns), label: const Text('Edit server connection')),
+    infoCard('Mode','Design / data workspace • algorithm deferred',Colors.orange),
+    Card(child:Padding(padding:const EdgeInsets.all(12),child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
+      const Text('TIMEFRAMES',style:TextStyle(fontWeight:FontWeight.bold)),const SizedBox(height:7),
+      Wrap(spacing:5,children:const[Chip(label:Text('1m')),Chip(label:Text('3m')),Chip(label:Text('5m')),Chip(label:Text('10m')),Chip(label:Text('15m')),Chip(label:Text('30m')),Chip(label:Text('1H')),Chip(label:Text('1D'))]),
+    ]))),
+    Card(child:Padding(padding:const EdgeInsets.all(12),child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
+      const Text('INDICATORS — SELECT TO SHOW',style:TextStyle(fontWeight:FontWeight.bold)),const SizedBox(height:7),
+      Wrap(spacing:5,runSpacing:5,children:[for(final x in const ['EMA 8','EMA 13','VWAP','RSI 14','MACD','Bollinger','Volume','ATR 14'])FilterChip(label:Text(x),selected:selectedIndicators.contains(x),onSelected:(v)=>setState(()=>v?selectedIndicators.add(x):selectedIndicators.remove(x)))]),
+    ]))),
+    FilledButton.icon(onPressed:openSettings,icon:const Icon(Icons.dns),label:const Text('EDIT SERVER CONNECTION')),
   ]);
 
   Widget morePage() => ListView(padding: const EdgeInsets.all(16), children: <Widget>[
@@ -494,13 +518,20 @@ class _TerminalState extends State<Terminal> {
     infoCard('Navigation',screens.join(', '),Colors.blue),
   ]);
 
-  Widget dataPage(String title) => ListView(padding: const EdgeInsets.all(16), children: <Widget>[
-    Row(children: <Widget>[Icon(icons[selected], size: 30), const SizedBox(width: 10), Text(title, style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold))]),
-    const SizedBox(height: 14),
-    infoCard('Live data status', connection == 'Connected' ? 'Backend connected. This screen will use its corresponding live payload when available.' : 'Backend not connected. No fabricated market values are shown.', connection == 'Connected' ? Colors.green : Colors.orange),
-    const SizedBox(height: 10),
-    infoCard('Data source', title == 'NSE MCP' ? 'NSE MCP integration is configured by the backend.' : 'Corresponding API/data adapter is handled by the backend.', Colors.blue),
-  ]);
+  Widget dataPage(String title) {
+    if(title=='Data') return ListView(padding:const EdgeInsets.fromLTRB(12,10,12,20),children:[
+      const Text('Data',style:TextStyle(fontSize:23,fontWeight:FontWeight.bold)),
+      const SizedBox(height:4),const Text('Live OI, breadth and market payload workspace.',style:TextStyle(fontSize:12)),
+      const SizedBox(height:10),
+      Card(child:ListTile(leading:const Icon(Icons.bar_chart),title:const Text('NIFTY OI'),subtitle:const Text('Total / change / buildup — live payload pending'),trailing:const Text('—'))),
+      Card(child:ListTile(leading:const Icon(Icons.bar_chart),title:const Text('BANK NIFTY OI'),subtitle:const Text('Total / change / buildup — live payload pending'),trailing:const Text('—'))),
+      Card(child:ListTile(leading:const Icon(Icons.compare_arrows),title:const Text('OI Change'),subtitle:const Text('Increased / decreased contracts'),trailing:const Text('—'))),
+      Card(child:ListTile(leading:const Icon(Icons.hub),title:const Text('NSE MCP Data'),subtitle:Text(nseMcpStatus),trailing:const Icon(Icons.chevron_right))),
+      infoCard('Live data policy','No OI or market value is fabricated. The design is ready for the corresponding backend payload.',Colors.blue),
+    ]);
+    if(title=='Instruments') return ListView(padding:const EdgeInsets.all(16),children:[const Text('Instruments',style:TextStyle(fontSize:23,fontWeight:FontWeight.bold)),const SizedBox(height:8),infoCard('Instrument universe','NSE / BSE / NFO / MCX searchable instruments will be displayed here.',Colors.blue),const ListTile(leading:Icon(Icons.search),title:Text('Search instrument'),subtitle:Text('Symbol • exchange • token • segment'))]);
+    return ListView(padding:const EdgeInsets.all(16),children:[Text(title,style:const TextStyle(fontSize:23,fontWeight:FontWeight.bold)),const SizedBox(height:10),infoCard('Live data status',connection=='Connected'?'Backend connected.':'Backend not connected.',connection=='Connected'?Colors.green:Colors.orange),infoCard('Data source','Corresponding API/data adapter is handled by the backend.',Colors.blue)]);
+  }
 
   Future<void> openSettings() async {
     final u = TextEditingController(text: backendUrl);
