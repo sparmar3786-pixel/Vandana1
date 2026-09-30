@@ -432,7 +432,11 @@ async function ask(w,prompt){
   }
 
   Future<void> fetchOptionRows() async {
-    setState(()=>{angelDataBusy=true,liveOptionRows=<dynamic>[],optionSpot=null});
+    setState(() {
+      angelDataBusy=true;
+      liveOptionRows=<dynamic>[];
+      optionSpot=null;
+    });
     try {
       final uri=Uri.parse(backendUrl+'/v1/angel/option-chain?symbol='+Uri.encodeQueryComponent(optionFilter)+'&count='+optionChainCount.toString()+'&_refresh='+DateTime.now().millisecondsSinceEpoch.toString());
       final r=await http.get(uri,headers:<String,String>{'x-token':apiToken}).timeout(const Duration(seconds:15));
@@ -531,6 +535,12 @@ async function ask(w,prompt){
 
   Widget watchlistPage() => ListView(padding:const EdgeInsets.fromLTRB(12,10,12,20),children:[
     const Text('Risk Reward',style:TextStyle(fontSize:24,fontWeight:FontWeight.bold)),
+    const SizedBox(height:8),
+    Card(child:Padding(padding:const EdgeInsets.all(12),child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
+      const Text('RISK • REWARD CALCULATOR',style:TextStyle(fontWeight:FontWeight.bold)),
+      const SizedBox(height:8),
+      _riskRewardCalculator(signal),
+    ])),
     const SizedBox(height:8),infoCard('Live source','Angel One SmartAPI • index/equity universe',Colors.blue),
     const Text('EQUITY / INDEX',style:TextStyle(fontWeight:FontWeight.bold)),
     ...liveMarket.map((q){
