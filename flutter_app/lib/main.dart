@@ -97,7 +97,7 @@ class _TerminalState extends State<Terminal> {
     setState(() => csvStatus = 'Fetching NSE option chain...');
     try {
       final response = await http.get(
-        Uri.parse(backendUrl + '/v1/nse/option-chain.csv?symbol=NIFTY'),
+        Uri.parse(backendUrl + '/v1/nse/option-chain.csv?symbol=' + optionFilter),
         headers: <String,String>{'x-token': apiToken},
       ).timeout(const Duration(seconds: 20));
       if (response.statusCode != 200) {
@@ -105,7 +105,7 @@ class _TerminalState extends State<Terminal> {
         return;
       }
       await FileSaver.instance.saveFile(
-        name: 'NIFTY_NSE_option_chain',
+        name: optionFilter + '_NSE_option_chain',
         bytes: response.bodyBytes,
         fileExtension: 'csv',
         mimeType: MimeType.csv,
@@ -294,7 +294,7 @@ class _TerminalState extends State<Terminal> {
   Future<void> fetchOptionRows() async {
     setState(()=>angelDataBusy=true);
     try {
-      final r=await http.get(Uri.parse(backendUrl+'/v1/angel/option-chain?count=10'),headers:<String,String>{'x-token':apiToken}).timeout(const Duration(seconds:15));
+      final r=await http.get(Uri.parse(backendUrl+'/v1/angel/option-chain?symbol='+optionFilter+'&count=10'),headers:<String,String>{'x-token':apiToken}).timeout(const Duration(seconds:15));
       if(r.statusCode==200){
         final d=jsonDecode(r.body);
         final rows=d is Map && d['rows'] is List ? d['rows'] : <dynamic>[];
