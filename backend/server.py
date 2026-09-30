@@ -108,9 +108,9 @@ def angel_candles(exchange:str="NSE",token:str="99926000",interval:str="FIVE_MIN
     except Exception as e: raise HTTPException(502,str(e))
 
 @app.get("/v1/angel/option-chain")
-def angel_option_chain(count:int=10,x_token:str=Header(None)):
+def angel_option_chain(symbol:str="NIFTY",count:int=10,x_token:str=Header(None)):
     auth(x_token); angel_required()
-    try: return client.option_chain_rows(count=count)
+    try: return client.option_chain_rows(symbol=symbol,count=count)
     except Exception as e: raise HTTPException(502,str(e))
 
 @app.get("/v1/angel/oi")
