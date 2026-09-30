@@ -1146,7 +1146,10 @@ class _TerminalState extends State<Terminal> {
 class CandlePainter extends CustomPainter {
   final List<dynamic> rows;
   final Set<String> indicators;
-  CandlePainter(this.rows,this.indicators);
+  final String tool;
+  final Offset? pointA;
+  final Offset? pointB;
+  CandlePainter(this.rows,this.indicators,{this.tool='None',this.pointA,this.pointB});
 
   List<double?> ema(List<double> v,int n){
     final out=List<double?>.filled(v.length,null); if(v.isEmpty)return out;
@@ -1197,13 +1200,51 @@ class CandlePainter extends CustomPainter {
     }
     final colors=[Colors.cyan,Colors.amber,Colors.purple,Colors.orange];
     for(int k=0;k<overlays.length;k++){final p=Paint()..color=colors[k%colors.length]..strokeWidth=1.5;final a=overlays[k];for(int i=1;i<a.length;i++)if(a[i-1]!=null&&a[i]!=null)canvas.drawLine(Offset((i-1)*width+width/2,y(a[i-1]!)),Offset(i*width+width/2,y(a[i]!)),p);}
+    if(tool!='None' && pointA!=null){
+      final draw=Paint()..strokeWidth=1.5..style=PaintingStyle.stroke;
+      if(tool=='Horizontal'){
+        draw.color=Colors.amber;
+        canvas.drawLine(Offset(0,pointA!.dy),Offset(size.width,pointA!.dy),draw);
+      } else if(tool=='Vertical'){
+        draw.color=Colors.cyan;
+        canvas.drawLine(Offset(pointA!.dx,0),Offset(pointA!.dx,chartH),draw);
+      } else if(pointB!=null){
+        final a=pointA!, b=pointB!;
+        final left=math.min(a.dx,b.dx), right=math.max(a.dx,b.dx);
+        final top=math.min(a.dy,b.dy), bottom=math.max(a.dy,b.dy);
+        if(tool=='Fib Retracement'){
+          draw.color=Colors.purple;
+          final levels=<double>[0,.236,.382,.5,.618,.786,1];
+          for(final lv in levels){
+            final yy=a.dy+(b.dy-a.dy)*lv;
+            canvas.drawLine(Offset(left,yy),Offset(right,yy),draw);
+            final tp=TextPainter(text:TextSpan(text:(lv*100).toStringAsFixed(1)+'%',style:const TextStyle(fontSize:9,color:Colors.purple)),textDirection:TextDirection.ltr)..layout();
+            tp.paint(canvas,Offset(left+3,yy-11));
+          }
+        } else if(tool=='Long Position'){
+          draw.color=Colors.green;
+          canvas.drawRect(Rect.fromLTRB(left,top,right,bottom),draw);
+          canvas.drawLine(Offset(left,top),Offset(right,top),draw);
+          canvas.drawLine(Offset(left,bottom),Offset(right,bottom),draw);
+          final mid=(top+bottom)/2;
+          canvas.drawLine(Offset(left,mid),Offset(right,mid),draw);
+        } else if(tool=='Short Position'){
+          draw.color=Colors.red;
+          canvas.drawRect(Rect.fromLTRB(left,top,right,bottom),draw);
+          canvas.drawLine(Offset(left,top),Offset(right,top),draw);
+          canvas.drawLine(Offset(left,bottom),Offset(right,bottom),draw);
+          final mid=(top+bottom)/2;
+          canvas.drawLine(Offset(left,mid),Offset(right,mid),draw);
+        }
+      }
+    }
     if(hasRsi){
       final rv=rsi(close,14),top=chartH+4,panelH=size.height-top-4,paint=Paint()..color=Colors.orange..strokeWidth=1.3;
       for(int i=1;i<rv.length;i++)if(rv[i-1]!=null&&rv[i]!=null){double ry(double z)=>top+panelH-(z/100)*panelH;canvas.drawLine(Offset((i-1)*width+width/2,ry(rv[i-1]!)),Offset(i*width+width/2,ry(rv[i]!)),paint);}
       final tp=TextPainter(text:const TextSpan(text:'RSI 14',style:TextStyle(fontSize:10,color:Colors.grey)),textDirection:TextDirection.ltr)..layout();tp.paint(canvas,Offset(4,top));
     }
   }
-  @override bool shouldRepaint(covariant CandlePainter old)=>old.rows!=rows||old.indicators!=indicators;
+  @override bool shouldRepaint(covariant CandlePainter old)=>old.rows!=rows||old.indicators!=indicators||old.tool!=tool||old.pointA!=pointA||old.pointB!=pointB;
 }
 
 class AngelApiForm extends StatefulWidget {
