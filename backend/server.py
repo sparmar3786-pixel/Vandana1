@@ -11,10 +11,14 @@ from nse_client import NSEClient
 import nse_features
 from strategy_registry import ALL_STRATEGIES
 from nse_mcp import NSEMCP,result_to_csv
+from ai_orchestrator import provider_status, validate_all
 
 app=FastAPI(title="NSE Algo Signal API"); eng=Engine(); client=AngelClient(); nse=NSEClient(); nse_mcp=NSEMCP()
 state={"error":None,"nse_error":None,"last_update":None,"angel_message":"Not connected","nse_mcp_error":None}
 prev_chain={"c":None}; workers_started=False
+
+class AIValidationRequest(BaseModel):
+    payload:dict = {}
 
 class AngelLoginRequest(BaseModel):
     clientId:str
@@ -178,6 +182,21 @@ def nse_option_chain_csv(symbol:str="NIFTY",expiry:Optional[str]=None,x_token:st
     except Exception as e:
         state["nse_mcp_error"]=str(e)
         raise HTTPException(502,str(e))
+
+@app.get("/v1/ai/status")
+def ai_status(x_token:str=Header(None)):
+    auth(x_token)
+    return {"providers":provider_status(),"configured":sum(1 for x in provider_status() if x["configured"])}
+
+@app.post("/v1/ai/validate")
+def ai_validate(body:AIValidationRequest,x_token:str=Header(None)):
+    auth(x_token)
+    payload=dict(body.payload or {})
+    if not payload:
+        payload=terminal_snapshot()
+    payload["engine_decision"]=terminal_snapshot().get("signals",{})
+    payload["strategy_evidence"]=getattr(eng,"strategy_evidence",[])[:120]
+    return validate_all(payload)
 
 @app.get("/v1/strategies")
 def strategies(x_token:str=Header(None)):
