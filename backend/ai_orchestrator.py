@@ -34,10 +34,10 @@ Return concise evidence, contradictions, missing-data warnings and a recommendat
 
 def _prompt(provider, payload):
     role = ROLE_PROMPTS[provider["id"]]
-    return SYSTEM + "\nYour role: " + role + ".\n"
-           "Return exactly these headings: STATE, EVIDENCE, RISKS, MISSING_DATA, OVERRIDE.\n"
-           "STATE must be CALL BUY, PUT BUY, WAIT, or NO QUALIFYING TRADE.\n"
-           "Payload:\n" + _compact(payload)
+    return (SYSTEM + "\nYour role: " + role + ".\n"
+            + "Return exactly these headings: STATE, EVIDENCE, RISKS, MISSING_DATA, OVERRIDE.\n"
+            + "STATE must be CALL BUY, PUT BUY, WAIT, or NO QUALIFYING TRADE.\n"
+            + "Payload:\n" + _compact(payload))
 
 def _compact(payload):
     import json
