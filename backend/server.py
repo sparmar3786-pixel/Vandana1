@@ -12,6 +12,7 @@ import nse_features
 from strategy_registry import ALL_STRATEGIES
 from nse_mcp import NSEMCP,result_to_csv
 from ai_orchestrator import provider_status, validate_all
+from diagnostics import build_audit, build_diagnostics
 
 app=FastAPI(title="NSE Algo Signal API"); eng=Engine(); client=AngelClient(); nse=NSEClient(); nse_mcp=NSEMCP()
 state={"error":None,"nse_error":None,"last_update":None,"angel_message":"Not connected","nse_mcp_error":None}
@@ -213,13 +214,34 @@ def ai_validate(body:AIValidationRequest,x_token:str=Header(None)):
             p["error"]="AI validation service unavailable: "+str(e)[:180]
         return {"final":"NO QUALIFYING TRADE","providers":providers,"configured":0,"total":len(providers),"error":"AI validation service unavailable"}
 
+@app.get("/v1/diagnostics")
+def diagnostics(x_token:str=Header(None)):
+    auth(x_token)
+    snapshot_state = dict(state)
+    snapshot_state["market_open"] = market_open()
+    return build_diagnostics(
+        state=snapshot_state,
+        engine=eng,
+        registry_count=len(ALL_STRATEGIES),
+        angel_connected=client.api is not None,
+        nse_mcp_connected=state["nse_mcp_error"] is None,
+        ai_providers=provider_status(),
+    )
+
+
+@app.get("/v1/audit/latest")
+def latest_audit(x_token:str=Header(None)):
+    auth(x_token)
+    return build_audit(eng, len(ALL_STRATEGIES))
+
+
 @app.get("/v1/strategies")
 def strategies(x_token:str=Header(None)):
     auth(x_token)
     evidence = eng.strategy_evidence if isinstance(getattr(eng, "strategy_evidence", None), list) else []
     active = sum(1 for x in evidence if x.get("state") == "active")
     unavailable = sum(1 for x in evidence if x.get("state") == "unavailable")
-    return {"count": len(ALL_STRATEGIES), "active": active, "inactive": len(ALL_STRATEGIES)-active-unavailable, "unavailable": unavailable, "registry": ALL_STRATEGIES, "evidence": evidence}
+    return {"count": len(ALL_STRATEGIES), "active": active, "inactive": len(ALL_STRATEGIES)-active-unavailable, "unavailable": unavailable, "registry": ALL_STRATEGIES, "evidence": evidence, "health": build_diagnostics(state={**state, "market_open": market_open()}, engine=eng, registry_count=len(ALL_STRATEGIES), angel_connected=client.api is not None, nse_mcp_connected=state["nse_mcp_error"] is None, ai_providers=provider_status())["strategies"]}
 
 @app.get("/signal")
 def signal(x_token:str=Header(None)): auth(x_token); return terminal_snapshot()
