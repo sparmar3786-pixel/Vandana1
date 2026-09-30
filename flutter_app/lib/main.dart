@@ -60,6 +60,10 @@ class _TerminalState extends State<Terminal> {
   List<dynamic> strategyEvidence = <dynamic>[];
   bool strategyBusy = false;
   bool aiBusy = false;
+  bool terminalBusy = false;
+  bool aiCrossVerified = false;
+  String aiReason = '';
+  String aiLastRun = '';
   String aiFinal = 'WAIT';
   String aiError = '';
   Map<String,dynamic> diagnostics = <String,dynamic>{};
@@ -98,27 +102,35 @@ class _TerminalState extends State<Terminal> {
   @override void dispose() { timer?.cancel(); super.dispose(); }
 
   Future<void> fetchTerminal() async {
+    if (terminalBusy) return;
+    terminalBusy = true;
     try {
       final response = await http.get(
         Uri.parse(backendUrl + '/v1/terminal'),
-        headers: <String,String>{'x-token': apiToken},
-      ).timeout(const Duration(seconds: 5));
+        headers: <String,String>{'x-token':apiToken},
+      ).timeout(const Duration(seconds:5));
       if (!mounted) return;
       dynamic decoded;
-      try { decoded = jsonDecode(response.body); } catch (_) { decoded = null; }
-      final conn = decoded is Map<String,dynamic> ? decoded['connection'] : null;
-      final angel = conn is Map && conn['angel'] == true;
+      try { decoded=jsonDecode(response.body); } catch (_) { decoded=null; }
+      final conn=decoded is Map<String,dynamic>?decoded['connection']:null;
+      final angel=conn is Map && conn['angel']==true;
       setState(() {
-        terminalData = decoded is Map<String,dynamic> ? decoded : null;
-        final s = terminalData?['signals'];
-        final m = terminalData?['nse_mcp'];
-        signal = s is Map<String,dynamic> ? s : null;
-        connection = response.statusCode == 200 && conn is Map && conn['server'] == true && conn['angel'] == true ? 'Connected' : response.statusCode == 200 && conn is Map && conn['server'] == true ? 'Backend connected / Angel not connected' : 'HTTP ' + response.statusCode.toString();
-        nseMcpStatus = m is Map && m['connected'] == true ? 'Connected' : 'Not connected';
+        terminalData=decoded is Map<String,dynamic>?decoded:null;
+        final s=terminalData?['signals'];
+        final m=terminalData?['nse_mcp'];
+        signal=s is Map<String,dynamic>?s:null;
+        connection=response.statusCode==200 && conn is Map && conn['server']==true && conn['angel']==true
+          ? 'Connected'
+          : response.statusCode==200 && conn is Map && conn['server']==true
+            ? 'Backend connected / Angel not connected'
+            : 'HTTP '+response.statusCode.toString();
+        nseMcpStatus=m is Map && m['connected']==true?'Connected':'Not connected';
       });
-      if (angel) await fetchAngelMarket();
+      if (angel && mounted) await fetchAngelMarket();
     } catch (_) {
-      if (mounted) setState(() => connection = 'Backend not connected');
+      if (mounted) setState(() => connection='Backend not connected');
+    } finally {
+      terminalBusy=false;
     }
   }
 
@@ -911,96 +923,172 @@ class _TerminalState extends State<Terminal> {
 
   Future<void> fetchAIStatus() async {
     try {
-      final r = await http.get(Uri.parse(backendUrl + '/v1/ai/status'),
-        headers:<String,String>{'x-token':apiToken}).timeout(const Duration(seconds:8));
-      if(r.statusCode==200 && mounted){
-        final d=jsonDecode(r.body);
-        setState(()=>aiProviders=d is Map && d['providers'] is List ? d['providers'] : aiProviders);
-      } else if (mounted) {
-        setState(() => aiError = 'AI status unavailable; provider names retained.');
+      final r=await http.get(
+        Uri.parse(backendUrl+'/v1/ai/status'),
+        headers:<String,String>{'x-token':apiToken},
+      ).timeout(const Duration(seconds:8));
+      if(!mounted) return;
+      if(r.statusCode==200){
+        dynamic d;
+        try { d=jsonDecode(r.body); } catch (_) { d=null; }
+        if(d is Map && d['providers'] is List){
+          final incoming=(d['providers'] as List).whereType<Map>().toList();
+          final byId=<String,Map<String,dynamic>>{
+            for(final p in incoming) p['id'].toString():Map<String,dynamic>.from(p)
+          };
+          final merged=aiProviders.map((old){
+            final id=(old is Map?old['id']:'').toString();
+            return byId[id] ?? old;
+          }).toList();
+          for(final p in incoming){
+            final id=(p['id']??'').toString();
+            if(id.isNotEmpty && !merged.any((x)=>x is Map && x['id']==id)) merged.add(p);
+          }
+          setState(() { aiProviders=merged; aiError=''; });
+        }
+      } else {
+        setState(() => aiError='AI status HTTP '+r.statusCode.toString()+'. Provider cards remain available.');
       }
-    } catch (_) {
-      if (mounted) setState(() => aiError = 'AI status unavailable; provider names retained.');
+    } catch(e) {
+      if(mounted) setState(() => aiError='AI status unavailable: '+e.toString());
     }
   }
 
   Future<void> runAIValidation() async {
-    if(aiBusy) return;
-    setState(() { aiBusy=true; aiError=''; });
+    if(aiBusy || !mounted) return;
+    setState(() {
+      aiBusy=true;
+      aiError='';
+      aiReason='Preparing fresh terminal data...';
+      aiCrossVerified=false;
+    });
     try {
+      await fetchTerminal();
       final payload=<String,dynamic>{
-        'terminal': terminalData ?? <String,dynamic>{},
-        'signal': signal ?? <String,dynamic>{},
-        'strategy_count': strategyRegistry.length,
-        'strategy_evidence': strategyEvidence.take(120).toList(),
-        'timestamp': DateTime.now().toIso8601String(),
+        'terminal':terminalData ?? <String,dynamic>{},
+        'signal':signal ?? <String,dynamic>{},
+        'strategy_count':strategyRegistry.length,
+        'strategy_evidence':strategyEvidence.take(120).toList(),
+        'timestamp':DateTime.now().toIso8601String(),
       };
-      final r=await http.post(Uri.parse(backendUrl + '/v1/ai/validate'),
+      if(mounted) setState(() => aiReason=terminalData==null && signal==null
+        ? 'Live terminal data is unavailable. The server will attempt its own current snapshot.'
+        : 'Submitting current market snapshot to all configured AI providers...');
+      final r=await http.post(
+        Uri.parse(backendUrl+'/v1/ai/validate'),
         headers:<String,String>{'x-token':apiToken,'Content-Type':'application/json'},
-        body:jsonEncode({'payload':payload})).timeout(const Duration(seconds:35));
-      if(r.statusCode==200 && mounted){
-        final d=jsonDecode(r.body);
+        body:jsonEncode({'payload':payload}),
+      ).timeout(const Duration(seconds:35));
+      if(!mounted) return;
+      dynamic d;
+      try { d=jsonDecode(r.body); } catch (_) { d=null; }
+      if(r.statusCode==200 && d is Map){
+        final incoming=d['providers'] is List ? d['providers'] as List : <dynamic>[];
         setState((){
-          aiFinal=(d is Map ? (d['final']??'WAIT') : 'WAIT').toString();
-          aiProviders=d is Map && d['providers'] is List ? d['providers'] : <dynamic>[];
+          aiFinal=(d['final']??'WAIT').toString();
+          aiCrossVerified=d['cross_verified']==true;
+          aiReason=(d['reason']??'').toString();
+          aiLastRun=DateTime.now().toLocal().toString().substring(0,19);
+          if(incoming.isNotEmpty){
+            final byId=<String,Map<String,dynamic>>{
+              for(final p in incoming.whereType<Map>()) p['id'].toString():Map<String,dynamic>.from(p)
+            };
+            aiProviders=aiProviders.map((old){
+              final id=(old is Map?old['id']:'').toString();
+              return byId[id] ?? old;
+            }).toList();
+          }
         });
-      } else if(mounted) {
-        setState(()=>aiError='AI server returned HTTP '+r.statusCode.toString());
+      } else {
+        setState(()=>aiError='AI validation HTTP '+r.statusCode.toString()+(d is Map && d['error']!=null ? ': '+d['error'].toString() : ''));
       }
     } catch(e) {
-      if(mounted) setState(()=>aiError='AI connection failed: '+e.toString());
+      if(mounted) setState(()=>aiError='AI validation failed safely: '+e.toString());
     } finally {
-      if(mounted) setState(()=>aiBusy=false);
+      if(mounted) setState(() => aiBusy=false);
     }
   }
 
   Widget aiAnalysisPage() {
     final configured=aiProviders.where((x)=>x is Map && x['configured']==true).length;
+    final c=terminalData?['connection'];
+    final terminalConnected=c is Map && c['angel']==true;
     return RefreshIndicator(
-      onRefresh: fetchAIStatus,
-      child: ListView(padding:const EdgeInsets.fromLTRB(12,10,12,24),children:[
-        Row(children:[
-          const Expanded(child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
-            Text('AI Analysis',style:TextStyle(fontSize:24,fontWeight:FontWeight.bold)),
-            SizedBox(height:3),Text('Server-side multi-model validation • keys never enter the APK',style:TextStyle(fontSize:11)),
-          ])),
-          IconButton(onPressed:fetchAIStatus,icon:const Icon(Icons.refresh)),
-        ]),
-        const SizedBox(height:10),
-        Card(child:Padding(padding:const EdgeInsets.all(14),child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
-          const Text('FINAL VALIDATION',style:TextStyle(fontWeight:FontWeight.bold,letterSpacing:.7)),
-          const SizedBox(height:8),
+      onRefresh:fetchAIStatus,
+      child:ListView(
+        padding:const EdgeInsets.fromLTRB(12,10,12,24),
+        children:[
           Row(children:[
-            Container(width:12,height:12,decoration:BoxDecoration(shape:BoxShape.circle,color:aiFinal=='CALL BUY'?Colors.green:aiFinal=='PUT BUY'?Colors.red:Colors.orange)),
-            const SizedBox(width:8),Text(aiFinal,style:const TextStyle(fontSize:22,fontWeight:FontWeight.w800)),
+            const Expanded(child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
+              Text('AI Analysis',style:TextStyle(fontSize:24,fontWeight:FontWeight.bold)),
+              SizedBox(height:3),
+              Text('6-AI server validation • no double-tap required • keys stay on backend',style:TextStyle(fontSize:11)),
+            ])),
+            IconButton(onPressed:fetchAIStatus,icon:const Icon(Icons.refresh)),
           ]),
-          const SizedBox(height:6),
-          Text(configured==0?'No provider key configured on the server.':'$configured / 6 AI providers configured',style:const TextStyle(fontSize:11)),
           const SizedBox(height:10),
-          SizedBox(width:double.infinity,child:FilledButton.icon(
-            onPressed:aiBusy?null:runAIValidation,
-            icon:aiBusy?const SizedBox(width:18,height:18,child:CircularProgressIndicator(strokeWidth:2)):const Icon(Icons.auto_awesome),
-            label:Text(aiBusy?'RUNNING VALIDATION...':'RUN ALL AI'),
-          )),
-          if(aiError.isNotEmpty) Padding(padding:const EdgeInsets.only(top:8),child:Text(aiError,style:const TextStyle(color:Colors.red,fontSize:11))),
-        ]))),
-        const SizedBox(height:10),
-        for(final p in aiProviders) if(p is Map) Card(child:ExpansionTile(
-          leading:CircleAvatar(child:Icon(p['status']=='ok'||p['configured']==true?Icons.check:Icons.key_off,size:18)),
-          title:Text((p['name']??'AI Provider').toString(),style:const TextStyle(fontWeight:FontWeight.bold)),
-          subtitle:Text((p['status']??(p['configured']==true?'Ready':'Server key required')).toString()),
-          trailing:Text((p['model']??'').toString(),style:const TextStyle(fontSize:9)),
-          children: [
-            Padding(padding:const EdgeInsets.fromLTRB(16,0,16,14),child:Align(
-              alignment:Alignment.centerLeft,
-              child:Text((p['text']??p['error']??'No response yet.').toString(),style:const TextStyle(fontSize:11,height:1.35)),
-            ))
-          ],
-        )),
-        if(aiProviders.isEmpty) infoCard('AI service','Checking secure server-side provider configuration...',Colors.blue),
-        const SizedBox(height:6),
-        infoCard('Evidence rule','AI can validate supplied market data, but it cannot invent missing OI/volume/Greeks or guarantee a trade result.',Colors.blue),
-      ]),
+          Card(child:Padding(padding:const EdgeInsets.all(14),child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
+            const Text('LIVE INPUT',style:TextStyle(fontWeight:FontWeight.bold,letterSpacing:.7)),
+            const SizedBox(height:7),
+            Row(children:[
+              Icon(terminalConnected?Icons.cloud_done:Icons.cloud_off,size:18,color:terminalConnected?Colors.green:Colors.orange),
+              const SizedBox(width:7),
+              Expanded(child:Text(terminalConnected
+                ? 'Fresh Angel/terminal snapshot is available for AI validation.'
+                : 'Live terminal snapshot is not confirmed; server-side snapshot fallback remains enabled.')),
+            ]),
+            const SizedBox(height:5),
+            Text('Configured providers: $configured / 6',style:const TextStyle(fontSize:11)),
+          ])),
+          const SizedBox(height:10),
+          Card(child:Padding(padding:const EdgeInsets.all(14),child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
+            const Text('FINAL VALIDATION',style:TextStyle(fontWeight:FontWeight.bold,letterSpacing:.7)),
+            const SizedBox(height:8),
+            Row(children:[
+              Container(width:12,height:12,decoration:BoxDecoration(shape:BoxShape.circle,color:aiFinal=='CALL BUY'?Colors.green:aiFinal=='PUT BUY'?Colors.red:Colors.orange)),
+              const SizedBox(width:8),
+              Expanded(child:Text(aiFinal,style:const TextStyle(fontSize:22,fontWeight:FontWeight.w800))),
+              Icon(aiCrossVerified?Icons.verified:Icons.pending_outlined,color:aiCrossVerified?Colors.green:Colors.orange),
+            ]),
+            if(aiReason.isNotEmpty) Padding(padding:const EdgeInsets.only(top:6),child:Text(aiReason,style:const TextStyle(fontSize:11))),
+            if(aiLastRun.isNotEmpty) Padding(padding:const EdgeInsets.only(top:3),child:Text('Last run: $aiLastRun',style:const TextStyle(fontSize:10))),
+            const SizedBox(height:10),
+            SizedBox(width:double.infinity,child:FilledButton.icon(
+              onPressed:aiBusy?null:runAIValidation,
+              icon:aiBusy?const SizedBox(width:18,height:18,child:CircularProgressIndicator(strokeWidth:2)):const Icon(Icons.auto_awesome),
+              label:Text(aiBusy?'RUNNING 6-AI VALIDATION...':'RUN 6-AI VALIDATION'),
+            )),
+            if(aiError.isNotEmpty) Padding(padding:const EdgeInsets.only(top:8),child:Text(aiError,style:const TextStyle(color:Colors.red,fontSize:11))),
+          ]))),
+          const SizedBox(height:10),
+          for(int i=0;i<aiProviders.length;i++)
+            if(aiProviders[i] is Map)
+              Card(child:ExpansionTile(
+                leading:CircleAvatar(child:Icon(aiProviders[i]['status']=='ok'||aiProviders[i]['configured']==true?Icons.check:Icons.key_off,size:18)),
+                title:Text((i+1).toString()+' • '+(aiProviders[i]['name']??'AI Provider').toString(),style:const TextStyle(fontWeight:FontWeight.bold)),
+                subtitle:Text((aiProviders[i]['status']??(aiProviders[i]['configured']==true?'Ready':'Server key required')).toString()),
+                trailing:Text((aiProviders[i]['model']??'').toString(),style:const TextStyle(fontSize:9)),
+                children:[
+                  Padding(padding:const EdgeInsets.fromLTRB(16,0,16,14),child:Align(
+                    alignment:Alignment.centerLeft,
+                    child:Text((aiProviders[i]['text']??aiProviders[i]['error']??'Not run yet.').toString(),style:const TextStyle(fontSize:11,height:1.35)),
+                  ))
+                ],
+              )),
+          const SizedBox(height:6),
+          infoCard(
+            configured==0?'AI server keys required':'AI server ready',
+            configured==0
+              ? 'Set provider API keys on the Render backend. The APK never stores them.'
+              : 'Tap RUN 6-AI VALIDATION. No market-card double-tap or hidden activation step is required.',
+            configured==0?Colors.orange:Colors.green,
+          ),
+          const SizedBox(height:6),
+          infoCard('Crash protection','Network calls are timeout-guarded, terminal polling is single-flight, malformed JSON is handled safely, and AI failures show an error instead of crashing the APK.',Colors.blue),
+          const SizedBox(height:6),
+          infoCard('Evidence rule','AI validates supplied market data only. Missing OI/volume/Greeks stays marked missing; no fabricated trade result or guaranteed win rate.',Colors.blue),
+        ],
+      ),
     );
   }
 
