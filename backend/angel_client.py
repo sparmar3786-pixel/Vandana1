@@ -48,6 +48,46 @@ class AngelClient:
             raise RuntimeError("Angel One session is not connected.")
         return self.api
 
+
+    def index_catalog(self):
+        master=self._master()
+        rows=[]
+        seen=set()
+        for r in master:
+            if r.get("instrumenttype")=="AMXIDX" and r.get("exch_seg") in ("NSE","BSE"):
+                token=str(r.get("token",""))
+                if not token or token in seen: continue
+                seen.add(token)
+                rows.append({"token":token,"name":r.get("name") or r.get("symbol"),"symbol":r.get("symbol"),"exchange":r.get("exch_seg")})
+        fixed=[
+            {"token":"99926000","name":"NIFTY 50","symbol":"Nifty 50","exchange":"NSE"},
+            {"token":"99926009","name":"NIFTY BANK","symbol":"Nifty Bank","exchange":"NSE"},
+            {"token":"99926037","name":"NIFTY FIN SERVICE","symbol":"Nifty Fin Service","exchange":"NSE"},
+            {"token":"99919000","name":"SENSEX","symbol":"SENSEX","exchange":"BSE"}
+        ]
+        bytoken={r["token"]:r for r in rows}
+        for r in fixed: bytoken[r["token"]]=r
+        return sorted(bytoken.values(), key=lambda x:(x["exchange"],x["name"] or ""))
+
+    def index_catalog_quotes(self):
+        api=self.require_api()
+        instruments=self.index_catalog()
+        grouped={"NSE":[],"BSE":[]}
+        for r in instruments: grouped[r["exchange"]].append(r["token"])
+        fetched=[]
+        for exchange,tokens in grouped.items():
+            for i in range(0,len(tokens),40):
+                batch=tokens[i:i+40]
+                if batch:
+                    result=api.getMarketData("FULL",{exchange:batch})
+                    fetched.extend(result.get("data",{}).get("fetched",[]) or [])
+        q={str(r.get("symbolToken")):r for r in fetched}
+        rows=[]
+        for inst in instruments:
+            quote=q.get(inst["token"],{})
+            rows.append({**inst,"ltp":quote.get("ltp"),"open":quote.get("open"),"high":quote.get("high"),"low":quote.get("low"),"close":quote.get("close"),"netChange":quote.get("netChange"),"percentChange":quote.get("percentChange"),"volume":quote.get("tradeVolume")})
+        return {"data":rows}
+
     def index_quote(self, symbols=None):
         api=self.require_api()
         symbols=symbols or {
