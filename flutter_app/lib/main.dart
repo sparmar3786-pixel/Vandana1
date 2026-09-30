@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
+import 'package:file_saver/file_saver.dart';
 
 void main() => runApp(const AlgoApp());
 
@@ -38,6 +39,8 @@ class _TerminalState extends State<Terminal> {
   String backendUrl = 'https://vandana1-angel-api.onrender.com';
   String apiToken = 'change-me';
   String connection = 'Connecting...';
+  String nseMcpStatus = 'Not checked';
+  String csvStatus = '';
   Map<String,dynamic>? signal;
   Map<String,dynamic>? terminalData;
   Timer? timer;
@@ -62,11 +65,36 @@ class _TerminalState extends State<Terminal> {
         terminalData = decoded is Map<String,dynamic> ? decoded : null;
         final c = terminalData?['connection'];
         final s = terminalData?['signals'];
+        final m = terminalData?['nse_mcp'];
         signal = s is Map<String,dynamic> ? s : null;
         connection = response.statusCode == 200 && c is Map && c['server'] == true ? 'Connected' : 'HTTP ' + response.statusCode.toString();
+        nseMcpStatus = m is Map && m['connected'] == true ? 'Connected' : 'Not connected';
       });
     } catch (_) {
       if (mounted) setState(() => connection = 'Backend not connected');
+    }
+  }
+
+  Future<void> downloadNseCsv() async {
+    setState(() => csvStatus = 'Fetching NSE option chain...');
+    try {
+      final response = await http.get(
+        Uri.parse(backendUrl + '/v1/nse/option-chain.csv?symbol=NIFTY'),
+        headers: <String,String>{'x-token': apiToken},
+      ).timeout(const Duration(seconds: 20));
+      if (response.statusCode != 200) {
+        setState(() => csvStatus = 'NSE CSV unavailable: HTTP ' + response.statusCode.toString());
+        return;
+      }
+      await FileSaver.instance.saveFile(
+        name: 'NIFTY_NSE_option_chain',
+        bytes: response.bodyBytes,
+        fileExtension: 'csv',
+        mimeType: MimeType.csv,
+      );
+      if (mounted) setState(() => csvStatus = 'NIFTY NSE option-chain CSV saved.');
+    } catch (e) {
+      if (mounted) setState(() => csvStatus = 'CSV download failed. ' + e.toString());
     }
   }
 
@@ -104,7 +132,9 @@ class _TerminalState extends State<Terminal> {
   Widget buildScreen() {
     if (selected == 0) return dashboard();
     if (selected == 3) return signals();
+    if (selected == 8) return optionChain();
     if (selected == 11) return angelApi();
+    if (selected == 13) return nseMcp();
     if (selected == 16) return settingsPage();
     if (selected == 17) return morePage();
     return dataPage(screens[selected]);
@@ -144,7 +174,7 @@ class _TerminalState extends State<Terminal> {
   Widget signals() {
     final action = signal?['action']?.toString() ?? 'WAIT';
     final raw = signal?['reasons'];
-    final reasons = raw is List ? raw.map((e) => e.toString()).join('\\n') : 'No live signal reasons received.';
+    final reasons = raw is List ? raw.map((e) => e.toString()).join('\n') : 'No live signal reasons received.';
     return ListView(padding: const EdgeInsets.all(16), children: <Widget>[
       const Text('Signals', style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
       const SizedBox(height: 12),
@@ -153,6 +183,36 @@ class _TerminalState extends State<Terminal> {
       infoCard('Engine','Paper-signal engine. Live values appear only when the backend supplies them.',Colors.orange),
     ]);
   }
+
+  Widget optionChain() {
+    final chain = terminalData?['option_chain'];
+    final rows = chain is Map ? chain.length : 0;
+    return ListView(padding: const EdgeInsets.all(16), children: <Widget>[
+      const Text('Option Chain', style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
+      const SizedBox(height: 12),
+      infoCard('NSE MCP CSV', 'Official NSE MCP is routed through the Render server.', Colors.blue),
+      infoCard('Live chain payload', rows > 0 ? rows.toString() + ' option entries received.' : 'No option-chain payload received yet.', rows > 0 ? Colors.green : Colors.orange),
+      const SizedBox(height: 8),
+      FilledButton.icon(
+        onPressed: connection == 'Connected' ? downloadNseCsv : null,
+        icon: const Icon(Icons.download),
+        label: const Text('DOWNLOAD NSE OPTION CHAIN CSV'),
+      ),
+      if (csvStatus.isNotEmpty) Padding(
+        padding: const EdgeInsets.only(top: 10),
+        child: Text(csvStatus),
+      ),
+    ]);
+  }
+
+  Widget nseMcp() => ListView(padding: const EdgeInsets.all(16), children: <Widget>[
+    const Text('NSE MCP', style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
+    const SizedBox(height: 12),
+    infoCard('Official endpoint','https://mcp.nseindia.in/cmmkt/mcp',Colors.blue),
+    infoCard('Connection',nseMcpStatus,nseMcpStatus == 'Connected' ? Colors.green : Colors.orange),
+    infoCard('CSV route',backendUrl + '/v1/nse/option-chain.csv?symbol=NIFTY',Colors.blue),
+    const Text('MCP access is server-side; APK never stores NSE/Angel credentials.', style: TextStyle(color: Colors.grey)),
+  ]);
 
   Widget angelApi() => ListView(padding: const EdgeInsets.all(16), children: <Widget>[
     const Text('Angel API', style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
