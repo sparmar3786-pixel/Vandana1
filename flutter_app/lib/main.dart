@@ -1069,7 +1069,7 @@ class _TerminalState extends State<Terminal> {
             ]),
             const SizedBox(height:5),
             Text('Configured providers: $configured / 6',style:const TextStyle(fontSize:11)),
-          ])),
+          ]))),
           const SizedBox(height:10),
           Card(child:Padding(padding:const EdgeInsets.all(14),child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
             const Text('FINAL VALIDATION',style:TextStyle(fontWeight:FontWeight.bold,letterSpacing:.7)),
