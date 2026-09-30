@@ -12,7 +12,8 @@ import nse_features
 from nse_mcp import NSEMCP,result_to_csv
 
 app=FastAPI(title="NSE Algo Signal API"); eng=Engine(); client=AngelClient(); nse=NSEClient(); nse_mcp=NSEMCP()
-state={"error":None,"nse_error":None,"last_update":None,"angel_message":"Not connected","nse_mcp_error":None}; prev_chain={"c":None}
+state={"error":None,"nse_error":None,"last_update":None,"angel_message":"Not connected","nse_mcp_error":None}
+prev_chain={"c":None}; workers_started=False
 
 class AngelLoginRequest(BaseModel):
     clientId:str
@@ -23,6 +24,15 @@ class AngelLoginRequest(BaseModel):
 def market_open():
     now=dt.datetime.now(dt.timezone(dt.timedelta(hours=5,minutes=30)))
     return now.weekday()<5 and dt.time(9,15)<=now.time()<=dt.time(15,30)
+
+@app.on_event("startup")
+def start_workers():
+    global workers_started
+    if workers_started:
+        return
+    workers_started = True
+    threading.Thread(target=loop, daemon=True, name="angel-data-loop").start()
+    threading.Thread(target=nse_loop, daemon=True, name="nse-data-loop").start()
 
 def _ensure_angel():
     if client.api is None:
@@ -108,5 +118,4 @@ def terminal_snapshot():
     return {"ts":time.time(),"market_open":market_open(),"connection":{"angel":client.api is not None,"nse":state["nse_error"] is None,"server":True,"last_update":state["last_update"],"error":state["error"],"nse_error":state["nse_error"],"angel_message":state["angel_message"]},"market":{"symbol":C.SYMBOL,"spot":last.get("spot"),"atm":last.get("strike"),"action":last.get("action","WAIT"),"ltp":last.get("ltp")},"signals":last,"oi_lab":nse_view,"option_chain":last.get("chain",last.get("opts")),"charts":{"spot":last.get("spot"),"ltp":last.get("ltp"),"timestamp":state["last_update"]},"nse":nse_view,"nse_mcp":{"status":"official NSE Streamable HTTP MCP","endpoint":nse_mcp.url,"connected":state["nse_mcp_error"] is None,"error":state["nse_mcp_error"],"csv_endpoint":"/v1/nse/option-chain.csv"},"angel_api":{"connected":client.api is not None,"message":state["angel_message"]},"data":last,"instruments":{"source":"Angel One SmartAPI instrument master","loaded":bool(client.chain),"expiry":str(client.expiry) if client.expiry else None,"strike_count":len(client.strikes)},"watchlist":{"source":"Angel One SmartAPI","items":[]},"search":{"source":"Angel One SmartAPI","items":[]},"commodity":{"source":"Angel One SmartAPI","items":[]},"market_details":nse_view,"news":{"source":"server-side news adapter","items":[]},"settings":{"symbol":C.SYMBOL,"poll_sec":C.POLL_SEC,"nse_poll_sec":C.NSE_POLL_SEC},"more":{"paper_only":True,"orders_enabled":False},"error":state["error"],"nse_error":state["nse_error"]}
 
 if __name__=="__main__":
-    threading.Thread(target=loop,daemon=True).start(); threading.Thread(target=nse_loop,daemon=True).start()
     uvicorn.run(app,host="0.0.0.0",port=8000)
