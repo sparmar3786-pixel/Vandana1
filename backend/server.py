@@ -91,6 +91,12 @@ def angel_commodities(x_token:str=Header(None)):
     try: return client.commodity_quotes()
     except Exception as e: raise HTTPException(502,str(e))
 
+@app.get("/v1/angel/indices")
+def angel_indices(x_token:str=Header(None)):
+    auth(x_token); angel_required()
+    try: return client.index_catalog_quotes()
+    except Exception as e: raise HTTPException(502,str(e))
+
 @app.get("/v1/angel/market")
 def angel_market(x_token:str=Header(None)):
     auth(x_token); angel_required()
