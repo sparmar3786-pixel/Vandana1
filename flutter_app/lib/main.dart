@@ -1009,6 +1009,27 @@ class _TerminalState extends State<Terminal> {
     }
   }
 
+  Widget _aiProviderCard(int index, dynamic raw) {
+    final p=Map<String,dynamic>.from(raw as Map);
+    final ok=p['status']=='ok' || p['configured']==true;
+    final name=(p['name']??'AI Provider').toString();
+    final status=(p['status']??(p['configured']==true?'Ready':'Server key required')).toString();
+    final model=(p['model']??'').toString();
+    final body=(p['text']??p['error']??'Not run yet.').toString();
+    return Card(child:ExpansionTile(
+      leading:CircleAvatar(child:Icon(ok?Icons.check:Icons.key_off,size:18)),
+      title:Text((index+1).toString()+' • '+name,style:const TextStyle(fontWeight:FontWeight.bold)),
+      subtitle:Text(status),
+      trailing:Text(model,style:const TextStyle(fontSize:9)),
+      children:[
+        Padding(
+          padding:const EdgeInsets.fromLTRB(16,0,16,14),
+          child:Align(alignment:Alignment.centerLeft,child:Text(body,style:const TextStyle(fontSize:11,height:1.35))),
+        ),
+      ],
+    ));
+  }
+
   Widget aiAnalysisPage() {
     final configured=aiProviders.where((x)=>x is Map && x['configured']==true).length;
     final c=terminalData?['connection'];
@@ -1061,20 +1082,7 @@ class _TerminalState extends State<Terminal> {
             if(aiError.isNotEmpty) Padding(padding:const EdgeInsets.only(top:8),child:Text(aiError,style:const TextStyle(color:Colors.red,fontSize:11))),
           ]))),
           const SizedBox(height:10),
-          for(int i=0;i<aiProviders.length;i++)
-            if(aiProviders[i] is Map)
-              Card(child:ExpansionTile(
-                leading:CircleAvatar(child:Icon(aiProviders[i]['status']=='ok'||aiProviders[i]['configured']==true?Icons.check:Icons.key_off,size:18)),
-                title:Text((i+1).toString()+' • '+(aiProviders[i]['name']??'AI Provider').toString(),style:const TextStyle(fontWeight:FontWeight.bold)),
-                subtitle:Text((aiProviders[i]['status']??(aiProviders[i]['configured']==true?'Ready':'Server key required')).toString()),
-                trailing:Text((aiProviders[i]['model']??'').toString(),style:const TextStyle(fontSize:9)),
-                children:[
-                  Padding(padding:const EdgeInsets.fromLTRB(16,0,16,14),child:Align(
-                    alignment:Alignment.centerLeft,
-                    child:Text((aiProviders[i]['text']??aiProviders[i]['error']??'Not run yet.').toString(),style:const TextStyle(fontSize:11,height:1.35)),
-                  ))
-                ],
-              )),
+          ...aiProviders.asMap().entries.where((e)=>e.value is Map).map((e)=>_aiProviderCard(e.key,e.value)),
           const SizedBox(height:6),
           infoCard(
             configured==0?'AI server keys required':'AI server ready',
