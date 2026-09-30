@@ -51,11 +51,23 @@ class AngelClient:
     def index_quote(self, symbols=None):
         api=self.require_api()
         master=self._master()
-        wanted=["NIFTY","BANKNIFTY","FINNIFTY","MIDCPNIFTY","SENSEX","BANKEX"]
+        aliases={
+            "NIFTY":["NIFTY","NIFTY 50"],
+            "BANKNIFTY":["BANKNIFTY","NIFTY BANK"],
+            "FINNIFTY":["FINNIFTY","NIFTY FIN SERVICE"],
+            "MIDCPNIFTY":["MIDCPNIFTY","NIFTY MIDCAP SELECT","MIDCAP SELECT"],
+            "SENSEX":["SENSEX","BSE SENSEX"],
+            "BANKEX":["BANKEX","BSE BANKEX"],
+        }
         selected=[]
-        for name in wanted:
-            rows=[r for r in master if str(r.get("name","")).upper()==name and str(r.get("exch_seg","")).upper() in ("NSE","BSE")]
+        for wanted_name,names in aliases.items():
+            rows=[r for r in master
+                  if str(r.get("name","")).upper() in {n.upper() for n in names}
+                  and str(r.get("exch_seg","")).upper() in ("NSE","BSE")]
             if rows:
+                # Prefer the exact underlying index instrument over similarly named contracts.
+                rows.sort(key=lambda x: (0 if str(x.get("name","")).upper()==wanted_name else 1,
+                                         str(x.get("exch_seg",""))))
                 selected.append(rows[0])
         if not selected:
             raise RuntimeError("No supported index instruments found in Angel instrument master.")
@@ -175,7 +187,17 @@ class AngelClient:
         symbol=(symbol or C.SYMBOL).upper()
         exchange="BFO" if symbol in ("SENSEX","BANKEX") else "NFO"
         master=self._master()
-        rows=[r for r in master if str(r.get("name","")).upper()==symbol and r.get("exch_seg")==exchange and r.get("instrumenttype")=="OPTIDX"]
+        aliases={
+            "NIFTY":{"NIFTY","NIFTY 50"},
+            "BANKNIFTY":{"BANKNIFTY","NIFTY BANK"},
+            "FINNIFTY":{"FINNIFTY","NIFTY FIN SERVICE"},
+            "MIDCPNIFTY":{"MIDCPNIFTY","NIFTY MIDCAP SELECT","MIDCAP SELECT"},
+            "SENSEX":{"SENSEX","BSE SENSEX"},
+            "BANKEX":{"BANKEX","BSE BANKEX"},
+        }
+        names=aliases.get(symbol,{symbol})
+        rows=[r for r in master if str(r.get("name","")).upper() in {n.upper() for n in names}
+              and str(r.get("exch_seg","")).upper()==exchange and r.get("instrumenttype")=="OPTIDX"]
         def exp(r): return dt.datetime.strptime(r["expiry"],"%d%b%Y").date()
         today=dt.date.today()
         expiries=sorted({exp(r) for r in rows if r.get("expiry") and exp(r)>=today})
