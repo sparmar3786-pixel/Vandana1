@@ -234,28 +234,45 @@ const wanted=[
  {n:6,name:'Grok 4',id:'grok-4',provider:'xai',family:['grok-4','grok'],keys:['grok-4','grok 4']}
 ];
 let available=[];
+function norm(v){return String(v||'').toLowerCase().trim().replace(/[^a-z0-9]+/g,'-');}
+function modelText(x){return [x?.id,x?.name,...(Array.isArray(x?.aliases)?x.aliases:[])].filter(Boolean).join(' ').toLowerCase();}
 async function resolveModel(w){
- try{
-  if(!available.length) available=await puter.ai.listModels();
-  const rows=Array.isArray(available)?available:[];
-  const exact=rows.find(x=>w.keys.some(k=>String(x?.id||'').toLowerCase()===k));
-  if(exact?.id) return exact.id;
-  const keyMatch=rows.find(x=>{
-    const s=(String(x?.id||'')+' '+String(x?.name||'')+' '+JSON.stringify(x?.aliases||[])).toLowerCase();
-    return w.keys.some(k=>s.includes(k));
-  });
-  if(keyMatch?.id) return keyMatch.id;
-  const provider=w.provider;
-  const providerRows=provider?rows.filter(x=>String(x?.provider||'').toLowerCase()===provider):[];
-  const providerMatch=providerRows.find(x=>w.family.some(k=>(String(x?.id||'')+' '+String(x?.name||'')).toLowerCase().includes(k)));
-  if(providerMatch?.id) return providerMatch.id;
-  return w.id;
- }catch(_){return w.id;}
+ if(!available.length){
+  try{available=await puter.ai.listModels();}catch(e){return null;}
+ }
+ const rows=Array.isArray(available)?available:[];
+ const exactIds=[w.id,...w.keys].map(norm);
+ const exact=rows.find(x=>exactIds.includes(norm(x?.id)));
+ if(exact?.id)return exact.id;
+ const keyMatch=rows.find(x=>{
+  const t=modelText(x);
+  return w.keys.some(k=>t.includes(String(k).toLowerCase()));
+ });
+ if(keyMatch?.id)return keyMatch.id;
+ const providerRows=rows.filter(x=>norm(x?.provider)===norm(w.provider));
+ const familyMatch=providerRows.find(x=>{
+  const t=modelText(x);
+  return w.family.some(k=>t.includes(String(k).toLowerCase())) &&
+         (!w.name.includes('GPT-5.6') || t.includes('gpt-5.6'));
+ });
+ if(familyMatch?.id)return familyMatch.id;
+ return null;
+}
+function contentOf(r){
+ const c=r?.message?.content;
+ if(typeof c==='string')return c;
+ if(Array.isArray(c))return c.map(x=>x?.text||'').filter(Boolean).join(' ');
+ return r?.text||String(r||'');
 }
 async function ask(w,prompt){
  const model=await resolveModel(w);
- const r=await puter.ai.chat(prompt,{model:model,temperature:0.1,max_tokens:900,normalize:true});
- return {name:w.name,model:model,text:r?.message?.content ?? String(r)};
+ if(!model)return {name:w.name,model:'UNAVAILABLE',text:'MODEL UNAVAILABLE IN PUTER CATALOG — NO FALLBACK / NO FABRICATED RESPONSE'};
+ try{
+  const r=await puter.ai.chat(prompt,{model:model,provider:w.provider,temperature:0.1,max_tokens:900,normalize:true});
+  return {name:w.name,model:model,text:contentOf(r)};
+ }catch(e){
+  return {name:w.name,model:model,text:'MODEL REQUEST REJECTED: '+String(e?.message||e)};
+ } 
 }
 (async()=>{
  try{
