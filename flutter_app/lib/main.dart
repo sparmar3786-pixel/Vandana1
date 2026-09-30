@@ -615,9 +615,10 @@ class LiquidityPainter extends CustomPainter {
     final maxV=values.reduce(math.max);
     final bw=size.width/values.length;
     for(int i=0;i<values.length;i++){
-      final double h=maxV>0?(values[i]/maxV)*(size.height-28):0.0;
+      final double barHeight = maxV > 0 ? ((values[i] / maxV) * (size.height - 28)).toDouble() : 0.0;
       final p=Paint()..color=Colors.cyan;
-      canvas.drawRect(Rect.fromLTWH(i*bw+4,size.height-24-h,math.max(4.0,bw-8).toDouble(),h),p);
+      final double barWidth = math.max(4.0, bw - 8).toDouble();
+      canvas.drawRect(Rect.fromLTWH((i * bw + 4).toDouble(), (size.height - 24 - barHeight).toDouble(), barWidth, barHeight), p);
       final tp=TextPainter(text:TextSpan(text:labels[i].replaceAll(' ','\n'),style:const TextStyle(fontSize:8,color:Colors.grey)),textDirection:TextDirection.ltr)..layout(maxWidth:bw);
       tp.paint(canvas,Offset(i*bw+2,size.height-22));
     }
