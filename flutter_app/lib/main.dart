@@ -27,14 +27,14 @@ class _TerminalState extends State<Terminal> {
   static const screens = <String>[
     'Dashboard','Market','Commodity','Signals','OI Lab','Watchlist','Search',
     'Charts','Option Chain','News','Market Details','Angel API','NSE',
-    'NSE MCP','Data','Instruments','Settings','More','Strategies','AI Analysis'
+    'NSE MCP','Data','Instruments','Settings','More','Strategies','AI Analysis','System Health'
   ];
   static const icons = <IconData>[
     Icons.dashboard, Icons.show_chart, Icons.precision_manufacturing,
     Icons.notifications_active, Icons.analytics, Icons.star, Icons.search,
     Icons.candlestick_chart, Icons.table_chart, Icons.article, Icons.info_outline,
     Icons.key, Icons.language, Icons.hub, Icons.storage, Icons.list_alt,
-    Icons.tune, Icons.more_horiz, Icons.schema, Icons.psychology
+    Icons.tune, Icons.more_horiz, Icons.schema, Icons.psychology, Icons.health_and_safety
   ];
   int selected = 0;
   String backendUrl = 'https://vandana1-angel-api.onrender.com';
@@ -62,6 +62,9 @@ class _TerminalState extends State<Terminal> {
   bool aiBusy = false;
   String aiFinal = 'WAIT';
   String aiError = '';
+  Map<String,dynamic> diagnostics = <String,dynamic>{};
+  Map<String,dynamic> latestAudit = <String,dynamic>{};
+  bool diagnosticsBusy = false;
   List<dynamic> aiProviders = <dynamic>[
     {'id':'gpt56-luna','name':'GPT-5.6 Luna','model':'gpt-5.6-luna','configured':false,'status':'Server key required'},
     {'id':'claude-sonnet','name':'Claude Sonnet 4.6','model':'claude-sonnet-4-6','configured':false,'status':'Server key required'},
@@ -81,6 +84,7 @@ class _TerminalState extends State<Terminal> {
     fetchTerminal();
     fetchStrategies();
     fetchAIStatus();
+    fetchDiagnostics();
     timer = Timer.periodic(const Duration(seconds: 5), (_) => fetchTerminal());
   }
   @override void dispose() { timer?.cancel(); super.dispose(); }
@@ -191,6 +195,7 @@ class _TerminalState extends State<Terminal> {
     if (selected == 17) return morePage();
     if (selected == 18) return strategiesPage();
     if (selected == 19) return aiAnalysisPage();
+    if (selected == 20) return systemHealthPage();
     return dataPage(screens[selected]);
   }
 
@@ -233,7 +238,7 @@ class _TerminalState extends State<Terminal> {
         ]),
       ]))),
       const SizedBox(height:10),
-      infoCard('Data policy','Real API/data only. No fabricated market values. Algorithm and Buy/Sell logic remain deferred.',Colors.blue),
+      infoCard('Data policy','Real API/data only. No fabricated market values. Strategy engine remains evidence-gated.',Colors.blue),
     ]);
   }
 
@@ -731,6 +736,44 @@ class _TerminalState extends State<Terminal> {
     return const Icon(Icons.remove_circle_outline, size: 18);
   }
 
+  Future<void> fetchDiagnostics() async {
+    if (diagnosticsBusy) return;
+    if (mounted) setState(() => diagnosticsBusy = true);
+    try {
+      final r = await http.get(
+        Uri.parse(backendUrl + '/v1/diagnostics'),
+        headers: <String,String>{'x-token':apiToken},
+      ).timeout(const Duration(seconds:8));
+      if (r.statusCode == 200 && mounted) {
+        final d = jsonDecode(r.body);
+        if (d is Map<String,dynamic>) setState(() => diagnostics = d);
+      }
+      final a = await http.get(
+        Uri.parse(backendUrl + '/v1/audit/latest'),
+        headers: <String,String>{'x-token':apiToken},
+      ).timeout(const Duration(seconds:8));
+      if (a.statusCode == 200 && mounted) {
+        final d = jsonDecode(a.body);
+        if (d is Map<String,dynamic>) setState(() => latestAudit = d);
+      }
+    } catch (_) {
+      if (mounted && diagnostics.isEmpty) {
+        setState(() => diagnostics = <String,dynamic>{'ok':false});
+      }
+    } finally {
+      if (mounted) setState(() => diagnosticsBusy = false);
+    }
+  }
+
+  Widget _healthTile(String title, String value, bool good) => Card(
+    child: ListTile(
+      leading: Icon(good ? Icons.check_circle : Icons.warning_amber_rounded,
+        color: good ? Colors.green : Colors.orange),
+      title: Text(title),
+      subtitle: Text(value),
+    ),
+  );
+
   Future<void> fetchAIStatus() async {
     try {
       final r = await http.get(Uri.parse(backendUrl + '/v1/ai/status'),
@@ -826,11 +869,93 @@ class _TerminalState extends State<Terminal> {
     );
   }
 
+  Widget systemHealthPage() {
+    final feeds = diagnostics['feeds'] is Map ? diagnostics['feeds'] as Map : <dynamic,dynamic>{};
+    final strategies = diagnostics['strategies'] is Map ? diagnostics['strategies'] as Map : <dynamic,dynamic>{};
+    final ai = diagnostics['ai'] is Map ? diagnostics['ai'] as Map : <dynamic,dynamic>{};
+    final angel = feeds['angel'] is Map ? feeds['angel'] as Map : <dynamic,dynamic>{};
+    final nse = feeds['nse'] is Map ? feeds['nse'] as Map : <dynamic,dynamic>{};
+    final mcp = feeds['nse_mcp'] is Map ? feeds['nse_mcp'] as Map : <dynamic,dynamic>{};
+    final freshness = angel['freshness'] is Map ? angel['freshness'] as Map : <dynamic,dynamic>{};
+    final signalAction = (latestAudit['action'] ?? 'WAIT').toString();
+    final reasons = latestAudit['reasons'] is List ? latestAudit['reasons'] as List : <dynamic>[];
+    final activeEvidence = latestAudit['active_evidence'] is List ? latestAudit['active_evidence'] as List : <dynamic>[];
+    return RefreshIndicator(
+      onRefresh: fetchDiagnostics,
+      child: ListView(
+        padding: const EdgeInsets.fromLTRB(12,10,12,24),
+        children: [
+          Row(children: [
+            const Expanded(child: Column(crossAxisAlignment:CrossAxisAlignment.start, children: [
+              Text('System Health', style:TextStyle(fontSize:24,fontWeight:FontWeight.bold)),
+              SizedBox(height:3),
+              Text('Read-only engine, feed and validation diagnostics', style:TextStyle(fontSize:11)),
+            ])),
+            IconButton(onPressed:fetchDiagnostics, icon:const Icon(Icons.refresh)),
+          ]),
+          const SizedBox(height:10),
+          _healthTile('Angel One',
+            'Status: '+(angel['connected'] == true ? 'Connected' : 'Not connected')+
+            ' • data age '+(freshness['age_sec'] ?? '—').toString()+' sec',
+            angel['connected'] == true && freshness['state'] != 'expired'),
+          _healthTile('NSE / MCP',
+            mcp['connected'] == true ? 'Connected' : 'Unavailable',
+            mcp['connected'] == true),
+          _healthTile('NSE data',
+            nse['connected'] == true ? 'No current error' : 'Data error',
+            nse['connected'] == true),
+          _healthTile('AI validation',
+            (ai['configured'] ?? 0).toString()+' / '+(ai['total'] ?? 0).toString()+' providers configured',
+            (ai['configured'] ?? 0) > 0),
+          const SizedBox(height:8),
+          Card(child:Padding(padding:const EdgeInsets.all(14),child:Column(
+            crossAxisAlignment:CrossAxisAlignment.start,
+            children:[
+              const Text('STRATEGY ENGINE',style:TextStyle(fontWeight:FontWeight.bold)),
+              const SizedBox(height:8),
+              row('Registered',strategies['registered']),
+              row('Evaluated',strategies['evaluated']),
+              row('Active evidence',strategies['active']),
+              row('Unavailable',strategies['unavailable']),
+              row('Not evaluated',strategies['not_evaluated']),
+            ],
+          ))),
+          const SizedBox(height:8),
+          Card(child:Padding(padding:const EdgeInsets.all(14),child:Column(
+            crossAxisAlignment:CrossAxisAlignment.start,
+            children:[
+              const Text('LATEST SIGNAL AUDIT',style:TextStyle(fontWeight:FontWeight.bold)),
+              const SizedBox(height:8),
+              Text(signalAction,style:const TextStyle(fontSize:22,fontWeight:FontWeight.bold)),
+              const SizedBox(height:5),
+              if(reasons.isEmpty) const Text('No evidence recorded yet.',style:TextStyle(fontSize:11)),
+              for(final x in reasons.take(10)) Padding(
+                padding:const EdgeInsets.symmetric(vertical:2),
+                child:Text('• '+x.toString(),style:const TextStyle(fontSize:11)),
+              ),
+              const SizedBox(height:6),
+              Text('Active evidence: '+activeEvidence.length.toString(),style:const TextStyle(fontSize:11)),
+            ],
+          ))),
+          const SizedBox(height:8),
+          FilledButton.icon(
+            onPressed:diagnosticsBusy?null:fetchDiagnostics,
+            icon:diagnosticsBusy?const SizedBox(width:18,height:18,child:CircularProgressIndicator(strokeWidth:2)):const Icon(Icons.health_and_safety),
+            label:Text(diagnosticsBusy?'CHECKING...':'RUN HEALTH CHECK'),
+          ),
+          const SizedBox(height:6),
+          infoCard('Safety rule','Diagnostics are read-only. Missing or stale data does not create a signal.',Colors.blue),
+        ],
+      ),
+    );
+  }
+
   Widget morePage() => ListView(padding: const EdgeInsets.all(16), children: <Widget>[
     const Text('More', style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
     const SizedBox(height: 12),
     infoCard('Order mode','No order placement. Live market workspace.',Colors.orange),
     infoCard('Security','Keep Angel credentials server-side and never commit secrets.',Colors.blue),
+    Card(child:ListTile(leading:const Icon(Icons.health_and_safety),title:const Text('System Health & Audit'),subtitle:const Text('Feed freshness • strategy evaluation • latest signal evidence'),trailing:const Icon(Icons.chevron_right),onTap:()=>setState(()=>selected=20))),
     infoCard('Navigation',screens.join(', '),Colors.blue),
   ]);
 
