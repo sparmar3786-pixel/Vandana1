@@ -62,7 +62,19 @@ jobs:
 
       - name: Validate Dart source
         working-directory: flutter_app
-        run: dart analyze --no-fatal-infos --no-fatal-warnings
+        run: |
+          set +e
+          dart analyze --no-fatal-infos --no-fatal-warnings 2>&1 | tee dart-analyze.txt
+          status=${PIPESTATUS[0]}
+          exit ${status}
+
+      - name: Upload Dart analyzer report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: dart-analyzer-report
+          path: flutter_app/dart-analyze.txt
+          if-no-files-found: warn
 
       - name: Build installable APK
         working-directory: flutter_app
