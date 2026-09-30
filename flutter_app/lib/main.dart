@@ -211,21 +211,19 @@ class _TerminalState extends State<Terminal> {
     if(mounted)setState((){});
   }
   Future<void> _openPuterAi(String tab) async {
+    if(aiRunning)return;
+    if(mounted)setState(()=>aiRunning=true);
     final snapshot=jsonEncode(<String,dynamic>{
-      'tab':tab,
-      'market':liveMarket,
-      'optionChain':liveOptionRows.take(80).toList(),
-      'signal':signal,
-      'memory':aiMemory.take(20).toList(),
+      'tab':tab,'market':liveMarket,'optionChain':liveOptionRows.take(80).toList(),
+      'signal':signal,'memory':aiMemory.take(20).toList(),
     });
     final controller=WebViewController()
       ..setJavaScriptMode(JavaScriptMode.unrestricted)
       ..setBackgroundColor(Colors.transparent)
       ..loadHtmlString('''<!doctype html><html><body style="font-family:Arial;background:#111;color:#eee;padding:16px">
-<h2>6 AI Validation • $tab</h2><div id="status">AI 1 collecting...</div><pre id="out" style="white-space:pre-wrap"></pre>
+<h2>6 AI Validation • $tab</h2><div id="status">Preparing 6 AI validation...</div><pre id="out" style="white-space:pre-wrap"></pre>
 <script src="https://js.puter.com/v2/"></script><script>
-const data=JSON.stringify("PLACEHOLDER");
-const out=document.getElementById('out'), status=document.getElementById('status');
+const data=JSON.stringify("PLACEHOLDER"),out=document.getElementById('out'),status=document.getElementById('status');
 const wanted=[
  {n:1,name:'GPT-5.6 Luna',id:'gpt-5.6-luna',provider:'openai',family:['gpt-5.6','luna'],keys:['gpt-5.6-luna','gpt-5.6 luna','luna']},
  {n:2,name:'Claude Sonnet 4.6',id:'claude-sonnet-4-6',provider:'anthropic',family:['claude-sonnet','sonnet'],keys:['claude-sonnet-4-6','claude sonnet 4.6']},
@@ -238,64 +236,43 @@ let available=[];
 function norm(v){return String(v||'').toLowerCase().trim().replace(/[^a-z0-9]+/g,'-');}
 function modelText(x){return [x?.id,x?.name,...(Array.isArray(x?.aliases)?x.aliases:[])].filter(Boolean).join(' ').toLowerCase();}
 async function resolveModel(w){
- if(!available.length){
-  try{available=await puter.ai.listModels();}catch(e){return null;}
- }
- const rows=Array.isArray(available)?available:[];
- const exactIds=[w.id,...w.keys].map(norm);
- const exact=rows.find(x=>exactIds.includes(norm(x?.id)));
- if(exact?.id)return exact.id;
- const keyMatch=rows.find(x=>{
-  const t=modelText(x);
-  return w.keys.some(k=>t.includes(String(k).toLowerCase()));
- });
- if(keyMatch?.id)return keyMatch.id;
+ if(!available.length){try{const list=await puter.ai.listModels();available=Array.isArray(list)?list:(Array.isArray(list?.models)?list.models:[]);}catch(e){return null;}}
+ const rows=available, exactIds=[w.id,...w.keys].map(norm);
+ const exact=rows.find(x=>exactIds.includes(norm(x?.id))); if(exact?.id)return exact.id;
+ const keyMatch=rows.find(x=>w.keys.some(k=>modelText(x).includes(String(k).toLowerCase()))); if(keyMatch?.id)return keyMatch.id;
  const providerRows=rows.filter(x=>norm(x?.provider)===norm(w.provider));
- const familyMatch=providerRows.find(x=>{
-  const t=modelText(x);
-  return w.family.some(k=>t.includes(String(k).toLowerCase())) &&
-         (!w.name.includes('GPT-5.6') || t.includes('gpt-5.6'));
- });
- if(familyMatch?.id)return familyMatch.id;
- return null;
+ const familyMatch=providerRows.find(x=>w.family.some(k=>modelText(x).includes(String(k).toLowerCase())) && (!w.name.includes('GPT-5.6')||modelText(x).includes('gpt-5.6')));
+ return familyMatch?.id||null;
 }
-function contentOf(r){
- const c=r?.message?.content;
- if(typeof c==='string')return c;
- if(Array.isArray(c))return c.map(x=>x?.text||'').filter(Boolean).join(' ');
- return r?.text||String(r||'');
-}
+function contentOf(r){const c=r?.message?.content;if(typeof c==='string')return c;if(Array.isArray(c))return c.map(x=>x?.text||'').filter(Boolean).join(' ');return r?.text||String(r||'');}
 async function ask(w,prompt){
  const model=await resolveModel(w);
- if(!model)return {name:w.name,model:'UNAVAILABLE',text:'MODEL UNAVAILABLE IN PUTER CATALOG — NO FALLBACK / NO FABRICATED RESPONSE'};
- try{
-  const r=await puter.ai.chat(prompt,{model:model,provider:w.provider,temperature:0.1,max_tokens:900,normalize:true});
-  return {name:w.name,model:model,text:contentOf(r)};
- }catch(e){
-  return {name:w.name,model:model,text:'MODEL REQUEST REJECTED: '+String(e?.message||e)};
- } 
+ if(!model)return {name:w.name,model:'UNAVAILABLE',text:'MODEL UNAVAILABLE IN PUTER CATALOG'};
+ try{const r=await puter.ai.chat(prompt,{model:model,provider:w.provider,temperature:0.1,max_tokens:900,normalize:true});return {name:w.name,model:model,text:contentOf(r)};}
+ catch(e){return {name:w.name,model:model,text:'MODEL REQUEST REJECTED: '+String(e?.message||e)};}
 }
 (async()=>{
  try{
-  status.textContent='AI 1 • GPT-5.6 Luna';
-  const a1=await ask(wanted[0],'Extract only facts from this live market snapshot. Do not invent prices or strikes. Identify candidate indices/strikes and missing data. SNAPSHOT: '+data);
-  status.textContent='AI 2 • Claude Sonnet 4.6';
-  const a2=await ask(wanted[1],'Cross-check the snapshot and AI 1 result. Reject unsupported strike/entry claims. Validate CALL vs PUT, OI/price flow, Greeks and freshness. Return verified findings only. SNAPSHOT: '+data+' AI 1: '+a1.text);
-  status.textContent='AI 3 • GPT-5.6 Sol';
-  const a3=await ask(wanted[2],'Validate the verified findings independently. Use only supplied data. Never invent strike, entry, SL, target or win rate. Identify contradictions. SNAPSHOT: '+data+' AI 1: '+a1.text+' AI 2: '+a2.text);
-  status.textContent='AI 4 • DeepSeek Chat';
-  const a4=await ask(wanted[3],'Act as the quantitative/OI auditor. Recalculate or cross-check option-flow logic, OI direction, Greeks and strike consistency using only supplied data. Reject unsupported numbers. SNAPSHOT: '+data+' PRIOR: '+a1.text+' | '+a2.text+' | '+a3.text);
-  status.textContent='AI 5 • Gemini 2.5 Flash';
-  const a5=await ask(wanted[4],'Act as the market-structure auditor. Cross-check index trend, option-chain context, support/resistance and freshness. Do not invent market data or trade levels. SNAPSHOT: '+data+' PRIOR: '+a2.text+' | '+a3.text+' | '+a4.text);
-  status.textContent='AI 6 • Grok 4';
-  const a6=await ask(wanted[5],'Act as the final risk challenger. Look for errors, stale data, unsupported CALL/PUT conclusions and missing evidence. Give only evidence-based validation. If no setup is fully supported, say WAIT / NO QUALIFYING TRADE. SNAPSHOT: '+data+' PRIOR: '+a3.text+' | '+a4.text+' | '+a5.text);
-  status.textContent='6 AI validation complete';
-  out.textContent='1. '+a1.name+'\\n'+a1.text+'\\n\\n2. '+a2.name+'\\n'+a2.text+'\\n\\n3. '+a3.name+'\\n'+a3.text+'\\n\\n4. '+a4.name+'\\n'+a4.text+'\\n\\n5. '+a5.name+'\\n'+a5.text+'\\n\\n6. '+a6.name+'\\n'+a6.text;
+  status.textContent='AI 1–5 • parallel validation running';
+  const prompts=[
+   'Extract only facts from this live market snapshot. Do not invent prices or strikes. Identify candidate indices/strikes and missing data. SNAPSHOT: '+data,
+   'Cross-check the snapshot independently. Reject unsupported strike/entry claims. Validate CALL vs PUT, OI/price flow, Greeks and freshness. Return verified findings only. SNAPSHOT: '+data,
+   'Validate the market snapshot independently. Use only supplied data. Never invent strike, entry, SL, target or win rate. Identify contradictions. SNAPSHOT: '+data,
+   'Act as the quantitative/OI auditor. Recalculate or cross-check option-flow logic, OI direction, Greeks and strike consistency using only supplied data. Reject unsupported numbers. SNAPSHOT: '+data,
+   'Act as the market-structure auditor. Cross-check index trend, option-chain context, support/resistance and freshness. Do not invent market data or trade levels. SNAPSHOT: '+data
+  ];
+  const firstFive=await Promise.all(wanted.slice(0,5).map((w,i)=>ask(w,prompts[i])));
+  status.textContent='AI 6 • final cross-verification / risk audit';
+  const prior=firstFive.map((x,i)=>'AI '+(i+1)+' '+x.name+': '+x.text).join('\n');
+  const a6=await ask(wanted[5],'Act as the final risk challenger and cross-verifier. Compare the live snapshot against all five independent AI findings below. Identify contradictions, stale data, unsupported CALL/PUT conclusions and missing evidence. Accept only evidence supported by the supplied snapshot. If no setup is fully supported, say WAIT / NO QUALIFYING TRADE. SNAPSHOT: '+data+'\n'+prior);
+  status.textContent='6 AI validation + cross-verification complete';
+  out.textContent=firstFive.map((x,i)=>(i+1)+'. '+x.name+'\n'+x.text).join('\n\n')+'\n\n6. '+a6.name+' • FINAL CROSS-VERIFICATION\n'+a6.text;
  }catch(e){status.textContent='Puter AI error';out.textContent=String(e);}
 })();
 </script></body></html>'''.replaceAll('PLACEHOLDER',snapshot));
-    if(!mounted)return;
+    if(!mounted){aiRunning=false;return;}
     await showModalBottomSheet<void>(context:context,isScrollControlled:true,builder:(_)=>SizedBox(height:MediaQuery.of(context).size.height*.82,child:WebViewWidget(controller:controller)));
+    if(mounted)setState(()=>aiRunning=false);
   }
   Future<void> _activateAi(String tab) async {
     await _saveAiMemory(DateTime.now().toIso8601String()+' • '+tab+' • market snapshot selected');
@@ -802,10 +779,10 @@ async function ask(w,prompt){
       Text(aiActiveTab.isEmpty?'Double-tap a tab/card to start.':'AI active for: '+aiActiveTab,style:const TextStyle(fontWeight:FontWeight.bold)),
       Text('Memory folder: app documents/ai_memory/market_memory.json • entries: '+aiMemory.length.toString(),style:const TextStyle(fontSize:11)),
       const SizedBox(height:8),
-      FilledButton.icon(onPressed:aiActiveTab.isEmpty?null:()=>_openPuterAi(aiActiveTab),icon:const Icon(Icons.auto_awesome),label:const Text('RUN ALL 6 AI')),
+      FilledButton.icon(onPressed:aiRunning?null:()=>_openPuterAi(aiActiveTab.isEmpty?'AI Analysis':aiActiveTab),icon:Icon(aiRunning?Icons.lock:Icons.auto_awesome),label:Text(aiRunning?'AI RUNNING • LOCKED':'RUN ALL 6 AI')),
       if(aiMemory.isNotEmpty)Text('Latest: '+aiMemory.last,style:const TextStyle(fontSize:10)),
     ]))),
-    Card(child:ListTile(leading:const Icon(Icons.verified_user),title:const Text('Cross-verification'),subtitle:Text(aiActiveTab.isEmpty?'Not started':'Collection → verification → validation queued for '+aiActiveTab),trailing:Icon(aiActiveTab.isEmpty?Icons.radio_button_unchecked:Icons.check_circle,color:aiActiveTab.isEmpty?Colors.grey:Colors.green))),
+    Card(child:ListTile(leading:const Icon(Icons.verified_user),title:const Text('Cross-verification'),subtitle:Text(aiRunning?'6-AI cross-verification running • locked':(aiActiveTab.isEmpty?'Ready to run 6-AI cross-verification':'Collection → verification → final risk audit for '+aiActiveTab)),trailing:Icon(aiRunning?Icons.lock:Icons.verified,color:aiRunning?Colors.orange:Colors.green),onTap:aiRunning?null:()=>_openPuterAi(aiActiveTab.isEmpty?'AI Analysis':aiActiveTab))),
     Card(child:Padding(padding:const EdgeInsets.all(12),child:SizedBox(height:150,child:CustomPaint(painter:LiquidityPainter(liveMarket.where((q)=>indexMatches(selectedMarketDetail,(q['tradingSymbol']??q['tradingsymbol']??q['symbol']??'').toString())).toList()))))),
     infoCard('BSE DISPLAY','SENSEX / BANKEX retain BSE identity whenever live payload supplies BSE exchange data.',Colors.blue),
   ]);
