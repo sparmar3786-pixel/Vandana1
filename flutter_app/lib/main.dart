@@ -35,7 +35,7 @@ class _TerminalState extends State<Terminal> {
     Icons.tune, Icons.more_horiz
   ];
   int selected = 0;
-  String backendUrl = 'http://192.168.1.10:8000';
+  String backendUrl = 'https://vandana1-angel-api.onrender.com';
   String apiToken = 'change-me';
   String connection = 'Connecting...';
   Map<String,dynamic>? signal;
