@@ -225,6 +225,35 @@ class _TerminalState extends State<Terminal> {
     } catch (_) {}
   }
 
+  Future<void> openQuoteChart(dynamic q) async {
+    final token=(q['symbolToken']??q['symboltoken']??q['token']??'').toString();
+    if(token.isEmpty)return;
+    selectedChartToken=token;
+    selectedChartExchange=(q['exchange']??'NSE').toString();
+    setState(()=>selected=7);
+    await fetchCandles();
+  }
+
+  Future<void> searchAndOpenCommodity(String query) async {
+    try {
+      final r=await http.get(Uri.parse(backendUrl+'/v1/angel/search?exchange=MCX&q='+Uri.encodeQueryComponent(query)),headers:<String,String>{'x-token':apiToken}).timeout(const Duration(seconds:10));
+      if(r.statusCode==200&&mounted){
+        final d=jsonDecode(r.body);
+        setState(()=>terminalData={'commoditySearch':d});
+        final rows=d is Map&&d['data'] is List?d['data']:<dynamic>[];
+        if(rows.isNotEmpty) await openSearchResult(rows.first,'MCX');
+      }
+    } catch (_) {}
+  }
+
+  Future<void> openSearchResult(dynamic x,String exchange) async {
+    final token=(x['symboltoken']??x['symbolToken']??x['token']??'').toString();
+    if(token.isEmpty)return;
+    selectedChartToken=token; selectedChartExchange=exchange;
+    setState(()=>selected=7);
+    await fetchCandles();
+  }
+
   Future<void> fetchCandles() async {
     setState(()=>angelDataBusy=true);
     try {
@@ -357,39 +386,48 @@ class _TerminalState extends State<Terminal> {
       ...((terminalData!['search']['data'] is List ? terminalData!['search']['data'] : <dynamic>[]).map((x)=>Card(child:ListTile(title:Text((x['tradingsymbol']??'-').toString()),subtitle:Text((x['exchange']??'').toString()+' • Token '+(x['symboltoken']??'-').toString()))))),
   ]);
 
-  Widget chartsPage() => ListView(padding:const EdgeInsets.all(16),children:<Widget>[
-    const Text('Charts',style:TextStyle(fontSize:24,fontWeight:FontWeight.bold)),
+  Widget chartsPage() => ListView(padding:const EdgeInsets.fromLTRB(12,10,12,20),children:<Widget>[
+    Row(children:[const Expanded(child:Text('Charts',style:TextStyle(fontSize:23,fontWeight:FontWeight.bold))),IconButton(onPressed:fetchCandles,icon:const Icon(Icons.refresh))]),
+    infoCard('Angel One chart','Historical candles • pinch/zoom • landscape full-screen supported.',Colors.blue),
+    const SizedBox(height:6),
+    Wrap(spacing:6,runSpacing:6,children:[
+      for(final x in const ['1m','3m','5m','10m','15m','30m','1H','1D'])ChoiceChip(label:Text(x),selected:selectedInterval=={'1m':'ONE_MINUTE','3m':'THREE_MINUTE','5m':'FIVE_MINUTE','10m':'TEN_MINUTE','15m':'FIFTEEN_MINUTE','30m':'THIRTY_MINUTE','1H':'ONE_HOUR','1D':'ONE_DAY'}[x],onSelected:(_){final m={'1m':'ONE_MINUTE','3m':'THREE_MINUTE','5m':'FIVE_MINUTE','10m':'TEN_MINUTE','15m':'FIFTEEN_MINUTE','30m':'THIRTY_MINUTE','1H':'ONE_HOUR','1D':'ONE_DAY'};setState(()=>selectedInterval=m[x]!);fetchCandles();}),
+    ]),
     const SizedBox(height:8),
-    infoCard('Chart source','Angel One SmartAPI Historical API',Colors.blue),
-    DropdownButton<String>(value:selectedInterval,items:const[
-      DropdownMenuItem(value:'ONE_MINUTE',child:Text('1 Minute')),
-      DropdownMenuItem(value:'THREE_MINUTE',child:Text('3 Minute')),
-      DropdownMenuItem(value:'FIVE_MINUTE',child:Text('5 Minute')),
-      DropdownMenuItem(value:'TEN_MINUTE',child:Text('10 Minute')),
-      DropdownMenuItem(value:'FIFTEEN_MINUTE',child:Text('15 Minute')),
-      DropdownMenuItem(value:'THIRTY_MINUTE',child:Text('30 Minute')),
-      DropdownMenuItem(value:'ONE_HOUR',child:Text('1 Hour')),
-      DropdownMenuItem(value:'ONE_DAY',child:Text('1 Day')),
-    ],onChanged:(v){if(v!=null){setState(()=>selectedInterval=v);fetchCandles();}}),
-    SizedBox(height:260,child:liveCandles.isEmpty?const Center(child:Text('Press refresh to load Angel candles.')):CustomPaint(painter:CandlePainter(liveCandles))),
-    FilledButton.icon(onPressed:fetchCandles,icon:const Icon(Icons.refresh),label:Text(angelDataBusy?'LOADING...':'REFRESH ANGEL CHART')),
+    const Text('INDICATORS',style:TextStyle(fontWeight:FontWeight.bold)),
+    Wrap(spacing:6,runSpacing:6,children:[
+      for(final x in const ['EMA 8','EMA 13','SMA 20','SMA 50','VWAP','RSI 14','MACD','Bollinger','Volume','ATR 14'])FilterChip(label:Text(x),selected:selectedIndicators.contains(x),onSelected:(v)=>setState(()=>v?selectedIndicators.add(x):selectedIndicators.remove(x))),
+    ]),
     const SizedBox(height:8),
-    const Text('Default index token: NIFTY 50 • 99926000'),
+    Card(child:Padding(padding:const EdgeInsets.all(8),child:Column(children:[
+      SizedBox(height:300,width:double.infinity,child:liveCandles.isEmpty?const Center(child:Text('No candle payload yet.')):CustomPaint(painter:CandlePainter(liveCandles))),
+      const SizedBox(height:4),const Text('Tip: open an index/commodity from Market or Search for full-screen landscape chart.',style:TextStyle(fontSize:11)),
+    ]))),
+    FilledButton.icon(onPressed:fetchCandles,icon:const Icon(Icons.candlestick_chart),label:Text(angelDataBusy?'LOADING...':'REFRESH ANGEL CHART')),
   ]);
 
-  Widget optionChain() => ListView(padding:const EdgeInsets.all(16),children:<Widget>[
-    const Text('Option Chain',style:TextStyle(fontSize:24,fontWeight:FontWeight.bold)),
+  Widget optionChain() => ListView(padding:const EdgeInsets.fromLTRB(12,10,12,20),children:<Widget>[
+    Row(children:[const Expanded(child:Text('Option Chain',style:TextStyle(fontSize:23,fontWeight:FontWeight.bold))),IconButton(onPressed:fetchOptionRows,icon:const Icon(Icons.refresh))]),
+    const Text('Trading underlyings only • CE / PE • OI / LTP / Volume',style:TextStyle(fontSize:12)),
     const SizedBox(height:8),
-    infoCard('Live source','Angel One SmartAPI NFO FULL market data • OI/LTP/volume',Colors.blue),
-    if(liveOptionRows.isEmpty) infoCard('Option chain','Press refresh to fetch live CE/PE rows around ATM.',Colors.orange),
+    SingleChildScrollView(scrollDirection:Axis.horizontal,child:Row(children:[
+      for(final f in const ['ALL','NIFTY','BANKNIFTY','FINNIFTY','MIDCPNIFTY','SENSEX','BANKEX'])Padding(padding:const EdgeInsets.only(right:6),child:ChoiceChip(label:Text(f),selected:optionFilter==f,onSelected:(_)=>setState(()=>optionFilter=f))),
+    ])),
+    const SizedBox(height:8),
+    Card(child:Padding(padding:const EdgeInsets.all(10),child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
+      const Text('UNDERLYING GROUPS',style:TextStyle(fontWeight:FontWeight.bold)),
+      const SizedBox(height:6),
+      Wrap(spacing:6,runSpacing:6,children:const[Chip(label:Text('NSE • NIFTY')),Chip(label:Text('NSE • BANK NIFTY')),Chip(label:Text('NSE • FINNIFTY')),Chip(label:Text('BSE • SENSEX')),Chip(label:Text('BSE • BANKEX'))]),
+    ]))),
+    if(liveOptionRows.isEmpty) infoCard('Option chain','Live CE/PE payload will appear here after the selected underlying is available from Angel One.',Colors.orange),
     ...liveOptionRows.map((r)=>Card(child:ListTile(
       title:Text((r['strike']??'-').toString()+' '+(r['type']??'').toString()),
-      subtitle:Text('LTP '+(r['ltp']??'-').toString()+' • OI '+(r['oi']??'-').toString()+' • Vol '+(r['volume']??'-').toString()),
-      trailing:Text((r['buyQty']??'-').toString()+' / '+(r['sellQty']??'-').toString()),
+      subtitle:Text('LTP '+(r['ltp']??'—').toString()+' • OI '+(r['oi']??'—').toString()+' • Vol '+(r['volume']??'—').toString()),
+      trailing:IconButton(onPressed:()=>openQuoteChart(r),icon:const Icon(Icons.candlestick_chart)),
     ))),
-    FilledButton.icon(onPressed:fetchOptionRows,icon:const Icon(Icons.refresh),label:Text(angelDataBusy?'LOADING...':'REFRESH ANGEL OPTION CHAIN')),
-    const SizedBox(height:8),
-    FilledButton.icon(onPressed:connection=='Connected'?downloadNseCsv:null,icon:const Icon(Icons.download),label:const Text('DOWNLOAD NSE OPTION CHAIN CSV')),
+    FilledButton.icon(onPressed:fetchOptionRows,icon:const Icon(Icons.download_for_offline),label:Text(angelDataBusy?'LOADING...':'LOAD ANGEL OPTION CHAIN')),
+    const SizedBox(height:6),
+    OutlinedButton.icon(onPressed:connection=='Connected'?downloadNseCsv:null,icon:const Icon(Icons.download),label:const Text('DOWNLOAD NSE CSV')),
   ]);
 
   Widget newsPage() => ListView(padding:const EdgeInsets.all(16),children:<Widget>[
