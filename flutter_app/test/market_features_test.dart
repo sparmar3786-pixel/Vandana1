@@ -15,6 +15,21 @@ void main() {
     expect(liquidityMetric({'foo': 1}), isNull);
   });
 
+  test('trend and option movement are derived from live values', () {
+    expect(trendState({'percentChange': 1.2}, marketClosed: false), 'UP');
+    expect(trendState({'percentChange': -1.2}, marketClosed: false), 'DOWN');
+    expect(trendState({'percentChange': 1.2}, marketClosed: true), 'CLOSE');
+    expect(optionMoveState({'oiChange': 10, 'priceChange': -2}), 'OI↑ PRICE↓');
+    expect(optionMoveState({'oiChange': 10, 'priceChange': 2}), 'OI↑ PRICE↑');
+    expect(optionMoveState({'oiChange': -10, 'priceChange': -2}), 'OI↓ PRICE↓');
+  });
+
+  test('priority only exists when a real score is supplied', () {
+    expect(optionPriority({'signalScore': 91}), 1);
+    expect(optionPriority({'signalScore': 68}), 4);
+    expect(optionPriority({'oiChange': 10}), isNull);
+  });
+
   test('optionChainCount is production-sized', () {
     expect(optionChainCount, greaterThanOrEqualTo(100));
   });
