@@ -518,6 +518,56 @@ class _TerminalState extends State<Terminal> {
 
 
 
+
+class AdvancedChartScreen extends StatefulWidget {
+  final String title, exchange, token, interval, backendUrl, apiToken;
+  final int days;
+  final List<dynamic> candles;
+  const AdvancedChartScreen({super.key,required this.title,required this.exchange,required this.token,required this.candles,required this.interval,required this.days,required this.backendUrl,required this.apiToken});
+  @override State<AdvancedChartScreen> createState()=>_AdvancedChartScreenState();
+}
+class _AdvancedChartScreenState extends State<AdvancedChartScreen> {
+  late String interval; late int days; List<dynamic> rows=[]; bool loading=false;
+  final Set<String> indicators={'EMA 8','EMA 13','SMA 20','VWAP','Bollinger','Volume','RSI 14'};
+  @override void initState(){super.initState();interval=widget.interval;days=widget.days;rows=widget.candles;SystemChrome.setPreferredOrientations(const [DeviceOrientation.landscapeLeft,DeviceOrientation.landscapeRight]);if(rows.isEmpty)load();}
+  @override void dispose(){SystemChrome.setPreferredOrientations(const [DeviceOrientation.portraitUp,DeviceOrientation.portraitDown]);super.dispose();}
+  Future<void> load() async {setState(()=>loading=true);try{final u=widget.backendUrl+'/v1/angel/candles?exchange='+widget.exchange+'&token='+widget.token+'&interval='+interval+'&days='+days.toString();final r=await http.get(Uri.parse(u),headers:<String,String>{'x-token':widget.apiToken}).timeout(const Duration(seconds:20));if(r.statusCode==200){final d=jsonDecode(r.body);final x=d is Map&&d['data'] is List?d['data']:<dynamic>[];if(mounted)setState(()=>rows=x is List?x:[]);}}catch(_){}if(mounted)setState(()=>loading=false);}
+  void toggle(String n){setState(()=>indicators.contains(n)?indicators.remove(n):indicators.add(n));}
+  @override Widget build(BuildContext context)=>Scaffold(backgroundColor:const Color(0xff080b10),appBar:AppBar(title:Text(widget.title+' • '+widget.exchange),backgroundColor:const Color(0xff0d1117),actions:[
+    DropdownButton<String>(value:interval,dropdownColor:const Color(0xff151a21),items:const[
+      DropdownMenuItem(value:'ONE_MINUTE',child:Text('1m')),DropdownMenuItem(value:'THREE_MINUTE',child:Text('3m')),DropdownMenuItem(value:'FIVE_MINUTE',child:Text('5m')),DropdownMenuItem(value:'TEN_MINUTE',child:Text('10m')),DropdownMenuItem(value:'FIFTEEN_MINUTE',child:Text('15m')),DropdownMenuItem(value:'THIRTY_MINUTE',child:Text('30m')),DropdownMenuItem(value:'ONE_HOUR',child:Text('1H')),DropdownMenuItem(value:'ONE_DAY',child:Text('1D'))],onChanged:(v){if(v!=null){setState(()=>interval=v);load();}}),
+    const SizedBox(width:8),IconButton(onPressed:load,icon:const Icon(Icons.refresh)),IconButton(onPressed:()=>Navigator.pop(context),icon:const Icon(Icons.close))
+  ]),body:Column(children:[
+    SizedBox(height:46,child:ListView(scrollDirection:Axis.horizontal,padding:const EdgeInsets.symmetric(horizontal:8),children:[
+      for(final n in const ['EMA 8','EMA 13','SMA 20','SMA 50','SMA 200','VWAP','Bollinger','Volume','RSI 14','MACD','Stochastic 14','ATR 14'])Padding(padding:const EdgeInsets.symmetric(horizontal:3,vertical:5),child:FilterChip(label:Text(n),selected:indicators.contains(n),onSelected:(_)=>toggle(n)))
+    ])),
+    Expanded(child:loading?const Center(child:CircularProgressIndicator()):rows.isEmpty?const Center(child:Text('No Angel One candle data returned.')):LayoutBuilder(builder:(context,box){final width=math.max(box.maxWidth,rows.length*7.0);return InteractiveViewer(minScale:.6,maxScale:4,panEnabled:true,scaleEnabled:true,boundaryMargin:const EdgeInsets.all(500),child:SizedBox(width:width,height:box.maxHeight,child:CustomPaint(painter:AdvancedCandlePainter(rows,indicators))));})),
+    Container(height:26,alignment:Alignment.centerLeft,padding:const EdgeInsets.symmetric(horizontal:10),child:Text(loading?'Loading…':rows.isEmpty?'No data':'1 candles • Angel One historical API • Pinch/drag to explore • Indicators calculated from returned candles',style:const TextStyle(fontSize:11,color:Colors.white70)))
+  ]));
+}
+List<double?> _series(List<dynamic> rows,int field)=>rows.map<double?>((r)=>r is List&&r.length>field&&r[field] is num?(r[field]as num).toDouble():null).toList();
+List<double?> _sma(List<double?> v,int n){final o=List<double?>.filled(v.length,null);double sum=0;int count=0;for(int i=0;i<v.length;i++){final x=v[i];if(x!=null){sum+=x;count++;}if(i>=n){final z=v[i-n];if(z!=null){sum-=z;count--;}}if(i>=n-1&&count==n)o[i]=sum/n;}return o;}
+List<double?> _ema(List<double?> v,int n){final o=List<double?>.filled(v.length,null);double? p;final k=2/(n+1);for(int i=0;i<v.length;i++){final x=v[i];if(x==null)continue;p=p==null?x:x*k+p!*(1-k);o[i]=p;}return o;}
+List<double?> _vwap(List<dynamic> rows){final o=List<double?>.filled(rows.length,null);double pv=0,vol=0;for(int i=0;i<rows.length;i++){final r=rows[i];if(r is List&&r.length>=6){final h=(r[2]as num).toDouble(),l=(r[3]as num).toDouble(),c=(r[4]as num).toDouble(),v=(r[5]as num).toDouble();pv+=((h+l+c)/3)*v;vol+=v;o[i]=vol==0?c:pv/vol;}}return o;}
+List<double?> _rsi(List<double?> c,int n){final o=List<double?>.filled(c.length,null);double gain=0,loss=0;for(int i=1;i<c.length;i++){if(c[i]==null||c[i-1]==null)continue;final d=c[i]!-c[i-1]!;gain+=math.max(d,0);loss+=math.max(-d,0);if(i>=n){final p=c[i-n],q=c[i-n-1];if(p!=null&&q!=null){final z=p-q;gain-=math.max(z,0);loss-=math.max(-z,0);}}if(i>=n){final rs=loss==0?100:gain/loss;o[i]=100-(100/(1+rs));}}return o;}
+class AdvancedCandlePainter extends CustomPainter {
+  final List<dynamic> rows;final Set<String> ind;AdvancedCandlePainter(this.rows,this.ind);
+  @override void paint(Canvas canvas,Size size){
+    final valid=rows.where((r)=>r is List&&r.length>=5).toList();if(valid.isEmpty)return;
+    final close=_series(valid,4),high=_series(valid,2),low=_series(valid,3);final overlays=<List<double?>>[];
+    if(ind.contains('EMA 8'))overlays.add(_ema(close,8));if(ind.contains('EMA 13'))overlays.add(_ema(close,13));if(ind.contains('SMA 20'))overlays.add(_sma(close,20));if(ind.contains('SMA 50'))overlays.add(_sma(close,50));if(ind.contains('SMA 200'))overlays.add(_sma(close,200));if(ind.contains('VWAP'))overlays.add(_vwap(valid));
+    if(ind.contains('Bollinger')){final m=_sma(close,20);final sd=List<double?>.filled(close.length,null);for(int i=19;i<close.length;i++){final a=close.sublist(i-19,i+1).whereType<double>().toList();if(a.length==20){final av=a.reduce((x,z)=>x+z)/20;sd[i]=math.sqrt(a.map((x)=>(x-av)*(x-av)).reduce((x,z)=>x+z)/20);}}overlays.add(List<double?>.generate(close.length,(i)=>m[i]==null||sd[i]==null?null:m[i]!+2*sd[i]!));overlays.add(List<double?>.generate(close.length,(i)=>m[i]==null||sd[i]==null?null:m[i]!-2*sd[i]!));}
+    double minV=double.infinity,maxV=-double.infinity;for(final x in low)if(x!=null)minV=math.min(minV,x);for(final x in high)if(x!=null)maxV=math.max(maxV,x);for(final a in overlays)for(final x in a)if(x!=null){minV=math.min(minV,x);maxV=math.max(maxV,x);}
+    final osc=ind.contains('RSI 14')||ind.contains('MACD')||ind.contains('Stochastic 14')||ind.contains('ATR 14');final chartH=osc?size.height*.76:size.height*.88;final range=math.max(maxV-minV,.01);final w=math.max(4.0,size.width/valid.length);
+    final grid=Paint()..color=Colors.white12..strokeWidth=.6;for(int i=0;i<6;i++){final yy=chartH*i/5;canvas.drawLine(Offset(0,yy),Offset(size.width,yy),grid);}double y(double v)=>chartH-(v-minV)/range*chartH;
+    final wick=Paint()..strokeWidth=1,body=Paint()..strokeWidth=math.max(2,w*.55);
+    double maxVol=1;for(final r in valid)if(r is List&&r.length>=6&&r[5] is num)maxVol=math.max(maxVol,(r[5]as num).toDouble());
+    for(int i=0;i<valid.length;i++){final r=valid[i];final o=(r[1]as num).toDouble(),h=(r[2]as num).toDouble(),l=(r[3]as num).toDouble(),cl=(r[4]as num).toDouble();final x=i*w+w/2,up=cl>=o;wick.color=up?Colors.greenAccent:Colors.redAccent;body.color=wick.color;canvas.drawLine(Offset(x,y(h)),Offset(x,y(l)),wick);canvas.drawLine(Offset(x,y(o)),Offset(x,y(cl)),body);if(ind.contains('Volume')&&r is List&&r.length>=6&&r[5] is num){final vh=chartH+(r[5]as num).toDouble()/maxVol*(size.height-chartH-5);final vp=Paint()..color=(up?Colors.green:Colors.red).withOpacity(.35);canvas.drawRect(Rect.fromLTRB(x-w*.35,chartH,x+w*.35,vh),vp);}}
+    final colors=[Colors.cyanAccent,Colors.amberAccent,Colors.purpleAccent,Colors.orangeAccent,Colors.pinkAccent,Colors.lightBlueAccent,Colors.white70,Colors.blueGrey];for(int k=0;k<overlays.length;k++){final p=Paint()..color=colors[k%colors.length]..strokeWidth=1.2;final a=overlays[k];for(int i=1;i<a.length;i++)if(a[i-1]!=null&&a[i]!=null)canvas.drawLine(Offset((i-1)*w+w/2,y(a[i-1]!)),Offset(i*w+w/2,y(a[i]!)),p);}
+    if(osc&&ind.contains('RSI 14')){final top=chartH+5,ph=size.height-top-5,r=_rsi(close,14),p=Paint()..color=Colors.orangeAccent..strokeWidth=1.2;for(int i=1;i<r.length;i++)if(r[i-1]!=null&&r[i]!=null){double yy(double z)=>top+ph-(z/100)*ph;canvas.drawLine(Offset((i-1)*w+w/2,yy(r[i-1]!)),Offset(i*w+w/2,yy(r[i]!)),p);}}
+  }
+  @override bool shouldRepaint(covariant AdvancedCandlePainter old)=>old.rows!=rows||old.ind!=ind;
+}
 class CandlePainter extends CustomPainter {
   final List<dynamic> rows;
   CandlePainter(this.rows);
