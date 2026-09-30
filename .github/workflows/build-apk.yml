@@ -23,7 +23,7 @@ jobs:
 
       - name: Validate strategy registry
         working-directory: backend
-        run: python -m unittest test_strategy_registry.py
+        run: python -m unittest discover -s . -p "test_*.py"
 
       - name: Set up Flutter
         uses: subosito/flutter-action@v2
