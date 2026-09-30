@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
 import 'package:file_saver/file_saver.dart';
 
@@ -48,6 +49,8 @@ class _TerminalState extends State<Terminal> {
   List<dynamic> liveCandles = <dynamic>[];
   List<dynamic> liveOptionRows = <dynamic>[];
   List<dynamic> liveOIBuild = <dynamic>[];
+  List<dynamic> liveIndices = <dynamic>[];
+  int selectedChartDays = 30;
   String selectedChartToken = '99926000';
   String selectedChartExchange = 'NSE';
   String selectedInterval = 'FIVE_MINUTE';
@@ -81,7 +84,7 @@ class _TerminalState extends State<Terminal> {
         connection = response.statusCode == 200 && conn is Map && conn['server'] == true && conn['angel'] == true ? 'Connected' : response.statusCode == 200 && conn is Map && conn['server'] == true ? 'Backend connected / Angel not connected' : 'HTTP ' + response.statusCode.toString();
         nseMcpStatus = m is Map && m['connected'] == true ? 'Connected' : 'Not connected';
       });
-      if (angel) await fetchAngelMarket();
+      if (angel) { await fetchAngelMarket(); await fetchAngelIndices(); }
     } catch (_) {
       if (mounted) setState(() => connection = 'Backend not connected');
     }
@@ -203,6 +206,33 @@ class _TerminalState extends State<Terminal> {
     } catch (_) {}
   }
 
+
+  Future<void> fetchAngelIndices() async {
+    try {
+      final r=await http.get(Uri.parse(backendUrl+'/v1/angel/indices'),headers:<String,String>{'x-token':apiToken}).timeout(const Duration(seconds:12));
+      if(r.statusCode==200){
+        final d=jsonDecode(r.body);
+        final rows=d is Map && d['data'] is List ? d['data'] : <dynamic>[];
+        if(mounted) setState(()=>liveIndices=rows is List ? rows : <dynamic>[]);
+      }
+    } catch (_) {}
+  }
+
+  Future<void> selectIndex(dynamic item) async {
+    final token=(item['token']??'').toString();
+    final exchange=(item['exchange']??'NSE').toString();
+    if(token.isEmpty)return;
+    setState((){selectedChartToken=token;selectedChartExchange=exchange;selected=7;});
+    await fetchCandles();
+    if(!mounted)return;
+    Navigator.of(context).push(MaterialPageRoute(builder:(_)=>AdvancedChartScreen(
+      title:(item['name']??item['symbol']??'Index').toString(),
+      exchange:exchange, token:token, candles:liveCandles,
+      interval:selectedInterval, days:selectedChartDays,
+      backendUrl:backendUrl, apiToken:apiToken,
+    )));
+  }
+
   Future<void> fetchCandles() async {
     setState(()=>angelDataBusy=true);
     try {
@@ -255,10 +285,20 @@ class _TerminalState extends State<Terminal> {
   Widget marketPage() => ListView(padding:const EdgeInsets.all(16),children:<Widget>[
     const Text('Market',style:TextStyle(fontSize:24,fontWeight:FontWeight.bold)),
     const SizedBox(height:8),
-    infoCard('Data source','Angel One SmartAPI • Live Market Data API',Colors.blue),
-    ...liveMarket.map(indexCard),
-    if(liveMarket.isEmpty) infoCard('Live market','Connect Angel One to load NIFTY, BANKNIFTY, FINNIFTY and SENSEX.',Colors.orange),
-    FilledButton.icon(onPressed:fetchAngelMarket,icon:const Icon(Icons.refresh),label:const Text('REFRESH ANGEL DATA')),
+    infoCard('Data source','Angel One SmartAPI • Indian Indices',Colors.blue),
+    const Text('INDIAN INDICES',style:TextStyle(fontSize:16,fontWeight:FontWeight.bold)),
+    const SizedBox(height:6),
+    if(liveIndices.isEmpty) infoCard('Indices','Connect Angel One to load the complete index universe.',Colors.orange),
+    ...liveIndices.map((x)=>Card(child:ListTile(
+      title:Text((x['name']??x['symbol']??'-').toString(),style:const TextStyle(fontWeight:FontWeight.bold)),
+      subtitle:Text((x['exchange']??'').toString()+' • Tap to open chart'),
+      trailing:Text((x['ltp']??'-').toString(),style:const TextStyle(fontSize:17,fontWeight:FontWeight.bold)),
+      onTap:()=>selectIndex(x),
+    ))),
+    FilledButton.icon(onPressed:fetchAngelIndices,icon:const Icon(Icons.refresh),label:const Text('REFRESH ALL INDIAN INDICES')),
+    const SizedBox(height:14),
+    const Text('COMMODITY',style:TextStyle(fontSize:16,fontWeight:FontWeight.bold)),
+    infoCard('Separate segment','MCX commodities remain in the Commodity tab.',Colors.green),
   ]);
 
   Widget commodityPage() => ListView(padding:const EdgeInsets.all(16),children:<Widget>[
@@ -314,21 +354,49 @@ class _TerminalState extends State<Terminal> {
   Widget chartsPage() => ListView(padding:const EdgeInsets.all(16),children:<Widget>[
     const Text('Charts',style:TextStyle(fontSize:24,fontWeight:FontWeight.bold)),
     const SizedBox(height:8),
-    infoCard('Chart source','Angel One SmartAPI Historical API',Colors.blue),
-    DropdownButton<String>(value:selectedInterval,items:const[
-      DropdownMenuItem(value:'ONE_MINUTE',child:Text('1 Minute')),
-      DropdownMenuItem(value:'THREE_MINUTE',child:Text('3 Minute')),
-      DropdownMenuItem(value:'FIVE_MINUTE',child:Text('5 Minute')),
-      DropdownMenuItem(value:'TEN_MINUTE',child:Text('10 Minute')),
-      DropdownMenuItem(value:'FIFTEEN_MINUTE',child:Text('15 Minute')),
-      DropdownMenuItem(value:'THIRTY_MINUTE',child:Text('30 Minute')),
-      DropdownMenuItem(value:'ONE_HOUR',child:Text('1 Hour')),
-      DropdownMenuItem(value:'ONE_DAY',child:Text('1 Day')),
-    ],onChanged:(v){if(v!=null){setState(()=>selectedInterval=v);fetchCandles();}}),
-    SizedBox(height:260,child:liveCandles.isEmpty?const Center(child:Text('Press refresh to load Angel candles.')):CustomPaint(painter:CandlePainter(liveCandles))),
-    FilledButton.icon(onPressed:fetchCandles,icon:const Icon(Icons.refresh),label:Text(angelDataBusy?'LOADING...':'REFRESH ANGEL CHART')),
+    infoCard('Angel One Chart Engine','Historical candles from SmartAPI • interactive full-screen chart',Colors.blue),
+    DropdownButtonFormField<String>(
+      value:selectedInterval,
+      decoration:const InputDecoration(labelText:'Timeframe',border:OutlineInputBorder()),
+      items:const[
+        DropdownMenuItem(value:'ONE_MINUTE',child:Text('1 Minute')),
+        DropdownMenuItem(value:'THREE_MINUTE',child:Text('3 Minute')),
+        DropdownMenuItem(value:'FIVE_MINUTE',child:Text('5 Minute')),
+        DropdownMenuItem(value:'TEN_MINUTE',child:Text('10 Minute')),
+        DropdownMenuItem(value:'FIFTEEN_MINUTE',child:Text('15 Minute')),
+        DropdownMenuItem(value:'THIRTY_MINUTE',child:Text('30 Minute')),
+        DropdownMenuItem(value:'ONE_HOUR',child:Text('1 Hour')),
+        DropdownMenuItem(value:'ONE_DAY',child:Text('1 Day')),
+      ],
+      onChanged:(v){if(v!=null){setState(()=>selectedInterval=v);fetchCandles();}}
+    ),
     const SizedBox(height:8),
-    const Text('Default index token: NIFTY 50 • 99926000'),
+    DropdownButtonFormField<int>(
+      value:selectedChartDays,
+      decoration:const InputDecoration(labelText:'Historical range (days)',border:OutlineInputBorder()),
+      items:const[1,7,30,100,200,400,1000,2000].map((d)=>DropdownMenuItem(value:d,child:Text('$d days'))).toList(),
+      onChanged:(v){if(v!=null){setState(()=>selectedChartDays=v);fetchCandles();}}
+    ),
+    const SizedBox(height:10),
+    FilledButton.icon(onPressed:fetchAngelIndices,icon:const Icon(Icons.refresh),label:const Text('REFRESH INDIAN INDICES')),
+    const SizedBox(height:8),
+    if(liveIndices.isEmpty) infoCard('Indian Indices','No index payload received yet. Connect Angel One and refresh.',Colors.orange),
+    ...liveIndices.map((x)=>Card(
+      child:ListTile(
+        leading:const Icon(Icons.show_chart),
+        title:Text((x['name']??x['symbol']??'-').toString()),
+        subtitle:Text((x['exchange']??'').toString()+' • '+(x['token']??'').toString()),
+        trailing:Text((x['ltp']??'-').toString()),
+        onTap:()=>selectIndex(x),
+      )
+    )),
+    const SizedBox(height:8),
+    infoCard('Chart interaction','Tap any index → full-screen landscape chart. Pinch to zoom, drag to pan, choose indicators and timeframe.',Colors.green),
+    FilledButton.icon(
+      onPressed:liveIndices.isNotEmpty?()=>selectIndex(liveIndices.first):null,
+      icon:const Icon(Icons.fullscreen),
+      label:const Text('OPEN FULL ANGEL-STYLE CHART')
+    ),
   ]);
 
   Widget optionChain() => ListView(padding:const EdgeInsets.all(16),children:<Widget>[
