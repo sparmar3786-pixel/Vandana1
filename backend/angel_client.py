@@ -170,43 +170,59 @@ class AngelClient:
                              "volume":q.get("tradeVolume"),"oi":q.get("opnInterest")})
         return {"data":{"fetched":rows,"unfetched":[]},"instruments":selected}
 
-    def option_chain_rows(self, around=None, count=10):
+    def option_chain_rows(self, symbol=None, around=None, count=10):
         self.require_api()
-        if not self.chain:
-            self.build_chain()
-        spot=self.spot()
-        atm=around if around is not None else min(self.strikes,key=lambda s:abs(s-spot))
-        idx=min(range(len(self.strikes)),key=lambda i:abs(self.strikes[i]-atm))
-        selected=self.strikes[max(0,idx-int(count)):idx+int(count)+1]
+        symbol=(symbol or C.SYMBOL).upper()
+        exchange="BFO" if symbol in ("SENSEX","BANKEX") else "NFO"
+        master=self._master()
+        rows=[r for r in master if str(r.get("name","")).upper()==symbol and r.get("exch_seg")==exchange and r.get("instrumenttype")=="OPTIDX"]
+        def exp(r): return dt.datetime.strptime(r["expiry"],"%d%b%Y").date()
+        today=dt.date.today()
+        expiries=sorted({exp(r) for r in rows if r.get("expiry") and exp(r)>=today})
+        if not expiries: raise RuntimeError(f"No active {symbol} option expiry found.")
+        expiry=expiries[0]
+        chain={}
+        for r in rows:
+            if exp(r)!=expiry: continue
+            try: strike=float(r["strike"])/100
+            except Exception: continue
+            typ=str(r.get("symbol",""))[-2:]
+            if typ in ("CE","PE"): chain[(strike,typ)]={"token":r["token"],"symbol":r["symbol"]}
+        strikes=sorted({k[0] for k in chain})
+        index_rows=[r for r in master if str(r.get("name","")).upper()==symbol and str(r.get("exch_seg","")).upper() in ("NSE","BSE")]
+        if not index_rows: raise RuntimeError(f"No live index token found for {symbol}.")
+        idx=index_rows[0]
+        q=self.api.getMarketData("LTP",{str(idx["exch_seg"]):[str(idx["token"])]})
+        fetched=(q.get("data") or {}).get("fetched") or []
+        if not fetched: raise RuntimeError(f"No spot quote returned for {symbol}.")
+        spot=float(fetched[0]["ltp"])
+        atm=around if around is not None else min(strikes,key=lambda s:abs(s-spot))
+        idx_atm=min(range(len(strikes)),key=lambda i:abs(strikes[i]-atm))
+        selected=strikes[max(0,idx_atm-int(count)):idx_atm+int(count)+1]
         token_map={}
         for s in selected:
             for t in ("CE","PE"):
-                item=self.chain.get((s,t))
+                item=chain.get((s,t))
                 if item: token_map[item["token"]]=(s,t,item["symbol"])
-        rows=[]
+        rows_out=[]
         toks=list(token_map)
         for j in range(0,len(toks),50):
-            r=self.api.getMarketData("FULL",{"NFO":toks[j:j+50]})
-            for q in r.get("data",{}).get("fetched",[]):
+            rr=self.api.getMarketData("FULL",{exchange:toks[j:j+50]})
+            for q in rr.get("data",{}).get("fetched",[]):
                 item=token_map.get(str(q.get("symbolToken")))
                 if not item: continue
                 s,t,sym=item
-                rows.append({
-                    "strike":s,"type":t,"symbol":sym,"token":str(q.get("symbolToken")),
-                    "ltp":q.get("ltp"),"open":q.get("open"),"high":q.get("high"),
-                    "low":q.get("low"),"close":q.get("close"),"oi":q.get("opnInterest"),
-                    "volume":q.get("tradeVolume"),"buyQty":q.get("totalBuyQuantity"),
-                    "sellQty":q.get("totalSellQuantity")
-                })
+                row={"strike":s,"type":t,"symbol":sym,"token":str(q.get("symbolToken")),
+                     "ltp":q.get("ltp"),"open":q.get("open"),"high":q.get("high"),
+                     "low":q.get("low"),"close":q.get("close"),"oi":q.get("opnInterest"),
+                     "volume":q.get("tradeVolume"),"buyQty":q.get("totalBuyQuantity"),
+                     "sellQty":q.get("totalSellQuantity")}
                 try:
-                    cur=float(q.get("opnInterest",0))
-                    key=str(q.get("symbolToken"))
-                    prev=self.prev_oi.get(key)
-                    rows[-1]["oiChange"]=None if prev is None else cur-prev
-                    self.prev_oi[key]=cur
-                except Exception:
-                    pass
-        return {"symbol":C.SYMBOL,"spot":spot,"atm":atm,"expiry":str(self.expiry),"rows":rows}
+                    cur=float(q.get("opnInterest",0)); key=str(q.get("symbolToken")); prev=self.prev_oi.get(key)
+                    row["oiChange"]=None if prev is None else cur-prev; self.prev_oi[key]=cur
+                except Exception: pass
+                rows_out.append(row)
+        return {"symbol":symbol,"spot":spot,"atm":atm,"expiry":str(expiry),"rows":rows_out}
 
     def snapshot(self):
         if self.api is None: raise RuntimeError("Angel session is not connected.")
