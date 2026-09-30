@@ -4,6 +4,8 @@ API keys stay on the backend; the APK never receives provider secrets.
 from __future__ import annotations
 import concurrent.futures
 import os
+import re
+import time
 import requests
 
 TIMEOUT = int(os.getenv("AI_TIMEOUT_SEC", "25"))
@@ -81,17 +83,28 @@ def _gemini(p, text):
     return "\n".join(x.get("text","") for x in (((d.get("candidates") or [{}])[0].get("content") or {}).get("parts") or []) if isinstance(x,dict)).strip()
 
 def _run_one(p, payload):
+    base={"id":p["id"],"name":p["name"],"model":p["model"],"role":ROLE_PROMPTS[p["id"]]}
     if not os.getenv(p["env"]):
-        return {"id":p["id"],"name":p["name"],"model":p["model"],"status":"not_configured","text":"","error":"Provider API key is not configured on the server."}
+        return {**base,"status":"not_configured","text":"","error":"Provider API key is not configured on the server.","elapsed_ms":0}
+    started=time.monotonic()
     try:
         text=_prompt(p,payload)
         if p["kind"]=="openai": answer=_openai(p,text)
         elif p["kind"]=="anthropic": answer=_anthropic(p,text)
         elif p["kind"]=="gemini": answer=_gemini(p,text)
         else: answer=_openai_compat(p,text)
-        return {"id":p["id"],"name":p["name"],"model":p["model"],"status":"ok","text":answer}
+        return {**base,"status":"ok","text":answer,"elapsed_ms":round((time.monotonic()-started)*1000)}
     except Exception as e:
-        return {"id":p["id"],"name":p["name"],"model":p["model"],"status":"error","text":"","error":str(e)[:300]}
+        return {**base,"status":"error","text":"","error":str(e)[:300],"elapsed_ms":round((time.monotonic()-started)*1000)}
+
+def _state_from_text(text):
+    if not text:
+        return ""
+    m=re.search(r"(?im)^\s*STATE\s*:\s*(CALL BUY|PUT BUY|WAIT|NO QUALIFYING TRADE)\b", text)
+    if m:
+        return m.group(1).upper()
+    first=text.splitlines()[0].strip().upper() if text.splitlines() else ""
+    return first if first in {"CALL BUY","PUT BUY","WAIT","NO QUALIFYING TRADE"} else ""
 
 def provider_status():
     return [{"id":p["id"],"name":p["name"],"model":p["model"],"configured":bool(os.getenv(p["env"]))} for p in PROVIDERS]
@@ -100,8 +113,39 @@ def validate_all(payload):
     with concurrent.futures.ThreadPoolExecutor(max_workers=len(PROVIDERS)) as ex:
         results=list(ex.map(lambda p:_run_one(p,payload),PROVIDERS))
     ok=[r for r in results if r["status"]=="ok"]
-    states=[r["text"].split("\n",1)[0].replace("STATE:","").strip().upper() for r in ok]
-    non_wait=[s for s in states if s in {"CALL BUY","PUT BUY"}]
-    final = non_wait[0] if len(non_wait)==1 and all(s==non_wait[0] for s in non_wait) else "WAIT"
-    if not ok: final="NO QUALIFYING TRADE"
-    return {"final":final,"providers":results,"configured":sum(1 for r in results if r["status"]=="ok"),"total":len(results)}
+    states=[_state_from_text(r.get("text","")) for r in ok]
+    states=[s for s in states if s]
+    configured=sum(1 for p in PROVIDERS if os.getenv(p["env"]))
+    final="WAIT"
+    cross_verified=False
+    reason="No provider responses yet."
+    if not configured:
+        final="NO QUALIFYING TRADE"
+        reason="No AI provider API key is configured on the server."
+    elif not ok:
+        final="NO QUALIFYING TRADE"
+        reason="Configured AI providers returned no successful responses."
+    elif len(states) < 2:
+        final="WAIT"
+        reason="At least two successful AI responses are required for cross-verification."
+    elif len(set(states)) == 1 and states[0] in {"CALL BUY","PUT BUY"}:
+        final=states[0]
+        cross_verified=True
+        reason="All " + str(len(states)) + " successful AI responses agree."
+    elif len(set(states)) == 1 and states[0] == "NO QUALIFYING TRADE":
+        final="NO QUALIFYING TRADE"
+        cross_verified=True
+        reason="All " + str(len(states)) + " successful AI responses found no qualifying trade."
+    else:
+        final="WAIT"
+        reason="AI responses are not fully aligned; conflicting or WAIT evidence forces WAIT."
+    return {
+        "final":final,
+        "providers":results,
+        "configured":configured,
+        "successful":len(ok),
+        "parsed_states":len(states),
+        "total":len(results),
+        "cross_verified":cross_verified,
+        "reason":reason,
+    }
