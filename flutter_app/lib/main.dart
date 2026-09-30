@@ -30,7 +30,7 @@ class Terminal extends StatefulWidget {
 class _TerminalState extends State<Terminal> {
   static const screens = <String>[
     'Dashboard','Indian Indices','Commodity','Signals','OI Lab','Watchlist','Search',
-    'Charts','Option Chain','News','Market Details','Angel API','NSE',
+    'Charts','Option Chain','News','AI Analysis','Angel API','NSE',
     'NSE MCP','Data','Instruments','Settings','More'
   ];
   static const icons = <IconData>[
@@ -545,14 +545,14 @@ async function ask(w,prompt){
     const SizedBox(height:12),const Text('PRIORITY STRIKE TABLE',style:TextStyle(fontWeight:FontWeight.bold)),
     if(liveOptionRows.isEmpty)infoCard('Strike table','Load Option Chain. Priority appears only when the live row supplies a score.',Colors.orange),
     if(liveOptionRows.isNotEmpty)Card(child:SingleChildScrollView(scrollDirection:Axis.horizontal,child:DataTable(
-      columns:const [DataColumn(label:Text('P')),DataColumn(label:Text('TYPE')),DataColumn(label:Text('STRIKE')),DataColumn(label:Text('LTP')),DataColumn(label:Text('OI')),DataColumn(label:Text('Δ Θ Γ ν POP'))],
+      columns:const [DataColumn(label:Text('P')),DataColumn(label:Text('TYPE')),DataColumn(label:Text('STRIKE')),DataColumn(label:Text('LTP')),DataColumn(label:Text('OI')),DataColumn(label:Text('RISK • REWARD RATIO'))],
       rows:[for(final r in liveOptionRows.take(25))DataRow(cells:[
         DataCell(Text(optionPriority(Map<String,dynamic>.from(r))?.toString()??'—')),
         DataCell(Text((r['type']??'—').toString())),
         DataCell(Text((r['strike']??'—').toString())),
         DataCell(Text((r['ltp']??'—').toString())),
         DataCell(Text((r['oi']??'—').toString())),
-        DataCell(Text((r['delta']??'—').toString()+' '+(r['theta']??'—').toString()+' '+(r['gamma']??'—').toString()+' '+(r['vega']??'—').toString()+' '+(r['pop']??'—').toString())),
+        DataCell(Text(_riskRewardText(Map<String,dynamic>.from(r)))),
       ])],
     ))),
     const SizedBox(height:12),const Text('CE / PE • INDICES WITH LIVE QUALIFYING ENTRY',style:TextStyle(fontWeight:FontWeight.bold)),
@@ -620,7 +620,7 @@ async function ask(w,prompt){
       rows:[for(final strike in <dynamic>{for(final r in liveOptionRows)r['strike']}.toList()..sort((a,b)=>(a as num).compareTo(b as num)))DataRow(cells:[
         DataCell(Text(_chainValue(strike,'CE','ltp'),style:const TextStyle(color:Colors.green))),
         DataCell(_coloredOiCell(strike,'CE')),
-        DataCell(Container(padding:const EdgeInsets.symmetric(horizontal:7,vertical:4),decoration:BoxDecoration(borderRadius:BorderRadius.circular(6),color:Colors.blue.withOpacity(.16)),child:Text(strike.toString(),style:const TextStyle(fontWeight:FontWeight.bold,color:Colors.blue)))),
+        DataCell(Column(mainAxisSize:MainAxisSize.min,crossAxisAlignment:CrossAxisAlignment.center,children:[Container(padding:const EdgeInsets.symmetric(horizontal:7,vertical:4),decoration:BoxDecoration(borderRadius:BorderRadius.circular(6),color:Colors.blue.withOpacity(.16)),child:Text(strike.toString(),style:const TextStyle(fontWeight:FontWeight.bold,color:Colors.blue))),Text(_strikeOffsetText(strike),style:TextStyle(fontSize:10,fontWeight:FontWeight.bold,color:_strikeOffsetColor(strike))) ])),
         DataCell(_coloredOiCell(strike,'PE')),
         DataCell(Text(_chainValue(strike,'PE','ltp'),style:const TextStyle(color:Colors.red))),
         DataCell(Text(_chainGreek(strike,'CE','delta'))),DataCell(Text(_chainGreek(strike,'CE','theta'))),DataCell(Text(_chainGreek(strike,'CE','gamma'))),DataCell(Text(_chainGreek(strike,'CE','vega'))),DataCell(Text(_chainGreek(strike,'CE','pop'))),DataCell(Text(_chainGreek(strike,'PE','delta'))),DataCell(Text(_chainGreek(strike,'PE','theta'))),DataCell(Text(_chainGreek(strike,'PE','gamma'))),DataCell(Text(_chainGreek(strike,'PE','vega'))),DataCell(Text(_chainGreek(strike,'PE','pop'))),DataCell(Text(_chainFlow(strike))),
@@ -631,6 +631,34 @@ async function ask(w,prompt){
     infoCard('Color logic','CALL green • PUT red • strike blue. OI↑/price↑ green ↑↑; OI↑/price↓ red ↑↓; OI↓/price↓ red ↓↓. Missing live fields remain —.',Colors.blue),
   ]);
 
+  double? _numericFrom(Map<String,dynamic> m,List<String> keys){
+    for(final k in keys){final v=double.tryParse((m[k]??'').toString());if(v!=null)return v;}
+    return null;
+  }
+  String _riskRewardText(Map<String,dynamic> m){
+    final entry=_numericFrom(m,const ['entry','entryPrice','ltp','lastTradedPrice']);
+    final sl=_numericFrom(m,const ['sl','stopLoss','stop_loss']);
+    final target=_numericFrom(m,const ['target','targetPrice','takeProfit','take_profit']);
+    if(entry==null||sl==null||target==null)return '—';
+    final risk=(entry-sl).abs(), reward=(target-entry).abs();
+    if(risk<=0)return '—';
+    final rr=reward/risk;
+    return 'Risk ${risk.toStringAsFixed(2)} • Reward ${reward.toStringAsFixed(2)} • 1:${rr.toStringAsFixed(2)}';
+  }
+  String _strikeOffsetText(dynamic strike){
+    final s=double.tryParse(strike.toString());
+    final spot=double.tryParse((terminalData?['market'] is Map ? (terminalData!['market']['spot']??'') : '').toString());
+    if(s==null||spot==null)return '— pts';
+    final d=s-spot;
+    final sign=d>0?'+':d<0?'−':'±';
+    return sign+d.abs().toStringAsFixed(2)+' pts';
+  }
+  Color _strikeOffsetColor(dynamic strike){
+    final s=double.tryParse(strike.toString());
+    final spot=double.tryParse((terminalData?['market'] is Map ? (terminalData!['market']['spot']??'') : '').toString());
+    if(s==null||spot==null||s==spot)return Colors.blueGrey;
+    return s>spot?Colors.green:Colors.red;
+  }
   String _chainValue(dynamic strike,String type,String key){
     for(final r in liveOptionRows){
       if(r['strike']==strike && r['type']==type){
@@ -680,8 +708,8 @@ async function ask(w,prompt){
   ]);
 
   Widget marketDetailsPage() => ListView(padding:const EdgeInsets.fromLTRB(12,10,12,20),children:[
-    const Text('Market Details',style:TextStyle(fontSize:23,fontWeight:FontWeight.bold)),
-    const SizedBox(height:4),const Text('Double-tap a market tab/card to activate the 6-AI validation engine.',style:TextStyle(fontSize:12)),
+    const Text('AI Analysis',style:TextStyle(fontSize:23,fontWeight:FontWeight.bold)),
+    const SizedBox(height:4),const Text('Double-tap an index/card to activate the 6-AI validation engine.',style:TextStyle(fontSize:12)),
     const SizedBox(height:10),
     Wrap(
       spacing: 6,
