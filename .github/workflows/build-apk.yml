@@ -54,7 +54,7 @@ jobs:
 
       - name: Validate Dart source
         working-directory: flutter_app
-        run: dart analyze --no-fatal-warnings
+        run: flutter analyze --no-fatal-warnings
 
       - name: Build installable APK
         working-directory: flutter_app
