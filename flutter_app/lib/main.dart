@@ -157,7 +157,7 @@ class _TerminalState extends State<Terminal> {
     if (selected == 0) return dashboard();
     if (selected == 1) return marketPage();
     if (selected == 2) return commodityPage();
-    if (selected == 3) return signals();
+    if (selected == 3) return signalsPage();
     if (selected == 4) return oiLabPage();
     if (selected == 5) return watchlistPage();
     if (selected == 6) return searchPage();
@@ -166,7 +166,7 @@ class _TerminalState extends State<Terminal> {
     if (selected == 9) return newsPage();
     if (selected == 10) return marketDetailsPage();
     if (selected == 11) return angelApi();
-    if (selected == 13) return nseMcp();
+    if (selected == 13) return nseMcpPage();
     if (selected == 16) return settingsPage();
     if (selected == 17) return morePage();
     return dataPage(screens[selected]);
@@ -488,7 +488,7 @@ class _TerminalState extends State<Terminal> {
     infoCard('Reason / driver','Sector reason, advance/decline and percentage change will be shown from the live market-detail payload. No values are fabricated.',Colors.blue),
   ]);
 
-  Widget signals() {
+  Widget signalsPage() {
     final action = signal?['action']?.toString() ?? 'WAIT';
     final raw = signal?['reasons'];
     final reasons = raw is List ? raw.map((e) => e.toString()).join('\n') : 'No live signal reasons received.';
@@ -501,7 +501,7 @@ class _TerminalState extends State<Terminal> {
     ]);
   }
 
-  Widget nseMcp() => ListView(padding:const EdgeInsets.fromLTRB(12,10,12,20),children:<Widget>[
+  Widget nseMcpPage() => ListView(padding:const EdgeInsets.fromLTRB(12,10,12,20),children:<Widget>[
     Row(children:[const Expanded(child:Text('NSE MCP',style:TextStyle(fontSize:23,fontWeight:FontWeight.bold))),IconButton(onPressed:fetchTerminal,icon:const Icon(Icons.refresh))]),
     infoCard('Official MCP','mcp.nseindia.in/cmmkt/mcp',Colors.blue),
     infoCard('Connection',nseMcpStatus,nseMcpStatus=='Connected'?Colors.green:Colors.orange),
