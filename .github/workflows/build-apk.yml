@@ -21,6 +21,10 @@ jobs:
           distribution: temurin
           java-version: "17"
 
+      - name: Validate backend Python syntax
+        working-directory: backend
+        run: python -m py_compile strategy_registry.py ai_orchestrator.py server.py signals.py
+
       - name: Validate strategy registry
         working-directory: backend
         run: python -m unittest discover -s . -p "test_*.py"
