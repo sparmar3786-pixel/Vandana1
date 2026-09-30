@@ -1,0 +1,7 @@
+fastapi
+uvicorn[standard]
+requests
+numpy
+python-dotenv
+pyotp
+smartapi-python
