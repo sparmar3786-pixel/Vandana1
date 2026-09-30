@@ -1009,6 +1009,15 @@ class _TerminalState extends State<Terminal> {
     }
   }
 
+  List<Widget> _aiProviderCards() {
+    final out=<Widget>[];
+    for(var i=0;i<aiProviders.length;i++){
+      final raw=aiProviders[i];
+      if(raw is Map) out.add(_aiProviderCard(i,raw));
+    }
+    return out;
+  }
+
   Widget _aiProviderCard(int index, dynamic raw) {
     final p=Map<String,dynamic>.from(raw as Map);
     final ok=p['status']=='ok' || p['configured']==true;
@@ -1082,7 +1091,7 @@ class _TerminalState extends State<Terminal> {
             if(aiError.isNotEmpty) Padding(padding:const EdgeInsets.only(top:8),child:Text(aiError,style:const TextStyle(color:Colors.red,fontSize:11))),
           ]))),
           const SizedBox(height:10),
-          ...aiProviders.asMap().entries.where((e)=>e.value is Map).map((e)=>_aiProviderCard(e.key,e.value)),
+          ..._aiProviderCards(),
           const SizedBox(height:6),
           infoCard(
             configured==0?'AI server keys required':'AI server ready',
