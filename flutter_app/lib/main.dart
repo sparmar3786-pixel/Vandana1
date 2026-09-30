@@ -1,1 +1,110 @@
-import 'dart:async';\nimport 'dart:convert';\nimport 'package:flutter/material.dart';\nimport 'package:http/http.dart' as http;\nimport 'package:shared_preferences/shared_preferences.dart';\n\nvoid main() => runApp(const AlgoApp());\n\nclass AlgoApp extends StatelessWidget {\n  const AlgoApp({super.key});\n  @override\n  Widget build(BuildContext context) => MaterialApp(debugShowCheckedModeBanner: false, title: 'NSE Algo Signal', theme: ThemeData.dark(useMaterial3: true), home: const HomeShell());\n}\n\nclass HomeShell extends StatefulWidget {\n  const HomeShell({super.key});\n  @override\n  State<HomeShell> createState() => _HomeShellState();\n}\n\nclass _HomeShellState extends State<HomeShell> {\n  final List<String> pages = const ['Dashboard','Market','Commodity','Signals','OI Lab','Watchlist','Search','Charts','Option Chain','News','Market Details','Angel API','NSE','NSE MCP','Data','Instruments','Settings','More'];\n  int selected = 0;\n  String backendUrl = 'http://192.168.1.10:8000';\n  String token = 'change-me';\n  Map<String, dynamic>? signal;\n  String? error;\n  Timer? timer;\n\n  @override\n  void initState() { super.initState(); _load(); }\n\n  Future<void> _load() async {\n    final p = await SharedPreferences.getInstance();\n    if (!mounted) return;\n    setState(() { backendUrl = p.getString('url') ?? backendUrl; token = p.getString('token') ?? token; });\n    await _fetchSignal();\n    timer = Timer.periodic(const Duration(seconds: 5), (_) => _fetchSignal());\n  }\n\n  @override\n  void dispose() { timer?.cancel(); super.dispose(); }\n\n  Future<void> _fetchSignal() async {\n    try {\n      final r = await http.get(Uri.parse(backendUrl + '/signal'), headers: {'x-token': token}).timeout(const Duration(seconds: 5));\n      final decoded = jsonDecode(r.body);\n      if (!mounted) return;\n      setState(() { signal = decoded is Map<String, dynamic> ? decoded : null; error = null; });\n    } catch (e) {\n      if (!mounted) return;\n      setState(() => error = e.toString());\n    }\n  }\n\n  Future<void> _serverSettings() async {\n    final u = TextEditingController(text: backendUrl);\n    final k = TextEditingController(text: token);\n    await showDialog<void>(\n      context: context,\n      builder: (dialogContext) => AlertDialog(\n        title: const Text('Backend connection'),\n        content: Column(mainAxisSize: MainAxisSize.min, children: [\n          TextField(controller: u, decoration: const InputDecoration(labelText: 'Backend URL'), keyboardType: TextInputType.url),\n          TextField(controller: k, decoration: const InputDecoration(labelText: 'API token'), obscureText: true),\n        ]),\n        actions: [\n          TextButton(onPressed: () async {\n            final p = await SharedPreferences.getInstance();\n            await p.setString('url', u.text.trim());\n            await p.setString('token', k.text.trim());\n            if (!mounted) return;\n            setState(() { backendUrl = u.text.trim(); token = k.text.trim(); });\n            Navigator.of(dialogContext).pop();\n            _fetchSignal();\n          }, child: const Text('Save')),\n        ],\n      ),\n    );\n    u.dispose();\n    k.dispose();\n  }\n\n  void _select(int index) { Navigator.of(context).maybePop(); setState(() => selected = index); }\n\n  @override\n  Widget build(BuildContext context) {\n    return Scaffold(\n      appBar: AppBar(title: Text(pages[selected]), actions: [if (selected == 0) IconButton(onPressed: _fetchSignal, icon: const Icon(Icons.refresh)), IconButton(onPressed: _serverSettings, icon: const Icon(Icons.settings_outlined))]),\n      drawer: Drawer(\n        child: SafeArea(child: Column(children: [\n          const UserAccountsDrawerHeader(accountName: Text('NSE Algo Signal'), accountEmail: Text('18-screen paper-signal terminal'), currentAccountPicture: CircleAvatar(child: Icon(Icons.candlestick_chart))),\n          Expanded(child: ListView.builder(itemCount: pages.length, itemBuilder: (context, index) => ListTile(leading: Icon(_iconFor(index)), title: Text(pages[index]), selected: selected == index, onTap: () => _select(index)))),\n        ])),\n      ),\n      body: _pageBody(selected),\n    );\n  }\n\n  IconData _iconFor(int i) {\n    const icons = [Icons.dashboard_outlined,Icons.show_chart,Icons.precision_manufacturing_outlined,Icons.notifications_active_outlined,Icons.analytics_outlined,Icons.star_border,Icons.search,Icons.candlestick_chart,Icons.table_chart_outlined,Icons.article_outlined,Icons.info_outline,Icons.key_outlined,Icons.language,Icons.hub_outlined,Icons.storage_outlined,Icons.list_alt,Icons.tune,Icons.more_horiz];\n    return icons[i];\n  }\n\n  Widget _pageBody(int index) {\n    if (index == 0) return _dashboard();\n    if (index == 3) return _signals();\n    if (index == 11) return _angelApi();\n    if (index == 16) return _settingsPage();\n    return _emptyPage(pages[index]);\n  }\n\n  Widget _dashboard() {\n    final action = signal?['action']?.toString() ?? 'WAIT';\n    return ListView(padding: const EdgeInsets.all(16), children: [\n      _statusCard('Connection', error == null ? 'Backend reachable' : 'Backend not connected', error == null ? Colors.greenAccent : Colors.redAccent),\n      if (error != null) Card(child: Padding(padding: const EdgeInsets.all(14), child: Text('Connection error:\n' + error! + '\n\nCurrent URL: ' + backendUrl, style: const TextStyle(color: Colors.redAccent)))),\n      Card(child: Padding(padding: const EdgeInsets.all(18), child: Column(children: [\n        const Text('CURRENT SIGNAL'),\n        const SizedBox(height: 8),\n        Text(action.replaceAll('_', ' '), style: TextStyle(fontSize: 34, fontWeight: FontWeight.bold, color: _signalColor(action))),\n        const SizedBox(height: 14),\n        if (signal != null) ...[_row('Symbol', signal!['symbol']),_row('Spot', signal!['spot']),_row('Strike', (signal!['strike'] ?? '-') .toString() + ' ' + (signal!['type'] ?? '').toString()),_row('Entry', signal!['entry']),_row('LTP', signal!['ltp']),_row('Stop Loss', signal!['sl']),_row('Target', signal!['target']),_row('Score', signal!['score'])] else const Text('No live signal payload received.'),\n      ]))),\n      _statusCard('Data policy', 'No fabricated market values. Paper signals only.', Colors.blueAccent),\n    ]);\n  }\n\n  Widget _signals() {\n    final reasons = (signal?['reasons'] as List?)?.map((e) => e.toString()).toList() ?? <String>[];\n    return ListView(padding: const EdgeInsets.all(16), children: [\n      const Text('Signals', style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),\n      const SizedBox(height: 8),\n      if (signal == null) const Card(child: Padding(padding: EdgeInsets.all(18), child: Text('No live signal available. Connect the backend first.')))\n      else ...[_statusCard(signal!['action']?.toString() ?? 'WAIT', 'Paper signal', _signalColor(signal!['action']?.toString() ?? 'WAIT')), if (reasons.isNotEmpty) Card(child: Padding(padding: const EdgeInsets.all(16), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [const Text('Reasons', style: TextStyle(fontWeight: FontWeight.bold)), const SizedBox(height: 8), ...reasons.map((r) => Padding(padding: const EdgeInsets.symmetric(vertical: 3), child: Text('• ' + r)))])))],\n    ]);\n  }\n\n  Widget _angelApi() => ListView(padding: const EdgeInsets.all(16), children: [const Text('Angel API', style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold)), const SizedBox(height: 12), _infoCard('SmartAPI', 'Use the secure backend for Angel One authentication. Do not put API keys, MPIN or TOTP in the APK source.'), _infoCard('Connection', error == null ? 'Backend connected' : 'Backend unavailable'), ElevatedButton.icon(onPressed: _serverSettings, icon: const Icon(Icons.settings), label: const Text('Configure backend'))]);\n\n  Widget _settingsPage() => ListView(padding: const EdgeInsets.all(16), children: [const Text('Settings', style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold)), const SizedBox(height: 12), _infoCard('Backend URL', backendUrl), _infoCard('Refresh', '5 seconds'), _infoCard('Mode', 'Paper signals only'), _infoCard('Timeframes', '1m, 2m, 3m, 5m, 10m, 15m, 30m, 1h, 2h, 4h, 1D'), _infoCard('Indicators', '8 EMA / 13 EMA'), ElevatedButton.icon(onPressed: _serverSettings, icon: const Icon(Icons.link), label: const Text('Backend connection'))]);\n\n  Widget _emptyPage(String name) => Center(child: Padding(padding: const EdgeInsets.all(24), child: Card(child: Padding(padding: const EdgeInsets.all(24), child: Column(mainAxisSize: MainAxisSize.min, children: [Icon(_iconFor(pages.indexOf(name)), size: 48), const SizedBox(height: 12), Text(name, style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold)), const SizedBox(height: 8), const Text('Screen is available in navigation. Live values appear only when the real API/data source is connected.', textAlign: TextAlign.center)])))));\n\n  Widget _statusCard(String title, String value, Color color) => Card(child: ListTile(leading: Icon(Icons.circle, color: color, size: 14), title: Text(title), subtitle: Text(value)));\n  Widget _infoCard(String title, String value) => Card(child: ListTile(title: Text(title), subtitle: Padding(padding: const EdgeInsets.only(top: 4), child: Text(value))));\n  Widget _row(String label, dynamic value) => Padding(padding: const EdgeInsets.symmetric(vertical: 5), child: Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [Text(label, style: const TextStyle(color: Colors.white60)), Flexible(child: Text((value ?? '-').toString(), textAlign: TextAlign.right, style: const TextStyle(fontWeight: FontWeight.bold)))]));\n  Color _signalColor(String action) { if (action == 'BUY_CE') return Colors.greenAccent; if (action == 'BUY_PE') return Colors.redAccent; if (action == 'EXIT') return Colors.orangeAccent; return Colors.grey; }\n}
+import 'dart:async';
+import 'dart:convert';
+import 'package:flutter/material.dart';
+import 'package:http/http.dart' as http;
+
+void main() => runApp(const AlgoApp());
+
+class AlgoApp extends StatelessWidget {
+  const AlgoApp({super.key});
+  @override
+  Widget build(BuildContext context) => MaterialApp(
+    debugShowCheckedModeBanner: false,
+    title: 'NSE Algo Signal',
+    theme: ThemeData.dark(useMaterial3: true),
+    home: const Home(),
+  );
+}
+
+class Home extends StatefulWidget {
+  const Home({super.key});
+  @override State<Home> createState() => _HomeState();
+}
+
+class _HomeState extends State<Home> {
+  static const pages = <String>['Dashboard','Market','Commodity','Signals','OI Lab','Watchlist','Search','Charts','Option Chain','News','Market Details','Angel API','NSE','NSE MCP','Data','Instruments','Settings','More'];
+  int tab = 0;
+  String url = 'http://192.168.1.10:8000';
+  String token = 'change-me';
+  Map<String,dynamic>? data;
+  String? error;
+  Timer? timer;
+
+  @override void initState() { super.initState(); _load(); }
+  void _load() { _fetch(); timer = Timer.periodic(const Duration(seconds: 5), (_) => _fetch()); }
+  @override void dispose() { timer?.cancel(); super.dispose(); }
+
+  Future<void> _fetch() async {
+    try {
+      final r = await http.get(Uri.parse(url + '/signal'), headers: {'x-token': token}).timeout(const Duration(seconds: 5));
+      final v = jsonDecode(r.body);
+      if (!mounted) return;
+      setState(() { data = v is Map<String,dynamic> ? v : null; error = null; });
+    } catch (e) {
+      if (mounted) setState(() => error = e.toString());
+    }
+  }
+
+  @override Widget build(BuildContext context) => Scaffold(
+    appBar: AppBar(title: Text(pages[tab]), actions: [IconButton(onPressed: _fetch, icon: const Icon(Icons.refresh)), IconButton(onPressed: _settings, icon: const Icon(Icons.settings))]),
+    drawer: Drawer(child: SafeArea(child: ListView(
+      children: [
+        const DrawerHeader(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Icon(Icons.candlestick_chart, size: 42), SizedBox(height: 10), Text('NSE Algo Signal', style: TextStyle(fontSize: 22)), Text('18-screen paper terminal')]),
+        for (var i = 0; i < pages.length; i++) ListTile(leading: Icon(_icon(i)), title: Text(pages[i]), selected: tab == i, onTap: () { Navigator.pop(context); setState(() => tab = i); }),
+      ],
+    ))),
+    body: _body(),
+  );
+
+  IconData _icon(int i) => const [Icons.dashboard,Icons.show_chart,Icons.precision_manufacturing,Icons.notifications,Icons.analytics,Icons.star,Icons.search,Icons.candlestick_chart,Icons.table_chart,Icons.article,Icons.info,Icons.key,Icons.language,Icons.hub,Icons.storage,Icons.list_alt,Icons.tune,Icons.more_horiz][i];
+
+  Widget _body() {
+    if (tab == 0) return _dashboard();
+    if (tab == 3) return _signals();
+    if (tab == 11) return _angel();
+    if (tab == 16) return _settingsPage();
+    return Center(child: Card(child: Padding(padding: const EdgeInsets.all(28), child: Column(mainAxisSize: MainAxisSize.min, children: [Icon(_icon(tab), size: 48), const SizedBox(height: 12), Text(pages[tab], style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold)), const SizedBox(height: 8), const Text('Live values will appear only after the corresponding real API/data source is connected.', textAlign: TextAlign.center)]))));
+  }
+
+  Widget _dashboard() {
+    final a = data?['action']?.toString() ?? 'WAIT';
+    return ListView(padding: const EdgeInsets.all(16), children: [
+      _card('Backend', error == null ? 'Checking / connected' : 'Not connected', error == null ? Colors.greenAccent : Colors.redAccent),
+      if (error != null) _card(error!, 'URL: ' + url, Colors.redAccent),
+      Card(child: Padding(padding: const EdgeInsets.all(18), child: Column(children: [
+        const Text('CURRENT SIGNAL'), const SizedBox(height: 10),
+        Text(a.replaceAll('_',' '), style: TextStyle(fontSize: 34, fontWeight: FontWeight.bold, color: _color(a))),
+        const SizedBox(height: 12),
+        if (data != null) ...[
+          _row('Symbol', data!['symbol']), _row('Spot', data!['spot']), _row('Strike', '${data!['strike'] ?? '-'} ${data!['type'] ?? ''}'),
+          _row('Entry', data!['entry']), _row('LTP', data!['ltp']), _row('Stop Loss', data!['sl']), _row('Target', data!['target']), _row('Score', data!['score'])
+        ] else const Text('No live signal payload received.'),
+      ]))),
+      _card('Data policy', 'No fabricated market values. Paper signals only.', Colors.blueAccent),
+    ]);
+  }
+
+  Widget _signals() {
+    final reasons = (data?['reasons'] as List?)?.map((e) => e.toString()).toList() ?? <String>[];
+    return ListView(padding: const EdgeInsets.all(16), children: [
+      const Text('Signals', style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
+      const SizedBox(height: 12),
+      _card(data?['action']?.toString() ?? 'WAIT', reasons.isEmpty ? 'No live signal' : reasons.join('\n'), _color(data?['action']?.toString() ?? 'WAIT')),
+    ]);
+  }
+
+  Widget _angel() => ListView(padding: const EdgeInsets.all(16), children: [const Text('Angel API', style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold)), const SizedBox(height: 12), _card('SmartAPI', 'Use secure backend authentication. Never hard-code API key, MPIN or TOTP.', Colors.blueAccent), _card('Backend', url, error == null ? Colors.greenAccent : Colors.redAccent)]);
+
+  Widget _settingsPage() => ListView(padding: const EdgeInsets.all(16), children: [const Text('Settings', style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold)), const SizedBox(height: 12), _card('Backend URL', url, Colors.blueAccent), _card('Mode', 'Paper signals only', Colors.orangeAccent), _card('Timeframes', '1m 2m 3m 5m 10m 15m 30m 1h 2h 4h 1D', Colors.blueAccent), _card('Indicators', '8 EMA / 13 EMA', Colors.blueAccent)]);
+
+  Future<void> _settings() async {
+    final u = TextEditingController(text: url);
+    final k = TextEditingController(text: token);
+    await showDialog(context: context, builder: (d) => AlertDialog(title: const Text('Server'), content: Column(mainAxisSize: MainAxisSize.min, children: [TextField(controller: u, decoration: const InputDecoration(labelText: 'Backend URL')), TextField(controller: k, decoration: const InputDecoration(labelText: 'API token'), obscureText: true)]), actions: [TextButton(onPressed: () { setState(() { url = u.text.trim(); token = k.text.trim(); }); Navigator.pop(d); _fetch(); }, child: const Text('Save'))]));
+    u.dispose(); k.dispose();
+  }
+
+  Widget _card(String title, String value, Color color) => Card(child: ListTile(leading: Icon(Icons.circle, color: color, size: 13), title: Text(title), subtitle: Text(value)));
+  Widget _row(String k, dynamic v) => Padding(padding: const EdgeInsets.symmetric(vertical: 4), child: Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [Text(k), Flexible(child: Text('${v ?? '-'}', textAlign: TextAlign.right))]));
+  Color _color(String a) => a == 'BUY_CE' ? Colors.greenAccent : a == 'BUY_PE' ? Colors.redAccent : a == 'EXIT' ? Colors.orangeAccent : Colors.grey;
+}
