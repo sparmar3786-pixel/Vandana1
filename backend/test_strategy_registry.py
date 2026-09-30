@@ -5,7 +5,7 @@ class MasterStrategyRegistryTests(unittest.TestCase):
     def test_master_registry_contains_all_377_modules(self):
         self.assertEqual(len(STRATEGIES), 377)
         self.assertEqual([s["id"] for s in STRATEGIES], list(range(1, 378)))
-        self.assertEqual(len({s["name"] for s in STRATEGIES}), 377)
+        # Names may repeat across strategy families; IDs and family/name pairs must be unique.\n        self.assertEqual(len({s["id"] for s in STRATEGIES}), 377)\n        self.assertEqual(len({(s["family"], s["name"]) for s in STRATEGIES}), 377)
         self.assertEqual(len(ALL_STRATEGIES), 426)
         self.assertEqual([s["id"] for s in ALL_STRATEGIES], list(range(1, 427)))
 
