@@ -1091,7 +1091,7 @@ class _TerminalState extends State<Terminal> {
             if(aiError.isNotEmpty) Padding(padding:const EdgeInsets.only(top:8),child:Text(aiError,style:const TextStyle(color:Colors.red,fontSize:11))),
           ]))),
           const SizedBox(height:10),
-          ..._aiProviderCards(),
+          Column(children:_aiProviderCards()),
           const SizedBox(height:6),
           infoCard(
             configured==0?'AI server keys required':'AI server ready',
