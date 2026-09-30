@@ -1,1 +1,214 @@
-import 'dart:async';\nimport 'dart:convert';\nimport 'package:flutter/material.dart';\nimport 'package:http/http.dart' as http;\n\nvoid main() => runApp(const AlgoApp());\n\nclass AlgoApp extends StatelessWidget {\n  const AlgoApp({super.key});\n  @override\n  Widget build(BuildContext context) => MaterialApp(\n    debugShowCheckedModeBanner: false,\n    title: 'NSE Algo Signal',\n    theme: ThemeData.dark(useMaterial3: true),\n    home: const Terminal(),\n  );\n}\n\nclass Terminal extends StatefulWidget {\n  const Terminal({super.key});\n  @override State<Terminal> createState() => _TerminalState();\n}\n\nclass _TerminalState extends State<Terminal> {\n  static const screens = <String>[\n    'Dashboard','Market','Commodity','Signals','OI Lab','Watchlist','Search',\n    'Charts','Option Chain','News','Market Details','Angel API','NSE',\n    'NSE MCP','Data','Instruments','Settings','More'\n  ];\n  static const icons = <IconData>[\n    Icons.dashboard, Icons.show_chart, Icons.precision_manufacturing,\n    Icons.notifications_active, Icons.analytics, Icons.star, Icons.search,\n    Icons.candlestick_chart, Icons.table_chart, Icons.article, Icons.info_outline,\n    Icons.key, Icons.language, Icons.hub, Icons.storage, Icons.list_alt,\n    Icons.tune, Icons.more_horiz\n  ];\n  int selected = 0;\n  String backendUrl = 'http://192.168.1.10:8000';\n  String apiToken = 'change-me';\n  String connection = 'Connecting...';\n  Map<String,dynamic>? signal;\n  Timer? timer;\n\n  @override void initState() {\n    super.initState();\n    fetchSignal();\n    timer = Timer.periodic(const Duration(seconds: 5), (_) => fetchSignal());\n  }\n  @override void dispose() { timer?.cancel(); super.dispose(); }\n\n  Future<void> fetchSignal() async {\n    try {\n      final response = await http.get(\n        Uri.parse(backendUrl + '/signal'),\n        headers: <String,String>{'x-token': apiToken},\n      ).timeout(const Duration(seconds: 5));\n      if (!mounted) return;\n      dynamic decoded;\n      try { decoded = jsonDecode(response.body); } catch (_) { decoded = null; }\n      setState(() {\n        signal = decoded is Map<String,dynamic> ? decoded : null;\n        connection = response.statusCode == 200 ? 'Connected' : 'HTTP ' + response.statusCode.toString();\n      });\n    } catch (_) {\n      if (mounted) setState(() => connection = 'Backend not connected');\n    }\n  }\n\n  @override Widget build(BuildContext context) => Scaffold(\n    appBar: AppBar(\n      title: Text(screens[selected]),\n      actions: <Widget>[\n        IconButton(onPressed: fetchSignal, icon: const Icon(Icons.refresh)),\n        IconButton(onPressed: openSettings, icon: const Icon(Icons.settings)),\n      ],\n    ),\n    drawer: Drawer(\n      child: SafeArea(child: ListView(\n        padding: EdgeInsets.zero,\n        children: <Widget>[\n          const DrawerHeader(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: <Widget>[\n            Icon(Icons.candlestick_chart, size: 42),\n            SizedBox(height: 10),\n            Text('NSE Algo Signal', style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),\n            SizedBox(height: 4),\n            Text('18-screen paper terminal'),\n          ])),\n          for (int i=0; i<screens.length; i++) ListTile(\n            leading: Icon(icons[i]),\n            title: Text(screens[i]),\n            selected: selected == i,\n            onTap: () { Navigator.pop(context); setState(() => selected = i); },\n          ),\n        ],\n      )),\n    ),\n    body: buildScreen(),\n  );\n\n  Widget buildScreen() {\n    if (selected == 0) return dashboard();\n    if (selected == 3) return signals();\n    if (selected == 11) return angelApi();\n    if (selected == 16) return settingsPage();\n    if (selected == 17) return morePage();\n    return dataPage(screens[selected]);\n  }\n\n  Widget dashboard() {\n    final action = signal?['action']?.toString() ?? 'WAIT';\n    return ListView(padding: const EdgeInsets.all(16), children: <Widget>[\n      Card(child: Padding(padding: const EdgeInsets.all(16), child: Row(children: <Widget>[\n        const Icon(Icons.bolt, size: 34), const SizedBox(width: 12),\n        const Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: <Widget>[\n          Text('NSE Algo Signal', style: TextStyle(fontSize: 21, fontWeight: FontWeight.bold)),\n          Text('18 screens • Live-data architecture'),\n        ])),\n        Chip(label: Text(connection)),\n      ]))),\n      const SizedBox(height: 12),\n      infoCard('Backend', connection, connection == 'Connected' ? Colors.green : Colors.red),\n      const SizedBox(height: 12),\n      Card(child: Padding(padding: const EdgeInsets.all(18), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: <Widget>[\n        const Text('CURRENT SIGNAL', style: TextStyle(fontWeight: FontWeight.bold)),\n        const SizedBox(height: 10),\n        Text(action.replaceAll('_',' '), style: const TextStyle(fontSize: 32, fontWeight: FontWeight.bold)),\n        const SizedBox(height: 12),\n        if (signal != null) ...<Widget>[\n          row('Symbol', signal!['symbol']), row('Spot', signal!['spot']),\n          row('Strike', (signal!['strike'] ?? '-').toString() + ' ' + (signal!['type'] ?? '').toString()),\n          row('Entry', signal!['entry']), row('LTP', signal!['ltp']),\n          row('Stop Loss', signal!['sl']), row('Target', signal!['target']), row('Score', signal!['score']),\n        ] else const Text('No live signal payload received.'),\n      ]))),\n      const SizedBox(height: 12),\n      infoCard('Data policy','Real API/data only. Paper signals only. No order placement.',Colors.blue),\n    ]);\n  }\n\n  Widget signals() {\n    final action = signal?['action']?.toString() ?? 'WAIT';\n    final raw = signal?['reasons'];\n    final reasons = raw is List ? raw.map((e) => e.toString()).join('\n') : 'No live signal reasons received.';\n    return ListView(padding: const EdgeInsets.all(16), children: <Widget>[\n      const Text('Signals', style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),\n      const SizedBox(height: 12),\n      infoCard(action.replaceAll('_',' '), reasons, Colors.blue),\n      const SizedBox(height: 12),\n      infoCard('Engine','Paper-signal engine. Live values appear only when the backend supplies them.',Colors.orange),\n    ]);\n  }\n\n  Widget angelApi() => ListView(padding: const EdgeInsets.all(16), children: <Widget>[\n    const Text('Angel API', style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),\n    const SizedBox(height: 12),\n    infoCard('SmartAPI','Authentication is handled by the backend. Do not hard-code API key, PIN or TOTP in the APK.',Colors.blue),\n    infoCard('Backend URL',backendUrl,Colors.blue),\n    infoCard('Connection',connection,connection == 'Connected' ? Colors.green : Colors.red),\n  ]);\n\n  Widget settingsPage() => ListView(padding: const EdgeInsets.all(16), children: <Widget>[\n    const Text('Settings', style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),\n    const SizedBox(height: 12),\n    infoCard('Backend URL',backendUrl,Colors.blue),\n    infoCard('Mode','Paper signals only',Colors.orange),\n    infoCard('Timeframes','1m 2m 3m 5m 10m 15m 30m 1h 2h 4h 1D',Colors.blue),\n    infoCard('Indicators','8 EMA / 13 EMA',Colors.blue),\n    FilledButton.icon(onPressed: openSettings, icon: const Icon(Icons.dns), label: const Text('Edit server connection')),\n  ]);\n\n  Widget morePage() => ListView(padding: const EdgeInsets.all(16), children: <Widget>[\n    const Text('More', style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),\n    const SizedBox(height: 12),\n    infoCard('Order mode','No order placement. Paper signals only.',Colors.orange),\n    infoCard('Security','Keep Angel credentials server-side and never commit secrets.',Colors.blue),\n    infoCard('Navigation',screens.join(', '),Colors.blue),\n  ]);\n\n  Widget dataPage(String title) => ListView(padding: const EdgeInsets.all(16), children: <Widget>[\n    Row(children: <Widget>[Icon(icons[selected], size: 30), const SizedBox(width: 10), Text(title, style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold))]),\n    const SizedBox(height: 14),\n    infoCard('Live data status', connection == 'Connected' ? 'Backend connected. This screen will use its corresponding live payload when available.' : 'Backend not connected. No fabricated market values are shown.', connection == 'Connected' ? Colors.green : Colors.orange),\n    const SizedBox(height: 10),\n    infoCard('Data source', title == 'NSE MCP' ? 'NSE MCP integration is configured by the backend.' : 'Corresponding API/data adapter is handled by the backend.', Colors.blue),\n  ]);\n\n  Future<void> openSettings() async {\n    final u = TextEditingController(text: backendUrl);\n    final k = TextEditingController(text: apiToken);\n    await showDialog<void>(context: context, builder: (d) => AlertDialog(\n      title: const Text('Server Settings'),\n      content: Column(mainAxisSize: MainAxisSize.min, children: <Widget>[\n        TextField(controller:u, decoration: const InputDecoration(labelText:'Backend URL')),\n        TextField(controller:k, obscureText:true, decoration: const InputDecoration(labelText:'API token')),\n      ]),\n      actions: <Widget>[TextButton(onPressed: () {\n        setState(() { backendUrl = u.text.trim().replaceAll(RegExp(r'/$'), ''); apiToken = k.text.trim(); });\n        Navigator.pop(d); fetchSignal();\n      }, child: const Text('Save'))],\n    ));\n    u.dispose(); k.dispose();\n  }\n\n  Widget infoCard(String title,String value,Color color) => Card(child: ListTile(\n    leading: Icon(Icons.circle,color:color,size:13), title: Text(title), subtitle: Text(value),\n  ));\n\n  Widget row(String label,dynamic value) => Padding(\n    padding: const EdgeInsets.symmetric(vertical:4),\n    child: Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: <Widget>[\n      Text(label), Flexible(child:Text((value ?? '-').toString(), textAlign:TextAlign.right)),\n    ]),\n  );\n}
+import 'dart:async';
+import 'dart:convert';
+import 'package:flutter/material.dart';
+import 'package:http/http.dart' as http;
+
+void main() => runApp(const AlgoApp());
+
+class AlgoApp extends StatelessWidget {
+  const AlgoApp({super.key});
+  @override
+  Widget build(BuildContext context) => MaterialApp(
+    debugShowCheckedModeBanner: false,
+    title: 'NSE Algo Signal',
+    theme: ThemeData.dark(useMaterial3: true),
+    home: const Terminal(),
+  );
+}
+
+class Terminal extends StatefulWidget {
+  const Terminal({super.key});
+  @override State<Terminal> createState() => _TerminalState();
+}
+
+class _TerminalState extends State<Terminal> {
+  static const screens = <String>[
+    'Dashboard','Market','Commodity','Signals','OI Lab','Watchlist','Search',
+    'Charts','Option Chain','News','Market Details','Angel API','NSE',
+    'NSE MCP','Data','Instruments','Settings','More'
+  ];
+  static const icons = <IconData>[
+    Icons.dashboard, Icons.show_chart, Icons.precision_manufacturing,
+    Icons.notifications_active, Icons.analytics, Icons.star, Icons.search,
+    Icons.candlestick_chart, Icons.table_chart, Icons.article, Icons.info_outline,
+    Icons.key, Icons.language, Icons.hub, Icons.storage, Icons.list_alt,
+    Icons.tune, Icons.more_horiz
+  ];
+  int selected = 0;
+  String backendUrl = 'http://192.168.1.10:8000';
+  String apiToken = 'change-me';
+  String connection = 'Connecting...';
+  Map<String,dynamic>? signal;
+  Timer? timer;
+
+  @override void initState() {
+    super.initState();
+    fetchSignal();
+    timer = Timer.periodic(const Duration(seconds: 5), (_) => fetchSignal());
+  }
+  @override void dispose() { timer?.cancel(); super.dispose(); }
+
+  Future<void> fetchSignal() async {
+    try {
+      final response = await http.get(
+        Uri.parse(backendUrl + '/signal'),
+        headers: <String,String>{'x-token': apiToken},
+      ).timeout(const Duration(seconds: 5));
+      if (!mounted) return;
+      dynamic decoded;
+      try { decoded = jsonDecode(response.body); } catch (_) { decoded = null; }
+      setState(() {
+        signal = decoded is Map<String,dynamic> ? decoded : null;
+        connection = response.statusCode == 200 ? 'Connected' : 'HTTP ' + response.statusCode.toString();
+      });
+    } catch (_) {
+      if (mounted) setState(() => connection = 'Backend not connected');
+    }
+  }
+
+  @override Widget build(BuildContext context) => Scaffold(
+    appBar: AppBar(
+      title: Text(screens[selected]),
+      actions: <Widget>[
+        IconButton(onPressed: fetchSignal, icon: const Icon(Icons.refresh)),
+        IconButton(onPressed: openSettings, icon: const Icon(Icons.settings)),
+      ],
+    ),
+    drawer: Drawer(
+      child: SafeArea(child: ListView(
+        padding: EdgeInsets.zero,
+        children: <Widget>[
+          const DrawerHeader(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: <Widget>[
+            Icon(Icons.candlestick_chart, size: 42),
+            SizedBox(height: 10),
+            Text('NSE Algo Signal', style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
+            SizedBox(height: 4),
+            Text('18-screen paper terminal'),
+          ])),
+          for (int i=0; i<screens.length; i++) ListTile(
+            leading: Icon(icons[i]),
+            title: Text(screens[i]),
+            selected: selected == i,
+            onTap: () { Navigator.pop(context); setState(() => selected = i); },
+          ),
+        ],
+      )),
+    ),
+    body: buildScreen(),
+  );
+
+  Widget buildScreen() {
+    if (selected == 0) return dashboard();
+    if (selected == 3) return signals();
+    if (selected == 11) return angelApi();
+    if (selected == 16) return settingsPage();
+    if (selected == 17) return morePage();
+    return dataPage(screens[selected]);
+  }
+
+  Widget dashboard() {
+    final action = signal?['action']?.toString() ?? 'WAIT';
+    return ListView(padding: const EdgeInsets.all(16), children: <Widget>[
+      Card(child: Padding(padding: const EdgeInsets.all(16), child: Row(children: <Widget>[
+        const Icon(Icons.bolt, size: 34), const SizedBox(width: 12),
+        const Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: <Widget>[
+          Text('NSE Algo Signal', style: TextStyle(fontSize: 21, fontWeight: FontWeight.bold)),
+          Text('18 screens • Live-data architecture'),
+        ])),
+        Chip(label: Text(connection)),
+      ]))),
+      const SizedBox(height: 12),
+      infoCard('Backend', connection, connection == 'Connected' ? Colors.green : Colors.red),
+      const SizedBox(height: 12),
+      Card(child: Padding(padding: const EdgeInsets.all(18), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: <Widget>[
+        const Text('CURRENT SIGNAL', style: TextStyle(fontWeight: FontWeight.bold)),
+        const SizedBox(height: 10),
+        Text(action.replaceAll('_',' '), style: const TextStyle(fontSize: 32, fontWeight: FontWeight.bold)),
+        const SizedBox(height: 12),
+        if (signal != null) ...<Widget>[
+          row('Symbol', signal!['symbol']), row('Spot', signal!['spot']),
+          row('Strike', (signal!['strike'] ?? '-').toString() + ' ' + (signal!['type'] ?? '').toString()),
+          row('Entry', signal!['entry']), row('LTP', signal!['ltp']),
+          row('Stop Loss', signal!['sl']), row('Target', signal!['target']), row('Score', signal!['score']),
+        ] else const Text('No live signal payload received.'),
+      ]))),
+      const SizedBox(height: 12),
+      infoCard('Data policy','Real API/data only. Paper signals only. No order placement.',Colors.blue),
+    ]);
+  }
+
+  Widget signals() {
+    final action = signal?['action']?.toString() ?? 'WAIT';
+    final raw = signal?['reasons'];
+    final reasons = raw is List ? raw.map((e) => e.toString()).join('\\n') : 'No live signal reasons received.';
+    return ListView(padding: const EdgeInsets.all(16), children: <Widget>[
+      const Text('Signals', style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
+      const SizedBox(height: 12),
+      infoCard(action.replaceAll('_',' '), reasons, Colors.blue),
+      const SizedBox(height: 12),
+      infoCard('Engine','Paper-signal engine. Live values appear only when the backend supplies them.',Colors.orange),
+    ]);
+  }
+
+  Widget angelApi() => ListView(padding: const EdgeInsets.all(16), children: <Widget>[
+    const Text('Angel API', style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
+    const SizedBox(height: 12),
+    infoCard('SmartAPI','Authentication is handled by the backend. Do not hard-code API key, PIN or TOTP in the APK.',Colors.blue),
+    infoCard('Backend URL',backendUrl,Colors.blue),
+    infoCard('Connection',connection,connection == 'Connected' ? Colors.green : Colors.red),
+  ]);
+
+  Widget settingsPage() => ListView(padding: const EdgeInsets.all(16), children: <Widget>[
+    const Text('Settings', style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
+    const SizedBox(height: 12),
+    infoCard('Backend URL',backendUrl,Colors.blue),
+    infoCard('Mode','Paper signals only',Colors.orange),
+    infoCard('Timeframes','1m 2m 3m 5m 10m 15m 30m 1h 2h 4h 1D',Colors.blue),
+    infoCard('Indicators','8 EMA / 13 EMA',Colors.blue),
+    FilledButton.icon(onPressed: openSettings, icon: const Icon(Icons.dns), label: const Text('Edit server connection')),
+  ]);
+
+  Widget morePage() => ListView(padding: const EdgeInsets.all(16), children: <Widget>[
+    const Text('More', style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
+    const SizedBox(height: 12),
+    infoCard('Order mode','No order placement. Paper signals only.',Colors.orange),
+    infoCard('Security','Keep Angel credentials server-side and never commit secrets.',Colors.blue),
+    infoCard('Navigation',screens.join(', '),Colors.blue),
+  ]);
+
+  Widget dataPage(String title) => ListView(padding: const EdgeInsets.all(16), children: <Widget>[
+    Row(children: <Widget>[Icon(icons[selected], size: 30), const SizedBox(width: 10), Text(title, style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold))]),
+    const SizedBox(height: 14),
+    infoCard('Live data status', connection == 'Connected' ? 'Backend connected. This screen will use its corresponding live payload when available.' : 'Backend not connected. No fabricated market values are shown.', connection == 'Connected' ? Colors.green : Colors.orange),
+    const SizedBox(height: 10),
+    infoCard('Data source', title == 'NSE MCP' ? 'NSE MCP integration is configured by the backend.' : 'Corresponding API/data adapter is handled by the backend.', Colors.blue),
+  ]);
+
+  Future<void> openSettings() async {
+    final u = TextEditingController(text: backendUrl);
+    final k = TextEditingController(text: apiToken);
+    await showDialog<void>(context: context, builder: (d) => AlertDialog(
+      title: const Text('Server Settings'),
+      content: Column(mainAxisSize: MainAxisSize.min, children: <Widget>[
+        TextField(controller:u, decoration: const InputDecoration(labelText:'Backend URL')),
+        TextField(controller:k, obscureText:true, decoration: const InputDecoration(labelText:'API token')),
+      ]),
+      actions: <Widget>[TextButton(onPressed: () {
+        setState(() { backendUrl = u.text.trim().replaceAll(RegExp(r'/$'), ''); apiToken = k.text.trim(); });
+        Navigator.pop(d); fetchSignal();
+      }, child: const Text('Save'))],
+    ));
+    u.dispose(); k.dispose();
+  }
+
+  Widget infoCard(String title,String value,Color color) => Card(child: ListTile(
+    leading: Icon(Icons.circle,color:color,size:13), title: Text(title), subtitle: Text(value),
+  ));
+
+  Widget row(String label,dynamic value) => Padding(
+    padding: const EdgeInsets.symmetric(vertical:4),
+    child: Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: <Widget>[
+      Text(label), Flexible(child:Text((value ?? '-').toString(), textAlign:TextAlign.right)),
+    ]),
+  );
+}
