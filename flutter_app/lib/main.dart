@@ -578,7 +578,8 @@ class CandlePainter extends CustomPainter {
     final chartH=hasRsi?size.height*.75:size.height;
     final range=math.max(maxV-minV,.01),width=size.width/vals.length;
     double y(double v)=>chartH-(v-minV)/range*chartH;
-    final grid=Paint()..color=Theme.of(canvas.context).dividerColor;
+    final grid=Paint()..color=Colors.white10..strokeWidth=.6;
+    for(int i=0;i<5;i++){final yy=chartH*i/4;canvas.drawLine(Offset(0,yy),Offset(size.width,yy),grid);}
     final wick=Paint()..strokeWidth=1.2,body=Paint()..strokeWidth=math.max(2,width*.55);
     for(int i=0;i<vals.length;i++){
       final r=vals[i];final o=(r[1]as num).toDouble(),h=(r[2]as num).toDouble(),l=(r[3]as num).toDouble(),cl=close[i];final x=i*width+width/2,up=cl>=o;
