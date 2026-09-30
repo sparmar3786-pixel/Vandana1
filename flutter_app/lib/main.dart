@@ -568,11 +568,34 @@ class _TerminalState extends State<Terminal> {
     const Text('Market Details',style:TextStyle(fontSize:23,fontWeight:FontWeight.bold)),
     const SizedBox(height:4),const Text('Double-tap a market tab/card to activate the three-layer AI cross-check.',style:TextStyle(fontSize:12)),
     const SizedBox(height:10),
-    Wrap(spacing:6,children:[for(final x in const ['NIFTY','BANK NIFTY','SENSEX'])GestureDetector(onDoubleTap:()=>_activateAi(x),child:ChoiceChip(label:Text(x),selected:selectedMarketDetail==x,onSelected:(_){setState(()=>selectedMarketDetail=x);}))) ]),
+    Wrap(
+      spacing: 6,
+      children: [
+        for (final x in const ['NIFTY', 'BANK NIFTY', 'SENSEX'])
+          GestureDetector(
+            onDoubleTap: () => _activateAi(x),
+            child: ChoiceChip(
+              label: Text(x),
+              selected: selectedMarketDetail == x,
+              onSelected: (_) => setState(() => selectedMarketDetail = x),
+            ),
+          ),
+      ],
+    ),
     const SizedBox(height:8),
-    ...liveMarket.where((q)=>indexMatches(selectedMarketDetail,(q['tradingSymbol']??q['tradingsymbol']??q['symbol']??'').toString())).map((q)=>GestureDetector(onDoubleTap:()=>_activateAi(selectedMarketDetail),child:Card(child:ListTile(
-      title:Text((q['tradingSymbol']??selectedMarketDetail).toString()),subtitle:Text('LTP '+formatMarketPrice(q['ltp'])+' • '+(q['exchange']??'').toString()),trailing:Text((q['percentChange']??q['netChange']??'—').toString()),onTap:()=>openQuoteChart(q),
-    )))),
+    ...liveMarket
+        .where((q) => indexMatches(selectedMarketDetail, (q['tradingSymbol'] ?? q['tradingsymbol'] ?? q['symbol'] ?? '').toString()))
+        .map((q) => GestureDetector(
+              onDoubleTap: () => _activateAi(selectedMarketDetail),
+              child: Card(
+                child: ListTile(
+                  title: Text((q['tradingSymbol'] ?? selectedMarketDetail).toString()),
+                  subtitle: Text('LTP ' + formatMarketPrice(q['ltp']) + ' • ' + (q['exchange'] ?? '').toString()),
+                  trailing: Text((q['percentChange'] ?? q['netChange'] ?? '—').toString()),
+                  onTap: () => openQuoteChart(q),
+                ),
+              ),
+            )),
     Card(child:Padding(padding:const EdgeInsets.all(12),child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
       const Text('THREE-LAYER AI',style:TextStyle(fontWeight:FontWeight.bold)),
       _aiLayer('1 • AI BOT','Collects market, option-chain, OI, Greeks, trend and watchlist data.',Colors.cyan),
