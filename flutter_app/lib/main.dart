@@ -71,16 +71,16 @@ class _TerminalState extends State<Terminal> {
       if (!mounted) return;
       dynamic decoded;
       try { decoded = jsonDecode(response.body); } catch (_) { decoded = null; }
+      final conn = decoded is Map<String,dynamic> ? decoded['connection'] : null;
+      final angel = conn is Map && conn['angel'] == true;
       setState(() {
         terminalData = decoded is Map<String,dynamic> ? decoded : null;
-        final c = terminalData?['connection'];
         final s = terminalData?['signals'];
         final m = terminalData?['nse_mcp'];
         signal = s is Map<String,dynamic> ? s : null;
-        connection = response.statusCode == 200 && c is Map && c['server'] == true && c['angel'] == true ? 'Connected' : response.statusCode == 200 && c is Map && c['server'] == true ? 'Backend connected / Angel not connected' : 'HTTP ' + response.statusCode.toString();
+        connection = response.statusCode == 200 && conn is Map && conn['server'] == true && conn['angel'] == true ? 'Connected' : response.statusCode == 200 && conn is Map && conn['server'] == true ? 'Backend connected / Angel not connected' : 'HTTP ' + response.statusCode.toString();
         nseMcpStatus = m is Map && m['connected'] == true ? 'Connected' : 'Not connected';
       });
-      final angel = c is Map && c['angel'] == true;
       if (angel) await fetchAngelMarket();
     } catch (_) {
       if (mounted) setState(() => connection = 'Backend not connected');
@@ -371,27 +371,6 @@ class _TerminalState extends State<Terminal> {
       infoCard(action.replaceAll('_',' '), reasons, Colors.blue),
       const SizedBox(height: 12),
       infoCard('Engine','Paper-signal engine. Live values appear only when the backend supplies them.',Colors.orange),
-    ]);
-  }
-
-  Widget optionChain() {
-    final chain = terminalData?['option_chain'];
-    final rows = chain is Map ? chain.length : 0;
-    return ListView(padding: const EdgeInsets.all(16), children: <Widget>[
-      const Text('Option Chain', style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
-      const SizedBox(height: 12),
-      infoCard('NSE MCP CSV', 'Official NSE MCP is routed through the Render server.', Colors.blue),
-      infoCard('Live chain payload', rows > 0 ? rows.toString() + ' option entries received.' : 'No option-chain payload received yet.', rows > 0 ? Colors.green : Colors.orange),
-      const SizedBox(height: 8),
-      FilledButton.icon(
-        onPressed: connection == 'Connected' ? downloadNseCsv : null,
-        icon: const Icon(Icons.download),
-        label: const Text('DOWNLOAD NSE OPTION CHAIN CSV'),
-      ),
-      if (csvStatus.isNotEmpty) Padding(
-        padding: const EdgeInsets.only(top: 10),
-        child: Text(csvStatus),
-      ),
     ]);
   }
 
