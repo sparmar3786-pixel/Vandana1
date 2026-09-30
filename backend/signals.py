@@ -4,7 +4,7 @@ from collections import deque
 import numpy as np
 import config as C
 import ai_model
-from strategy_registry import STRATEGIES, evaluate_strategies
+from strategy_registry import ALL_STRATEGIES, evaluate_strategies
 
 NSE_LOG = "data/nse_features.csv"
 
@@ -154,4 +154,4 @@ class Engine:
         return self.last
 
     def _meta(self, snap, score):
-        return {"spot": snap["spot"], "atm": snap["atm"], "score": round(score, 3), "ts": snap["ts"], "strategy_registry_count": len(STRATEGIES), "strategy_evidence": self.strategy_evidence}
+        return {"spot": snap["spot"], "atm": snap["atm"], "score": round(score, 3), "ts": snap["ts"], "strategy_registry_count": len(ALL_STRATEGIES), "strategy_evidence": self.strategy_evidence}
