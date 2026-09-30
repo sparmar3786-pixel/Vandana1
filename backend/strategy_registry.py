@@ -45,6 +45,24 @@ STRATEGIES = _make_registry()
 if len(STRATEGIES) != 377:
     raise RuntimeError(f"Master registry must contain 377 modules, got {len(STRATEGIES)}")
 
+_ADVANCED = [
+("Volatility Surface Engine", "IV Surface Slope|IV Surface Curvature|IV Surface Shift|IV Smile/Skew Change|ATM IV vs OTM IV Divergence|Term-Structure Slope|Term-Structure Inversion|Moneyness-IV Interaction"),
+("Vega-Weighted Order Flow", "Vega-Weighted Net Demand|Vega Flow Acceleration|Vega Flow Reversal|Delta-vs-Vega Flow Separation|Directional-Flow vs Volatility-Flow Separation|Vega Flow Imbalance|Aggregate Vega Pressure"),
+("Delta/Vega Information Decomposition", "Delta-Informed Flow|Vega-Informed Flow|Directional Information Score|Volatility Information Score|Combined Information Imbalance"),
+("Cross-Option Flow Engine", "Same-Expiry Cross-Strike Flow|Same-Strike CE/PE Flow|Cross-Maturity Flow|Delta-Bucket Flow|Vega-Bucket Flow|Aggregate Option-Flow Pressure"),
+("Multi-Leg Strategy Recognition", "Straddle Flow|Strangle Flow|Bull Spread Flow|Bear Spread Flow|Calendar Spread Flow|Butterfly|Iron Butterfly|Condor|Iron Condor|Ratio Spread|Collar|Covered Call|Covered Put|Strip|Strap|Jelly Roll"),
+("Trade Classification Engine", "Buyer-Initiated vs Seller-Initiated Classification|Aggressor-Side Volume|Trade-Size Buckets|Large-Lot Flow|Small-Lot Flow|Trade-Flow Imbalance|Flow Persistence"),
+]
+ADVANCED_STRATEGIES = []
+_j = 378
+for _family, _raw in _ADVANCED:
+    for _name in _raw.split("|"):
+        ADVANCED_STRATEGIES.append({"id": _j, "name": _name, "family": _family, "tier": "advanced"})
+        _j += 1
+ALL_STRATEGIES = STRATEGIES + ADVANCED_STRATEGIES
+if len(ADVANCED_STRATEGIES) != 47 or len(ALL_STRATEGIES) != 424:
+    raise RuntimeError("Advanced registry must contain 47 modules; total must be 424")
+
 def _num(x):
     try: return float(x)
     except (TypeError, ValueError): return None
@@ -99,7 +117,7 @@ def evaluate_strategies(market: dict[str, Any]) -> list[dict[str, Any]]:
         if not available:
             return "unavailable", ["option-chain missing"]
         return "inactive", []
-    for s in STRATEGIES:
+    for s in ALL_STRATEGIES:
         st, ev = state(s["name"])
         evidence.append({"id":s["id"],"name":s["name"],"family":s["family"],"state":st,"evidence":ev})
     return evidence
