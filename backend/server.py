@@ -113,6 +113,43 @@ def angel_candles(exchange:str="NSE",token:str="99926000",interval:str="FIVE_MIN
     try: return client.candles(exchange,token,interval,days)
     except Exception as e: raise HTTPException(502,str(e))
 
+@app.get("/v1/option-chain")
+def unified_option_chain(symbol:str="NIFTY",count:int=10,x_token:str=Header(None)):
+    auth(x_token); angel_required()
+    symbol=symbol.upper().replace(" ","")
+    aliases={"MIDCAPSELECT":"MIDCPNIFTY","BANKNIFTY":"BANKNIFTY"}
+    symbol=aliases.get(symbol,symbol)
+    try:
+        result=client.option_chain_rows(symbol=symbol,count=max(5,min(count,25)))
+        rows=result.get("rows",[]) if isinstance(result,dict) else []
+        if rows:
+            return {**result,"source":"Angel One SmartAPI"}
+    except Exception as angel_error:
+        if symbol in {"SENSEX","BANKEX"}:
+            raise HTTPException(502,str(angel_error))
+        try:
+            nse_symbol={"MIDCPNIFTY":"MIDCPNIFTY"}.get(symbol,symbol)
+            n=nse.fetch(nse_symbol)
+            flat=[]
+            for item in n.get("rows",[]):
+                for typ,key in (("CE","ce"),("PE","pe")):
+                    leg=item.get(key) or {}
+                    flat.append({
+                        "strike":item.get("strike"),"type":typ,
+                        "symbol":leg.get("symbol"),
+                        "token":leg.get("symbolToken"),
+                        "ltp":leg.get("ltp"),"open":leg.get("open"),
+                        "high":leg.get("high"),"low":leg.get("low"),
+                        "close":leg.get("close"),"oi":leg.get("oi"),
+                        "oiChange":leg.get("chg_oi"),"volume":leg.get("vol"),
+                    })
+            if flat:
+                return {"symbol":symbol,"spot":n.get("spot"),"atm":min((x["strike"] for x in flat),key=lambda x:abs(x-float(n.get("spot",x)))),"expiry":n.get("expiry"),"rows":flat,"source":"NSE"}
+        except Exception as nse_error:
+            raise HTTPException(502,f"Option chain unavailable: Angel={angel_error}; NSE={nse_error}")
+        raise HTTPException(502,str(angel_error))
+
+
 @app.get("/v1/angel/option-chain")
 def angel_option_chain(symbol:str="NIFTY",count:int=200,x_token:str=Header(None)):
     auth(x_token); angel_required()
@@ -122,6 +159,17 @@ def angel_option_chain(symbol:str="NIFTY",count:int=200,x_token:str=Header(None)
     if symbol not in allowed: raise HTTPException(400,"Unsupported index")
     try: return client.option_chain_rows(symbol=symbol,count=max(10,min(count,250)))
     except Exception as e: raise HTTPException(502,str(e))
+
+@app.get("/v1/index-components")
+def index_components(index:str="NIFTY",x_token:str=Header(None)):
+    auth(x_token)
+    allowed={"NIFTY","NIFTY 50","BANKNIFTY","BANK NIFTY","FINNIFTY","MIDCPNIFTY"}
+    if index.upper() not in allowed: raise HTTPException(400,"Unsupported index")
+    try:
+        return nse.index_components(index)
+    except Exception as e:
+        raise HTTPException(502,"Index constituents unavailable: "+str(e))
+
 
 @app.get("/v1/angel/oi")
 def angel_oi(token:str,interval:str="THREE_MINUTE",hours:int=6,x_token:str=Header(None)):
