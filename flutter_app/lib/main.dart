@@ -664,7 +664,7 @@ async function ask(w,prompt){
 
   Widget marketDetailsPage() => ListView(padding:const EdgeInsets.fromLTRB(12,10,12,20),children:[
     const Text('Market Details',style:TextStyle(fontSize:23,fontWeight:FontWeight.bold)),
-    const SizedBox(height:4),const Text('Double-tap a market tab/card to activate the three-layer AI cross-check.',style:TextStyle(fontSize:12)),
+    const SizedBox(height:4),const Text('Double-tap a market tab/card to activate the 6-AI validation engine.',style:TextStyle(fontSize:12)),
     const SizedBox(height:10),
     Wrap(
       spacing: 6,
