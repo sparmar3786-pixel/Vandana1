@@ -69,6 +69,7 @@ class _TerminalState extends State<Terminal> {
   final List<Offset> drawingPoints = <Offset>[];
   String selectedMarketDetail = 'NIFTY';
   String aiActiveTab = '';
+  bool aiRunning = false;
   final List<String> aiMemory = <String>[];
   Map<String,dynamic>? terminalData;
   Timer? timer;
