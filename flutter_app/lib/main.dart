@@ -275,7 +275,7 @@ async function ask(w,prompt){
   out.textContent='1. '+a1.name+'\\n'+a1.text+'\\n\\n2. '+a2.name+'\\n'+a2.text+'\\n\\n3. '+a3.name+'\\n'+a3.text+'\\n\\n4. '+a4.name+'\\n'+a4.text+'\\n\\n5. '+a5.name+'\\n'+a5.text+'\\n\\n6. '+a6.name+'\\n'+a6.text;
  }catch(e){status.textContent='Puter AI error';out.textContent=String(e);}
 })();
-</script></body></html>'''.replace('PLACEHOLDER',snapshot));
+</script></body></html>'''.replaceAll('PLACEHOLDER',snapshot));
     if(!mounted)return;
     await showModalBottomSheet<void>(context:context,isScrollControlled:true,builder:(_)=>SizedBox(height:MediaQuery.of(context).size.height*.82,child:WebViewWidget(controller:controller)));
   }
