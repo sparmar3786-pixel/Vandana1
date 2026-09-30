@@ -1,7 +1,7 @@
 name: Build NSE Algo Trading APK
 on:
   push:
-    branches: [main, feature-v2-ui-polish-market-chart]
+    branches: [main, feature-v2-ui-polish-market-chart, feature-v2-ui-polish-market-chart-fixed]
   workflow_dispatch:
 
 permissions:
@@ -54,7 +54,7 @@ jobs:
 
       - name: Validate Dart source
         working-directory: flutter_app
-        run: dart analyze --no-fatal-infos --no-fatal-warnings || true
+        run: dart analyze --no-fatal-infos --no-fatal-warnings
 
       - name: Build installable APK
         working-directory: flutter_app
