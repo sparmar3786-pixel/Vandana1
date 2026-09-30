@@ -5,7 +5,9 @@ from SmartApi import SmartConnect
 import config as C
 
 MASTER_URL="https://margincalculator.angelbroking.com/OpenAPI_File/files/OpenAPIScripMaster.json"
-INDEX={"NIFTY":"99926000","BANKNIFTY":"99926009","FINNIFTY":"99926037"}
+INDEX={"NIFTY":"99926000","BANKNIFTY":"99926009","FINNIFTY":"99926037","MIDCPNIFTY":"99926074","SENSEX":"99919000","BANKEX":"99919012"}
+INDEX_EXCHANGE={"NIFTY":"NSE","BANKNIFTY":"NSE","FINNIFTY":"NSE","MIDCPNIFTY":"NSE","SENSEX":"BSE","BANKEX":"BSE"}
+OPTION_EXCHANGE={"NIFTY":"NFO","BANKNIFTY":"NFO","FINNIFTY":"NFO","MIDCPNIFTY":"NFO","SENSEX":"BFO","BANKEX":"BFO"}
 CACHE="scrip_master.json"
 
 class AngelClient:
@@ -27,20 +29,24 @@ class AngelClient:
         fresh=os.path.exists(CACHE) and time.time()-os.path.getmtime(CACHE)<43200
         if not fresh: urllib.request.urlretrieve(MASTER_URL,CACHE)
         with open(CACHE) as f: return json.load(f)
-    def build_chain(self):
+    def build_chain(self, symbol=None):
+        symbol=(symbol or C.SYMBOL).upper()
+        exchange=OPTION_EXCHANGE.get(symbol,"NFO")
         today=dt.date.today()
-        rows=[r for r in self._master() if r["name"]==C.SYMBOL and r["exch_seg"]=="NFO" and r["instrumenttype"]=="OPTIDX"]
+        rows=[r for r in self._master() if r.get("name")==symbol and r.get("exch_seg")==exchange and r.get("instrumenttype")=="OPTIDX"]
         def exp(r): return dt.datetime.strptime(r["expiry"],"%d%b%Y").date()
         expiries=sorted({exp(r) for r in rows if exp(r)>=today})
         if not expiries: raise RuntimeError(f"No active {C.SYMBOL} option expiry found.")
-        self.expiry=expiries[0]; self.chain={}
+        self.expiry=expiries[0]; self.chain={}; self.chain_symbol=symbol
         for r in rows:
             if exp(r)!=self.expiry: continue
             strike=float(r["strike"])/100; typ=r["symbol"][-2:]
             self.chain[(strike,typ)]={"token":r["token"],"symbol":r["symbol"]}
         self.strikes=sorted({k[0] for k in self.chain})
-    def spot(self):
-        r=self.api.getMarketData("LTP",{"NSE":[INDEX[C.SYMBOL]]})
+    def spot(self, symbol=None):
+        symbol=(symbol or getattr(self,"chain_symbol",C.SYMBOL)).upper()
+        exchange=INDEX_EXCHANGE.get(symbol,"NSE")
+        r=self.api.getMarketData("LTP",{exchange:[INDEX[symbol]]})
         return float(r["data"]["fetched"][0]["ltp"])
 
     def require_api(self):
@@ -151,11 +157,12 @@ class AngelClient:
                              "volume":q.get("tradeVolume"),"oi":q.get("opnInterest")})
         return {"data":{"fetched":rows,"unfetched":[]},"instruments":selected}
 
-    def option_chain_rows(self, around=None, count=10):
+    def option_chain_rows(self, symbol=None, around=None, count=10):
         self.require_api()
-        if not self.chain:
-            self.build_chain()
-        spot=self.spot()
+        symbol=(symbol or C.SYMBOL).upper()
+        if not self.chain or getattr(self,"chain_symbol",None)!=symbol:
+            self.build_chain(symbol)
+        spot=self.spot(symbol)
         atm=around if around is not None else min(self.strikes,key=lambda s:abs(s-spot))
         idx=min(range(len(self.strikes)),key=lambda i:abs(self.strikes[i]-atm))
         selected=self.strikes[max(0,idx-int(count)):idx+int(count)+1]
@@ -167,7 +174,7 @@ class AngelClient:
         rows=[]
         toks=list(token_map)
         for j in range(0,len(toks),50):
-            r=self.api.getMarketData("FULL",{"NFO":toks[j:j+50]})
+            r=self.api.getMarketData("FULL",{OPTION_EXCHANGE.get(symbol,"NFO"):toks[j:j+50]})
             for q in r.get("data",{}).get("fetched",[]):
                 item=token_map.get(str(q.get("symbolToken")))
                 if not item: continue
@@ -179,7 +186,7 @@ class AngelClient:
                     "volume":q.get("tradeVolume"),"buyQty":q.get("totalBuyQuantity"),
                     "sellQty":q.get("totalSellQuantity")
                 })
-        return {"symbol":C.SYMBOL,"spot":spot,"atm":atm,"expiry":str(self.expiry),"rows":rows}
+        return {"symbol":symbol,"spot":spot,"atm":atm,"expiry":str(self.expiry),"rows":rows}
 
     def snapshot(self):
         if self.api is None: raise RuntimeError("Angel session is not connected.")
