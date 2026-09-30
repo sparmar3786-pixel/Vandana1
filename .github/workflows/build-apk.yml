@@ -1,7 +1,7 @@
 name: Build NSE Algo Trading APK
 on:
   push:
-    branches: [main, feature-v2-ui-polish-market-chart]
+    branches: [main, feature-v2-ui-polish-market-chart, vandana-3]
   workflow_dispatch:
 
 permissions:
@@ -55,6 +55,10 @@ jobs:
       - name: Remove generated template test
         working-directory: flutter_app
         run: rm -f test/widget_test.dart
+
+      - name: Run focused tests
+        working-directory: flutter_app
+        run: flutter test test/market_features_test.dart
 
       - name: Validate Dart source
         working-directory: flutter_app
