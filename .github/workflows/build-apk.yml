@@ -1,7 +1,7 @@
 name: Build NSE Algo Trading APK
 on:
   push:
-    branches: [main]
+    branches: [main, feature-v2-smooth-chart-index]
   workflow_dispatch:
 
 permissions:
