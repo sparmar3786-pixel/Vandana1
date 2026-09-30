@@ -85,6 +85,12 @@ def angel_required():
     if client.api is None:
         raise HTTPException(503,"Angel One is not connected. Connect from Angel API screen first.")
 
+@app.get("/v1/angel/commodities")
+def angel_commodities(x_token:str=Header(None)):
+    auth(x_token); angel_required()
+    try: return client.commodity_quotes()
+    except Exception as e: raise HTTPException(502,str(e))
+
 @app.get("/v1/angel/market")
 def angel_market(x_token:str=Header(None)):
     auth(x_token); angel_required()
