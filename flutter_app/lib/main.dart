@@ -27,14 +27,14 @@ class _TerminalState extends State<Terminal> {
   static const screens = <String>[
     'Dashboard','Market','Commodity','Signals','OI Lab','Watchlist','Search',
     'Charts','Option Chain','News','Market Details','Angel API','NSE',
-    'NSE MCP','Data','Instruments','Settings','More','Strategies'
+    'NSE MCP','Data','Instruments','Settings','More','Strategies','AI Analysis'
   ];
   static const icons = <IconData>[
     Icons.dashboard, Icons.show_chart, Icons.precision_manufacturing,
     Icons.notifications_active, Icons.analytics, Icons.star, Icons.search,
     Icons.candlestick_chart, Icons.table_chart, Icons.article, Icons.info_outline,
     Icons.key, Icons.language, Icons.hub, Icons.storage, Icons.list_alt,
-    Icons.tune, Icons.more_horiz, Icons.schema
+    Icons.tune, Icons.more_horiz, Icons.schema, Icons.psychology
   ];
   int selected = 0;
   String backendUrl = 'https://vandana1-angel-api.onrender.com';
@@ -58,6 +58,10 @@ class _TerminalState extends State<Terminal> {
   List<dynamic> strategyRegistry = <dynamic>[];
   List<dynamic> strategyEvidence = <dynamic>[];
   bool strategyBusy = false;
+  bool aiBusy = false;
+  String aiFinal = 'WAIT';
+  String aiError = '';
+  List<dynamic> aiProviders = <dynamic>[];
   String optionFilter = 'NIFTY';
   String commodityQuery = '';
   final Set<String> selectedIndicators = <String>{};
@@ -68,6 +72,7 @@ class _TerminalState extends State<Terminal> {
     super.initState();
     fetchTerminal();
     fetchStrategies();
+    fetchAIStatus();
     timer = Timer.periodic(const Duration(seconds: 5), (_) => fetchTerminal());
   }
   @override void dispose() { timer?.cancel(); super.dispose(); }
@@ -167,13 +172,14 @@ class _TerminalState extends State<Terminal> {
     if (selected == 6) return searchPage();
     if (selected == 7) return chartsPage();
     if (selected == 8) return optionChain();
-    if (selected == 9) return marketDetailsPage();
+    if (selected == 9) return newsPage();
     if (selected == 10) return marketDetailsPage();
     if (selected == 11) return angelApi();
     if (selected == 13) return nseMcp();
     if (selected == 16) return settingsPage();
     if (selected == 17) return morePage();
     if (selected == 18) return strategiesPage();
+    if (selected == 19) return aiAnalysisPage();
     return dataPage(screens[selected]);
   }
 
@@ -377,7 +383,7 @@ class _TerminalState extends State<Terminal> {
     ]),
     const SizedBox(height:8),
     infoCard('Auto-select','Select a commodity above → Angel search resolves the contract → chart opens for the selected instrument.',Colors.blue),
-    if(terminalData?['commoditySearch'] is Map) ...[((terminalData!['commoditySearch']['data'] is List?terminalData!['commoditySearch']['data']:<dynamic>[]).map((x)=>Card(child:ListTile(title:Text((x['tradingsymbol']??'-').toString()),subtitle:Text('MCX • '+(x['symboltoken']??'-').toString()),onTap:()=>openSearchResult(x,'MCX')))))],
+    if(terminalData?['commoditySearch'] is Map) ...((terminalData!['commoditySearch']['data'] is List ? terminalData!['commoditySearch']['data'] : <dynamic>[]).map((x)=>Card(child:ListTile(title:Text((x['tradingsymbol']??'-').toString()),subtitle:Text('MCX • '+(x['symboltoken']??'-').toString()),onTap:()=>openSearchResult(x,'MCX'))))),
   ]);
 
   Widget oiLabPage() => ListView(padding:const EdgeInsets.all(16),children:<Widget>[
@@ -635,6 +641,91 @@ class _TerminalState extends State<Terminal> {
     if (state == 'active') return const Icon(Icons.check_circle, color: Colors.green, size: 18);
     if (state == 'unavailable') return const Icon(Icons.block, color: Colors.orange, size: 18);
     return const Icon(Icons.remove_circle_outline, size: 18);
+  }
+
+  Future<void> fetchAIStatus() async {
+    try {
+      final r = await http.get(Uri.parse(backendUrl + '/v1/ai/status'),
+        headers:<String,String>{'x-token':apiToken}).timeout(const Duration(seconds:8));
+      if(r.statusCode==200 && mounted){
+        final d=jsonDecode(r.body);
+        setState(()=>aiProviders=d is Map && d['providers'] is List ? d['providers'] : <dynamic>[]);
+      }
+    } catch (_) {}
+  }
+
+  Future<void> runAIValidation() async {
+    if(aiBusy) return;
+    setState(()=>{aiBusy=true, aiError='' });
+    try {
+      final payload=<String,dynamic>{
+        'terminal': terminalData ?? <String,dynamic>{},
+        'signal': signal ?? <String,dynamic>{},
+        'strategy_count': strategyRegistry.length,
+        'strategy_evidence': strategyEvidence.take(120).toList(),
+        'timestamp': DateTime.now().toIso8601String(),
+      };
+      final r=await http.post(Uri.parse(backendUrl + '/v1/ai/validate'),
+        headers:<String,String>{'x-token':apiToken,'Content-Type':'application/json'},
+        body:jsonEncode({'payload':payload})).timeout(const Duration(seconds:35));
+      if(r.statusCode==200 && mounted){
+        final d=jsonDecode(r.body);
+        setState((){
+          aiFinal=(d is Map ? (d['final']??'WAIT') : 'WAIT').toString();
+          aiProviders=d is Map && d['providers'] is List ? d['providers'] : <dynamic>[];
+        });
+      } else if(mounted) {
+        setState(()=>aiError='AI server returned HTTP '+r.statusCode.toString());
+      }
+    } catch(e) {
+      if(mounted) setState(()=>aiError='AI connection failed: '+e.toString());
+    } finally {
+      if(mounted) setState(()=>aiBusy=false);
+    }
+  }
+
+  Widget aiAnalysisPage() {
+    final configured=aiProviders.where((x)=>x is Map && x['configured']==true).length;
+    return RefreshIndicator(
+      onRefresh: fetchAIStatus,
+      child: ListView(padding:const EdgeInsets.fromLTRB(12,10,12,24),children:[
+        Row(children:[
+          const Expanded(child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
+            Text('AI Analysis',style:TextStyle(fontSize:24,fontWeight:FontWeight.bold)),
+            SizedBox(height:3),Text('Server-side multi-model validation • keys never enter the APK',style:TextStyle(fontSize:11)),
+          ])),
+          IconButton(onPressed:fetchAIStatus,icon:const Icon(Icons.refresh)),
+        ]),
+        const SizedBox(height:10),
+        Card(child:Padding(padding:const EdgeInsets.all(14),child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
+          const Text('FINAL VALIDATION',style:TextStyle(fontWeight:FontWeight.bold,letterSpacing:.7)),
+          const SizedBox(height:8),
+          Row(children:[
+            Container(width:12,height:12,decoration:BoxDecoration(shape:BoxShape.circle,color:aiFinal=='CALL BUY'?Colors.green:aiFinal=='PUT BUY'?Colors.red:Colors.orange)),
+            const SizedBox(width:8),Text(aiFinal,style:const TextStyle(fontSize:22,fontWeight:FontWeight.w800)),
+          ]),
+          const SizedBox(height:6),
+          Text(configured==0?'No provider key configured on the server.':'$configured / 6 AI providers configured',style:const TextStyle(fontSize:11)),
+          const SizedBox(height:10),
+          SizedBox(width:double.infinity,child:FilledButton.icon(
+            onPressed:aiBusy?null:runAIValidation,
+            icon:aiBusy?const SizedBox(width:18,height:18,child:CircularProgressIndicator(strokeWidth:2)):const Icon(Icons.auto_awesome),
+            label:Text(aiBusy?'RUNNING VALIDATION...':'RUN ALL AI'),
+          )),
+          if(aiError.isNotEmpty) Padding(padding:const EdgeInsets.only(top:8),child:Text(aiError,style:const TextStyle(color:Colors.red,fontSize:11))),
+        ]))),
+        const SizedBox(height:10),
+        for(final p in aiProviders) if(p is Map) Card(child:ListTile(
+          leading:CircleAvatar(child:Icon(p['configured']==true?Icons.check:Icons.key_off,size:18)),
+          title:Text((p['name']??'AI Provider').toString(),style:const TextStyle(fontWeight:FontWeight.bold)),
+          subtitle:Text((p['status']??(p['configured']==true?'Ready':'Server key required')).toString()),
+          trailing:Text((p['model']??'').toString(),style:const TextStyle(fontSize:9)),
+        )),
+        if(aiProviders.isEmpty) infoCard('AI service','Checking secure server-side provider configuration...',Colors.blue),
+        const SizedBox(height:6),
+        infoCard('Evidence rule','AI can validate supplied market data, but it cannot invent missing OI/volume/Greeks or guarantee a trade result.',Colors.blue),
+      ]),
+    );
   }
 
   Widget morePage() => ListView(padding: const EdgeInsets.all(16), children: <Widget>[
