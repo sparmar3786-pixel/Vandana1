@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:file_saver/file_saver.dart';
 import 'package:path_provider/path_provider.dart';
+import 'package:webview_flutter/webview_flutter.dart';
 import 'market_features.dart';
 
 void main() => runApp(const AlgoApp());
@@ -208,6 +209,39 @@ class _TerminalState extends State<Terminal> {
     }catch(_){}
     if(mounted)setState((){});
   }
+  Future<void> _openPuterAi(String tab) async {
+    final snapshot=jsonEncode(<String,dynamic>{
+      'tab':tab,
+      'market':liveMarket,
+      'optionChain':liveOptionRows.take(80).toList(),
+      'signal':signal,
+      'memory':aiMemory.take(20).toList(),
+    });
+    final controller=WebViewController()
+      ..setJavaScriptMode(JavaScriptMode.unrestricted)
+      ..setBackgroundColor(Colors.transparent)
+      ..loadHtmlString('''<!doctype html><html><body style="font-family:Arial;background:#111;color:#eee;padding:16px">
+<h2>3-Layer AI • $tab</h2><div id="status">AI Bot collecting...</div><pre id="out" style="white-space:pre-wrap"></pre>
+<script src="https://js.puter.com/v2/"></script><script>
+const data=JSON.stringify("PLACEHOLDER");
+const out=document.getElementById('out'), status=document.getElementById('status');
+async function ask(model,prompt){const r=await puter.ai.chat(prompt,{model:model,temperature:0.1,max_tokens:900,normalize:true});return r?.message?.content ?? String(r);}
+(async()=>{
+ try{
+  const bot=await ask('gpt-5.6-luna','AI BOT: Extract only facts from this live market snapshot. Do not invent prices or strikes. Identify candidate indices/strikes and missing data. SNAPSHOT: '+data);
+  status.textContent='AI Admin verifying...';
+  const admin=await ask('claude-sonnet-4-6','AI ADMIN: Cross-check this snapshot and AI Bot result. Reject unsupported strike/entry claims. Validate CALL vs PUT, OI/price flow, Greeks and freshness. Return verified findings only. SNAPSHOT: '+data+' BOT: '+bot);
+  status.textContent='AI ChatGPT final validation...';
+  const final=await ask('gpt-5.6-sol','AI CHATGPT: Produce the final concise Hindi validation. Use only verified data. Never invent strike, entry, SL, target or win rate. If no qualifying setup exists, say WAIT / NO QUALIFYING TRADE. SNAPSHOT: '+data+' BOT: '+bot+' ADMIN: '+admin);
+  status.textContent='3-layer validation complete';
+  out.textContent='AI BOT\n'+bot+'\n\nAI ADMIN\n'+admin+'\n\nAI CHATGPT\n'+final;
+ }catch(e){status.textContent='Puter AI error';out.textContent=String(e);}
+})();
+</script></body></html>'''.replace('PLACEHOLDER',snapshot));
+    if(!mounted)return;
+    await showModalBottomSheet<void>(context:context,isScrollControlled:true,builder:(_)=>SizedBox(height:MediaQuery.of(context).size.height*.82,child:WebViewWidget(controller:controller)));
+  }
+
   Future<void> _activateAi(String tab) async {
     await _saveAiMemory(DateTime.now().toIso8601String()+' • '+tab+' • market snapshot selected');
     if(mounted)setState(()=>aiActiveTab=tab);
@@ -631,6 +665,8 @@ class _TerminalState extends State<Terminal> {
       const SizedBox(height:6),
       Text(aiActiveTab.isEmpty?'Double-tap a tab/card to start.':'AI active for: '+aiActiveTab,style:const TextStyle(fontWeight:FontWeight.bold)),
       Text('Memory folder: app documents/ai_memory/market_memory.json • entries: '+aiMemory.length.toString(),style:const TextStyle(fontSize:11)),
+      const SizedBox(height:8),
+      FilledButton.icon(onPressed:aiActiveTab.isEmpty?null:()=>_openPuterAi(aiActiveTab),icon:const Icon(Icons.auto_awesome),label:const Text('RUN 3-LAYER AI WITH PUTER')),
       if(aiMemory.isNotEmpty)Text('Latest: '+aiMemory.last,style:const TextStyle(fontSize:10)),
     ]))),
     Card(child:ListTile(leading:const Icon(Icons.verified_user),title:const Text('Cross-verification'),subtitle:Text(aiActiveTab.isEmpty?'Not started':'Collection → verification → validation queued for '+aiActiveTab),trailing:Icon(aiActiveTab.isEmpty?Icons.radio_button_unchecked:Icons.check_circle,color:aiActiveTab.isEmpty?Colors.grey:Colors.green))),
