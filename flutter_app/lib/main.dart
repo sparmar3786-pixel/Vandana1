@@ -715,11 +715,17 @@ class _TerminalState extends State<Terminal> {
           if(aiError.isNotEmpty) Padding(padding:const EdgeInsets.only(top:8),child:Text(aiError,style:const TextStyle(color:Colors.red,fontSize:11))),
         ]))),
         const SizedBox(height:10),
-        for(final p in aiProviders) if(p is Map) Card(child:ListTile(
-          leading:CircleAvatar(child:Icon(p['configured']==true?Icons.check:Icons.key_off,size:18)),
+        for(final p in aiProviders) if(p is Map) Card(child:ExpansionTile(
+          leading:CircleAvatar(child:Icon(p['status']=='ok'||p['configured']==true?Icons.check:Icons.key_off,size:18)),
           title:Text((p['name']??'AI Provider').toString(),style:const TextStyle(fontWeight:FontWeight.bold)),
           subtitle:Text((p['status']??(p['configured']==true?'Ready':'Server key required')).toString()),
           trailing:Text((p['model']??'').toString(),style:const TextStyle(fontSize:9)),
+          children: [
+            Padding(padding:const EdgeInsets.fromLTRB(16,0,16,14),child:Align(
+              alignment:Alignment.centerLeft,
+              child:Text((p['text']??p['error']??'No response yet.').toString(),style:const TextStyle(fontSize:11,height:1.35)),
+            ))
+          ],
         )),
         if(aiProviders.isEmpty) infoCard('AI service','Checking secure server-side provider configuration...',Colors.blue),
         const SizedBox(height:6),
