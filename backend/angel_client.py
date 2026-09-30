@@ -42,6 +42,96 @@ class AngelClient:
     def spot(self):
         r=self.api.getMarketData("LTP",{"NSE":[INDEX[C.SYMBOL]]})
         return float(r["data"]["fetched"][0]["ltp"])
+
+    def require_api(self):
+        if self.api is None:
+            raise RuntimeError("Angel One session is not connected.")
+        return self.api
+
+    def index_quote(self, symbols=None):
+        api=self.require_api()
+        symbols=symbols or {
+            "NIFTY":"99926000","BANKNIFTY":"99926009","FINNIFTY":"99926037",
+            "SENSEX":"99919000"
+        }
+        tokens=list(symbols.values())
+        result=api.getMarketData("FULL", {"NSE": [t for t in tokens if t!="99919000"], "BSE":["99919000"]})
+        return result
+
+    def candles(self, exchange, token, interval="FIVE_MINUTE", days=1):
+        api=self.require_api()
+        now=dt.datetime.now(dt.timezone(dt.timedelta(hours=5,minutes=30)))
+        start=now-dt.timedelta(days=max(1,min(int(days),30)))
+        p={"exchange":exchange,"symboltoken":str(token),"interval":interval,
+           "fromdate":start.strftime("%Y-%m-%d %H:%M"),"todate":now.strftime("%Y-%m-%d %H:%M")}
+        return api.getCandleData(p)
+
+    def oi_history(self, token, interval="THREE_MINUTE", hours=6):
+        api=self.require_api()
+        now=dt.datetime.now(dt.timezone(dt.timedelta(hours=5,minutes=30)))
+        start=now-dt.timedelta(hours=max(1,min(int(hours),24)))
+        p={"exchange":"NFO","symboltoken":str(token),"interval":interval,
+           "fromdate":start.strftime("%Y-%m-%d %H:%M"),"todate":now.strftime("%Y-%m-%d %H:%M")}
+        return api.getOIData(p)
+
+    def option_greeks(self, name, expiry):
+        api=self.require_api()
+        return api._postRequest("api.optionGreek", {"name":name,"expirydate":expiry})
+
+    def gainers_losers(self, datatype="PercPriceGainers", expirytype="NEAR"):
+        api=self.require_api()
+        return api._postRequest("api.gainersLosers", {"datatype":datatype,"expirytype":expirytype})
+
+    def oi_buildup(self, datatype="Long Built Up", expirytype="NEAR"):
+        api=self.require_api()
+        return api._postRequest("api.oIBuildup", {"datatype":datatype,"expirytype":expirytype})
+
+    def put_call_ratio(self, expirytype="NEAR"):
+        api=self.require_api()
+        return api._postRequest("api.putCallRatio", {"expirytype":expirytype})
+
+    def search(self, exchange, query):
+        return self.require_api().searchScrip(exchange, query)
+
+    def portfolio(self):
+        api=self.require_api()
+        return {
+            "holdings": api.holding(),
+            "positions": api.position(),
+            "orders": api.orderBook(),
+            "trades": api.tradeBook()
+        }
+
+    def option_chain_rows(self, around=None, count=10):
+        self.require_api()
+        if not self.chain:
+            self.build_chain()
+        spot=self.spot()
+        atm=around if around is not None else min(self.strikes,key=lambda s:abs(s-spot))
+        idx=min(range(len(self.strikes)),key=lambda i:abs(self.strikes[i]-atm))
+        selected=self.strikes[max(0,idx-int(count)):idx+int(count)+1]
+        token_map={}
+        for s in selected:
+            for t in ("CE","PE"):
+                item=self.chain.get((s,t))
+                if item: token_map[item["token"]]=(s,t,item["symbol"])
+        rows=[]
+        toks=list(token_map)
+        for j in range(0,len(toks),50):
+            r=self.api.getMarketData("FULL",{"NFO":toks[j:j+50]})
+            for q in r.get("data",{}).get("fetched",[]):
+                item=token_map.get(str(q.get("symbolToken")))
+                if not item: continue
+                s,t,sym=item
+                rows.append({
+                    "strike":s,"type":t,"symbol":sym,"token":str(q.get("symbolToken")),
+                    "ltp":q.get("ltp"),"open":q.get("open"),"high":q.get("high"),
+                    "low":q.get("low"),"close":q.get("close"),"oi":q.get("opnInterest"),
+                    "volume":q.get("tradeVolume"),"buyQty":q.get("totalBuyQuantity"),
+                    "sellQty":q.get("totalSellQuantity")
+                })
+        return {"symbol":C.SYMBOL,"spot":spot,"atm":atm,"expiry":str(self.expiry),"rows":rows}
+
     def snapshot(self):
         if self.api is None: raise RuntimeError("Angel session is not connected.")
         spot=self.spot(); atm=min(self.strikes,key=lambda s:abs(s-spot)); i=self.strikes.index(atm)
