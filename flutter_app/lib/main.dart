@@ -27,14 +27,14 @@ class _TerminalState extends State<Terminal> {
   static const screens = <String>[
     'Dashboard','Market','Commodity','Signals','OI Lab','Watchlist','Search',
     'Charts','Option Chain','News','Market Details','Angel API','NSE',
-    'NSE MCP','Data','Instruments','Settings','More'
+    'NSE MCP','Data','Instruments','Settings','More','Strategies'
   ];
   static const icons = <IconData>[
     Icons.dashboard, Icons.show_chart, Icons.precision_manufacturing,
     Icons.notifications_active, Icons.analytics, Icons.star, Icons.search,
     Icons.candlestick_chart, Icons.table_chart, Icons.article, Icons.info_outline,
     Icons.key, Icons.language, Icons.hub, Icons.storage, Icons.list_alt,
-    Icons.tune, Icons.more_horiz
+    Icons.tune, Icons.more_horiz, Icons.schema
   ];
   int selected = 0;
   String backendUrl = 'https://vandana1-angel-api.onrender.com';
@@ -55,6 +55,9 @@ class _TerminalState extends State<Terminal> {
   bool angelDataBusy = false;
   bool lightMode = false;
   String marketFilter = 'Indices';
+  List<dynamic> strategyRegistry = <dynamic>[];
+  List<dynamic> strategyEvidence = <dynamic>[];
+  bool strategyBusy = false;
   String optionFilter = 'NIFTY';
   String commodityQuery = '';
   final Set<String> selectedIndicators = <String>{};
@@ -169,6 +172,7 @@ class _TerminalState extends State<Terminal> {
     if (selected == 13) return nseMcp();
     if (selected == 16) return settingsPage();
     if (selected == 17) return morePage();
+    if (selected == 18) return strategiesPage();
     return dataPage(screens[selected]);
   }
 
@@ -206,6 +210,7 @@ class _TerminalState extends State<Terminal> {
           ActionChip(label:const Text('Indian Indices'),avatar:const Icon(Icons.show_chart,size:16),onPressed:()=>setState(()=>selected=1)),
           ActionChip(label:const Text('Option Chain'),avatar:const Icon(Icons.table_chart,size:16),onPressed:()=>setState(()=>selected=8)),
           ActionChip(label:const Text('Charts'),avatar:const Icon(Icons.candlestick_chart,size:16),onPressed:()=>setState(()=>selected=7)),
+          ActionChip(label:const Text('Strategies'),avatar:const Icon(Icons.schema,size:16),onPressed:()=>setState(()=>selected=18)),
           ActionChip(label:const Text('NSE MCP'),avatar:const Icon(Icons.hub,size:16),onPressed:()=>setState(()=>selected=13)),
         ]),
       ]))),
@@ -560,6 +565,76 @@ class _TerminalState extends State<Terminal> {
     FilledButton.icon(onPressed:openSettings,icon:const Icon(Icons.dns),label:const Text('EDIT SERVER CONNECTION')),
   ]);
 
+
+  Future<void> fetchStrategies() async {
+    if (strategyBusy) return;
+    setState(() => strategyBusy = true);
+    try {
+      final r = await http.get(Uri.parse(backendUrl + '/v1/strategies'),
+        headers: <String,String>{'x-token': apiToken}).timeout(const Duration(seconds: 10));
+      if (r.statusCode == 200) {
+        final d = jsonDecode(r.body);
+        if (d is Map) {
+          final reg = d['registry']; final ev = d['evidence'];
+          if (mounted) setState(() {
+            strategyRegistry = reg is List ? reg : <dynamic>[];
+            strategyEvidence = ev is List ? ev : <dynamic>[];
+          });
+        }
+      }
+    } catch (_) {} finally { if (mounted) setState(() => strategyBusy = false); }
+  }
+
+  Widget strategiesPage() {
+    final active = strategyEvidence.where((x) => x is Map && x['state'] == 'active').length;
+    final unavailable = strategyEvidence.where((x) => x is Map && x['state'] == 'unavailable').length;
+    final grouped = <String,List<dynamic>>{};
+    for (final x in strategyRegistry) {
+      if (x is Map) grouped.putIfAbsent((x['family'] ?? 'Other').toString(), () => <dynamic>[]).add(x);
+    }
+    return RefreshIndicator(
+      onRefresh: fetchStrategies,
+      child: ListView(padding: const EdgeInsets.fromLTRB(12,10,12,20), children: [
+        const Text('Strategy Master', style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
+        const SizedBox(height: 4),
+        const Text('Complete registered strategy catalogue. Only evidence-backed modules may become active.', style: TextStyle(fontSize: 12)),
+        const SizedBox(height: 10),
+        Row(children: [
+          Expanded(child: _metricTile('Registered', strategyRegistry.length.toString(), Icons.schema)),
+          const SizedBox(width: 8),
+          Expanded(child: _metricTile('Active', active.toString(), Icons.bolt)),
+          const SizedBox(width: 8),
+          Expanded(child: _metricTile('Unavailable', unavailable.toString(), Icons.block)),
+        ]),
+        const SizedBox(height: 10),
+        FilledButton.icon(onPressed: strategyBusy ? null : fetchStrategies, icon: const Icon(Icons.sync), label: Text(strategyBusy ? 'LOADING...' : 'REFRESH STRATEGIES')),
+        const SizedBox(height: 8),
+        for (final entry in grouped.entries) Card(
+          child: ExpansionTile(
+            title: Text(entry.key),
+            subtitle: Text('${entry.value.length} modules'),
+            children: [
+              for (final x in entry.value) ListTile(
+                dense: true,
+                leading: const Icon(Icons.checklist, size: 18),
+                title: Text('${x['id']}. ${x['name']}'),
+                trailing: _strategyStateIcon(x['id']),
+              )
+            ],
+          ),
+        ),
+      ]),
+    );
+  }
+
+  Widget _strategyStateIcon(dynamic id) {
+    final hit = strategyEvidence.where((x) => x is Map && x['id'] == id).cast<dynamic>().toList();
+    if (hit.isEmpty) return const Icon(Icons.help_outline, size: 18);
+    final state = hit.first['state'];
+    if (state == 'active') return const Icon(Icons.check_circle, color: Colors.green, size: 18);
+    if (state == 'unavailable') return const Icon(Icons.block, color: Colors.orange, size: 18);
+    return const Icon(Icons.remove_circle_outline, size: 18);
+  }
 
   Widget morePage() => ListView(padding: const EdgeInsets.all(16), children: <Widget>[
     const Text('More', style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
