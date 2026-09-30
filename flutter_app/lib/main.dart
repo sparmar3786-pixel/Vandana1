@@ -617,7 +617,7 @@ class LiquidityPainter extends CustomPainter {
     for(int i=0;i<values.length;i++){
       final h=maxV>0?(values[i]/maxV)*(size.height-28):0;
       final p=Paint()..color=Colors.cyan;
-      canvas.drawRect(Rect.fromLTWH(i*bw+4,size.height-24-h,math.max(4,bw-8),h),p);
+      canvas.drawRect(Rect.fromLTWH(i*bw+4,size.height-24-h,math.max(4.0,bw-8).toDouble(),h),p);
       final tp=TextPainter(text:TextSpan(text:labels[i].replaceAll(' ','\n'),style:const TextStyle(fontSize:8,color:Colors.grey)),textDirection:TextDirection.ltr)..layout(maxWidth:bw);
       tp.paint(canvas,Offset(i*bw+2,size.height-22));
     }
@@ -643,7 +643,7 @@ class DrawingPainter extends CustomPainter {
       for(final l in levels){final y=a.dy+(b.dy-a.dy)*l;canvas.drawLine(Offset(math.min(a.dx,b.dx),y),Offset(size.width,y),p);}
     }else if(tool=='Long Position'||tool=='Short Position'){
       final entry=b.dy;
-      final distance=(a.dy-b.dy).abs().clamp(20.0,size.height/2);
+      final distance=(a.dy-b.dy).abs().clamp(20.0,size.height/2).toDouble();
       final sign=tool=='Long Position'?-1:1;
       final target=entry+sign*distance, stop=entry-sign*distance*.6;
       canvas.drawLine(Offset(0,entry),Offset(size.width,entry),p);
