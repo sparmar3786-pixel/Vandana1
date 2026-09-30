@@ -60,7 +60,7 @@ for _family, _raw in _ADVANCED:
         ADVANCED_STRATEGIES.append({"id": _j, "name": _name, "family": _family, "tier": "advanced"})
         _j += 1
 ALL_STRATEGIES = STRATEGIES + ADVANCED_STRATEGIES
-if len(ADVANCED_STRATEGIES) != 47 or len(ALL_STRATEGIES) != 424:
+if len(ADVANCED_STRATEGIES) != 49 or len(ALL_STRATEGIES) != 426:
     raise RuntimeError("Advanced registry must contain 47 modules; total must be 424")
 
 def _num(x):
