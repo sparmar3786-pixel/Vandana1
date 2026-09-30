@@ -163,7 +163,7 @@ class _TerminalState extends State<Terminal> {
     if (selected == 6) return searchPage();
     if (selected == 7) return chartsPage();
     if (selected == 8) return optionChain();
-    if (selected == 9) return newsPage();
+    if (selected == 9) return marketDetailsPage();
     if (selected == 10) return marketDetailsPage();
     if (selected == 11) return angelApi();
     if (selected == 13) return nseMcpPage();
@@ -447,15 +447,33 @@ class _TerminalState extends State<Terminal> {
     ])),
     const SizedBox(height:8),
     if(csvStatus.isNotEmpty) Text(csvStatus,style:const TextStyle(fontSize:11)),
-    if(liveOptionRows.isEmpty) infoCard('Live option chain','CALL LTP / OI and PUT LTP / OI appear when Angel One supplies the selected chain.',Colors.orange),
-    ...liveOptionRows.map((r)=>Card(child:ListTile(
-      title:Text((r['strike']??'-').toString()+' • '+(r['type']??'').toString()),
-      subtitle:Text('LTP '+(r['ltp']??'—').toString()+' • OI '+(r['oi']??'—').toString()),
-      trailing:IconButton(onPressed:()=>openQuoteChart(r),icon:const Icon(Icons.candlestick_chart)),
+    if(liveOptionRows.isEmpty) infoCard('Live option chain','CALL LTP / CALL OI | STRIKE | PUT OI / PUT LTP appear when Angel One supplies the selected chain.',Colors.orange),
+    if(liveOptionRows.isNotEmpty) Card(child:SingleChildScrollView(scrollDirection:Axis.horizontal,child:DataTable(
+      columns:const [DataColumn(label:Text('CALL LTP')),DataColumn(label:Text('CALL OI')),DataColumn(label:Text('STRIKE')),DataColumn(label:Text('PUT OI')),DataColumn(label:Text('PUT LTP'))],
+      rows:[for(final s in <dynamic>{for(final r in liveOptionRows) r['strike']}.toList()..sort((a,b)=>(a as num).compareTo(b as num))) DataRow(cells:[
+        DataCell(Text(_chainValue(s,'CE','ltp'))),DataCell(Text(_chainOi(s,'CE'))),DataCell(Text(s.toString(),style:const TextStyle(fontWeight:FontWeight.bold))),
+        DataCell(Text(_chainOi(s,'PE'))),DataCell(Text(_chainValue(s,'PE','ltp'))),
+      ])],
     ))),
     FilledButton.icon(onPressed:fetchOptionRows,icon:const Icon(Icons.download_for_offline),label:const Text('LOAD ANGEL OPTION CHAIN')),
     OutlinedButton.icon(onPressed:connection=='Connected'?downloadNseCsv:null,icon:const Icon(Icons.download),label:const Text('DOWNLOAD NSE CSV')),
   ]);
+
+  String _chainValue(dynamic strike,String type,String key){
+    for(final r in liveOptionRows){if(r['strike']==strike&&r['type']==type)return (r[key]??'—').toString();}
+    return '—';
+  }
+  String _chainOi(dynamic strike,String type){
+    for(final r in liveOptionRows){
+      if(r['strike']==strike&&r['type']==type){
+        final v=r['oi']; final d=r['oiChange'];
+        final p=d is num&&d>0, n=d is num&&d<0;
+        return (p?'+':n?'-':'')+(v??'—').toString();
+      }
+    }
+    return '—';
+  }
+
 
   Widget newsPage() => ListView(padding:const EdgeInsets.fromLTRB(12,10,12,20),children:<Widget>[
     Row(children:[const Expanded(child:Text('News',style:TextStyle(fontSize:23,fontWeight:FontWeight.bold))),IconButton(onPressed:fetchTerminal,icon:const Icon(Icons.refresh))]),
