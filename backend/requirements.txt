@@ -5,4 +5,5 @@ numpy
 python-dotenv
 pyotp
 smartapi-python
+logzero>=1.7.0
 joblib
