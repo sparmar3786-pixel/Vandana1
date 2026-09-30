@@ -163,7 +163,7 @@ class _TerminalState extends State<Terminal> {
     if (selected == 6) return searchPage();
     if (selected == 7) return chartsPage();
     if (selected == 8) return optionChain();
-    if (selected == 9) return newsPage();
+    if (selected == 9) return marketDetailsPage();
     if (selected == 10) return marketDetailsPage();
     if (selected == 11) return angelApi();
     if (selected == 13) return nseMcp();
@@ -198,6 +198,8 @@ class _TerminalState extends State<Terminal> {
         const SizedBox(height:6),
         if(signal!=null) ...[row('Symbol',signal!['symbol']),row('Spot',signal!['spot']),row('LTP',signal!['ltp'])] else const Text('No live signal payload received.',style:TextStyle(fontSize:12)),
       ]))),
+      const SizedBox(height:10),
+      Card(child:ListTile(leading:Icon(Icons.shield,color:connection=='Connected'?Colors.green:Colors.orange),title:const Text('Angel Smart API'),subtitle:Text(connection=='Connected'?'Connected':'Not connected'),trailing:Icon(connection=='Connected'?Icons.check_circle:Icons.cloud_off,color:connection=='Connected'?Colors.green:Colors.orange))),
       const SizedBox(height:10),
       Card(child:Padding(padding:const EdgeInsets.all(14),child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
         const Text('QUICK ACCESS',style:TextStyle(fontWeight:FontWeight.bold)),
@@ -486,21 +488,30 @@ on(Icons.notifications_none),title:const Text('Market alerts'),subtitle:const Te
 
   Widget marketDetailsPage() => ListView(padding:const EdgeInsets.fromLTRB(12,10,12,20),children:<Widget>[
     const Text('Market Details',style:TextStyle(fontSize:23,fontWeight:FontWeight.bold)),
-    const SizedBox(height:4),const Text('Sector breadth and buying/selling view — values only when live payload is available.',style:TextStyle(fontSize:12)),
-    const SizedBox(height:10),
-    Wrap(spacing:6,children:const[Chip(label:Text('NIFTY')),Chip(label:Text('BANK NIFTY')),Chip(label:Text('SENSEX'))]),
     const SizedBox(height:8),
-    Card(child:Padding(padding:const EdgeInsets.all(12),child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
-      const Text('SECTOR BREADTH',style:TextStyle(fontWeight:FontWeight.bold)),
-      const SizedBox(height:8),
-      Row(children:[Expanded(child:_breadthBox('GREEN / BUYING','Live payload pending',Colors.green)),const SizedBox(width:8),Expanded(child:_breadthBox('RED / SELLING','Live payload pending',Colors.red))]),
+    SingleChildScrollView(scrollDirection:Axis.horizontal,child:Row(children:[
+      for(final x in const ['NIFTY','BANK NIFTY','SENSEX'])
+        Padding(padding:const EdgeInsets.only(right:6),child:ChoiceChip(label:Text(x),selected:(terminalData?['market_details_selected']??'NIFTY')==x,onSelected:(_){setState((){terminalData={...?terminalData,'market_details_selected':x};});openNamedIndex(x=='NIFTY'?'NIFTY 50':x=='BANK NIFTY'?'BANK NIFTY':'SENSEX');})),
+    ])),
+    const SizedBox(height:8),
+    Card(child:Padding(padding:const EdgeInsets.all(12),child:Row(children:[
+      Expanded(child:_breadthBox('GREEN / BUYING','Live payload pending',Colors.green)),
+      const SizedBox(width:8),
+      Expanded(child:_breadthBox('RED / SELLING','Live payload pending',Colors.red)),
     ]))),
     const SizedBox(height:8),
     Card(child:Padding(padding:const EdgeInsets.all(12),child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
       const Text('SECTOR BREAKDOWN',style:TextStyle(fontWeight:FontWeight.bold)),
       const SizedBox(height:6),
-      for(final s in const ['IT','BANKING','AUTO','METAL','PHARMA','FMCG','ENERGY','REALTY'])ListTile(dense:true,leading:const Icon(Icons.circle,size:9),title:Text(s),subtitle:const Text('Live % change pending'),trailing:const Text('—')),
+      for(final s in const ['IT','BANKING','AUTO','METAL','PHARMA','FMCG','ENERGY','REALTY'])
+        ListTile(dense:true,leading:const Icon(Icons.circle,size:9),title:Text(s),subtitle:const Text('Live % change pending'),trailing:const Text('—')),
     ]))),
+    Card(child:ListTile(
+      leading:const Icon(Icons.article),
+      title:const Text('NEWS'),
+      subtitle:const Text('Market news is now grouped under Market Details.'),
+      trailing:const Icon(Icons.chevron_right),
+    )),
     infoCard('Reason / driver','Sector reason, advance/decline and percentage change will be shown from the live market-detail payload. No values are fabricated.',Colors.blue),
   ]);
 
@@ -523,7 +534,7 @@ on(Icons.notifications_none),title:const Text('Market alerts'),subtitle:const Te
     infoCard('Connection',nseMcpStatus,nseMcpStatus=='Connected'?Colors.green:Colors.orange),
     Card(child:ListTile(leading:const Icon(Icons.hub),title:const Text('Live market tools'),subtitle:const Text('MCP tool list and supported live data will appear here.'),trailing:const Icon(Icons.chevron_right))),
     Card(child:ListTile(leading:const Icon(Icons.table_chart),title:const Text('Live option chain'),subtitle:const Text('NSE MCP → Render → APK. Data may be delayed when the source is delayed.'),trailing:const Icon(Icons.chevron_right))),
-    FilledButton.icon(onPressed:connection=='Connected'?downloadNseCsv:null,icon:const Icon(Icons.download),label:const Text('DOWNLOAD NSE OPTION CHAIN CSV')),
+    FilledButton.icon(onPressed:nseMcpStatus=='Connected'?downloadNseCsv:null,icon:const Icon(Icons.download),label:const Text('DOWNLOAD NSE OPTION CHAIN CSV')),
     infoCard('Security','MCP access is server-side; APK does not store NSE/Angel credentials.',Colors.green),
   ]);
 
@@ -542,8 +553,8 @@ on(Icons.notifications_none),title:const Text('Market alerts'),subtitle:const Te
     Card(child:SwitchListTile(title:const Text('Light mode'),subtitle:const Text('Switch between dark and light workspace'),value:lightMode,onChanged:(v)=>setState(()=>lightMode=v))),
     infoCard('Backend URL',backendUrl,Colors.blue),
     const SizedBox(height:8),
-    Card(child:ListTile(leading:const Icon(Icons.schedule),title:const Text('TIME'),subtitle:const Text('Choose chart timeframe from the TIME tab.'),onTap:()=>showTimeTab())),
-    Card(child:ListTile(leading:const Icon(Icons.tune),title:const Text('INDICATORS'),subtitle:const Text('Choose chart indicators from the INDICATORS tab.'),onTap:()=>showIndicatorTab())),
+    Card(child:ListTile(leading:const Icon(Icons.schedule),title:const Text('TIME'),subtitle:const Text('Choose chart timeframe from the TIME tab.'),onTap:()=>showModalBottomSheet<void>(context:context,builder:(_)=>Padding(padding:const EdgeInsets.all(16),child:showTimeTab())))),
+    Card(child:ListTile(leading:const Icon(Icons.tune),title:const Text('INDICATORS'),subtitle:const Text('Choose chart indicators from the INDICATORS tab.'),onTap:()=>showModalBottomSheet<void>(context:context,builder:(_)=>Padding(padding:const EdgeInsets.all(16),child:showIndicatorTab())))),
     FilledButton.icon(onPressed:openSettings,icon:const Icon(Icons.dns),label:const Text('EDIT SERVER CONNECTION')),
   ]);
 
@@ -574,16 +585,22 @@ on(Icons.notifications_none),title:const Text('Market alerts'),subtitle:const Te
   Widget dataPage(String title) {
     if(title=='Data') return ListView(padding:const EdgeInsets.fromLTRB(12,10,12,20),children:[
       const Text('Data',style:TextStyle(fontSize:23,fontWeight:FontWeight.bold)),
-      const SizedBox(height:4),const Text('Live OI, breadth and market payload workspace.',style:TextStyle(fontSize:12)),
+      const SizedBox(height:4),const Text('Live OI and market payload workspace.',style:TextStyle(fontSize:12)),
       const SizedBox(height:10),
-      Card(child:ListTile(leading:const Icon(Icons.bar_chart),title:const Text('NIFTY OI'),subtitle:const Text('Total / change / buildup — live payload pending'),trailing:const Text('—'))),
-      Card(child:ListTile(leading:const Icon(Icons.bar_chart),title:const Text('BANK NIFTY OI'),subtitle:const Text('Total / change / buildup — live payload pending'),trailing:const Text('—'))),
-      Card(child:ListTile(leading:const Icon(Icons.compare_arrows),title:const Text('OI Change'),subtitle:const Text('Increased / decreased contracts'),trailing:const Text('—'))),
-      Card(child:ListTile(leading:const Icon(Icons.hub),title:const Text('NSE MCP Data'),subtitle:Text(nseMcpStatus),trailing:const Icon(Icons.chevron_right))),
-      infoCard('Live data policy','No OI or market value is fabricated. The design is ready for the corresponding backend payload.',Colors.blue),
+      FilledButton.icon(onPressed:fetchOptionRows,icon:const Icon(Icons.refresh),label:const Text('REFRESH LIVE OI')),
+      const SizedBox(height:8),
+      if(liveOptionRows.isEmpty) infoCard('OI','No live OI payload yet. Connect Angel One and refresh.',Colors.orange),
+      if(liveOptionRows.isNotEmpty) ...[
+        for(final r in liveOptionRows.take(30)) Card(child:ListTile(
+          title:Text((r['symbol']??'').toString()),
+          subtitle:Text('LTP '+(r['ltp']??'—').toString()+' • Strike '+(r['strike']??'—').toString()+' • '+(r['type']??'').toString()),
+          trailing:_oiCell(r),
+        )),
+      ],
+      Card(child:ListTile(leading:const Icon(Icons.hub),title:const Text('NSE MCP Data'),subtitle:Text(nseMcpStatus),trailing:Icon(nseMcpStatus=='Connected'?Icons.check_circle:Icons.cloud_off,color:nseMcpStatus=='Connected'?Colors.green:Colors.orange))),
     ]);
-    if(title=='Instruments') return ListView(padding:const EdgeInsets.all(16),children:[const Text('Instruments',style:TextStyle(fontSize:23,fontWeight:FontWeight.bold)),const SizedBox(height:8),infoCard('Instrument universe','NSE / BSE / NFO / MCX searchable instruments will be displayed here.',Colors.blue),const ListTile(leading:Icon(Icons.search),title:Text('Search instrument'),subtitle:Text('Symbol • exchange • token • segment'))]);
-    return ListView(padding:const EdgeInsets.all(16),children:[Text(title,style:const TextStyle(fontSize:23,fontWeight:FontWeight.bold)),const SizedBox(height:10),infoCard('Live data status',connection=='Connected'?'Backend connected.':'Backend not connected.',connection=='Connected'?Colors.green:Colors.orange),infoCard('Data source','Corresponding API/data adapter is handled by the backend.',Colors.blue)]);
+    if(title=='Instruments') return ListView(padding:const EdgeInsets.all(16),children:[const Text('Instruments',style:TextStyle(fontSize:23,fontWeight:FontWeight.bold)),const SizedBox(height:8),infoCard('Instrument universe','Angel One instrument master is loaded server-side. Search is intentionally kept out of this screen.',Colors.blue),FilledButton.icon(onPressed:fetchAngelMarket,icon:const Icon(Icons.refresh),label:const Text('REFRESH INSTRUMENT DATA'))]);
+    return ListView(padding:const EdgeInsets.all(16),children:[Text(title,style:const TextStyle(fontSize:23,fontWeight:FontWeight.bold)),const SizedBox(height:10),infoCard('Live data status',connection=='Connected'?'Backend + Angel connected.':'Backend not connected.',connection=='Connected'?Colors.green:Colors.orange),infoCard('Data source','Corresponding API/data adapter is handled by the backend.',Colors.blue)]);
   }
 
   Future<void> openSettings() async {
