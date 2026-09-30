@@ -4,6 +4,7 @@ from collections import deque
 import numpy as np
 import config as C
 import ai_model
+from strategy_registry import STRATEGIES, evaluate_strategies
 
 NSE_LOG = "data/nse_features.csv"
 
@@ -32,6 +33,7 @@ class Engine:
         self.nse = None
         self.nse_view = None
         self.last = {"action": "WAIT", "reasons": ["Warming up... data collect ho raha hai"]}
+        self.strategy_evidence = []
 
     def set_nse(self, f, ts):
         p, src = ai_model.p_up(f)
@@ -74,6 +76,15 @@ class Engine:
             else: pe_oi += cur["oi"]
             rows.append((strike, typ, cls, round(dp, 2), int(doi)))
         if w_sum == 0: return self.last
+
+        strategy_rows = []
+        for strike in strikes:
+            ce = snap["opts"].get((strike, "CE"), {})
+            pe = snap["opts"].get((strike, "PE"), {})
+            old_ce = base["opts"].get((strike, "CE"), {})
+            old_pe = base["opts"].get((strike, "PE"), {})
+            strategy_rows.append({"strike": strike, "ce": {**ce, "prev_ltp": old_ce.get("ltp"), "prev_oi": old_ce.get("oi")}, "pe": {**pe, "prev_ltp": old_pe.get("ltp"), "prev_oi": old_pe.get("oi")}})
+        self.strategy_evidence = evaluate_strategies({"spot": snap["spot"], "rows": strategy_rows, "timestamp": now})
 
         oi_score = score_sum / w_sum
         pcr = pe_oi / ce_oi if ce_oi else 1.0
@@ -143,4 +154,4 @@ class Engine:
         return self.last
 
     def _meta(self, snap, score):
-        return {"spot": snap["spot"], "atm": snap["atm"], "score": round(score, 3), "ts": snap["ts"]}
+        return {"spot": snap["spot"], "atm": snap["atm"], "score": round(score, 3), "ts": snap["ts"], "strategy_registry_count": len(STRATEGIES), "strategy_evidence": self.strategy_evidence}
