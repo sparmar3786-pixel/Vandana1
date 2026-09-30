@@ -400,7 +400,7 @@ class _TerminalState extends State<Terminal> {
     ]),
     const SizedBox(height:8),
     Card(child:Padding(padding:const EdgeInsets.all(8),child:Column(children:[
-      SizedBox(height:300,width:double.infinity,child:liveCandles.isEmpty?const Center(child:Text('No candle payload yet.')):CustomPaint(painter:CandlePainter(liveCandles))),
+      SizedBox(height:300,width:double.infinity,child:liveCandles.isEmpty?const Center(child:Text('No candle payload yet.')):CustomPaint(painter:CandlePainter(liveCandles,selectedIndicators))),
       const SizedBox(height:4),const Text('Tip: open an index/commodity from Market or Search for full-screen landscape chart.',style:TextStyle(fontSize:11)),
     ]))),
     FilledButton.icon(onPressed:fetchCandles,icon:const Icon(Icons.candlestick_chart),label:Text(angelDataBusy?'LOADING...':'REFRESH ANGEL CHART')),
@@ -536,24 +536,66 @@ class _TerminalState extends State<Terminal> {
 
 class CandlePainter extends CustomPainter {
   final List<dynamic> rows;
-  CandlePainter(this.rows);
+  final Set<String> indicators;
+  CandlePainter(this.rows,this.indicators);
+
+  List<double?> ema(List<double> v,int n){
+    final out=List<double?>.filled(v.length,null); if(v.isEmpty)return out;
+    double prev=v.first; out[0]=prev; final k=2/(n+1);
+    for(int i=1;i<v.length;i++){prev=v[i]*k+prev*(1-k);out[i]=prev;} return out;
+  }
+  List<double?> rsi(List<double> v,int n){
+    final out=List<double?>.filled(v.length,null); if(v.length<=n)return out;
+    double gain=0,loss=0;
+    for(int i=1;i<=n;i++){final d=v[i]-v[i-1];gain+=math.max(d,0);loss+=math.max(-d,0);}
+    for(int i=n;i<v.length;i++){
+      if(i>n){final d=v[i]-v[i-1];gain=(gain*(n-1)+math.max(d,0))/n;loss=(loss*(n-1)+math.max(-d,0))/n;}
+      out[i]=loss==0?100:100-(100/(1+gain/loss));
+    }
+    return out;
+  }
+
   @override void paint(Canvas canvas,Size size){
-    final vals=rows.where((r)=>r is List && r.length>=5).toList();
+    final vals=rows.where((r)=>r is List&&r.length>=5).toList();
     if(vals.isEmpty)return;
+    final close=vals.map<double>((r)=>(r[4]as num).toDouble()).toList();
+    final overlays=<List<double?>>[];
+    if(indicators.contains('EMA 8'))overlays.add(ema(close,8));
+    if(indicators.contains('EMA 13'))overlays.add(ema(close,13));
+    if(indicators.contains('SMA 20')){
+      final a=List<double?>.filled(close.length,null);
+      for(int i=19;i<close.length;i++)a[i]=close.sublist(i-19,i+1).reduce((x,y)=>x+y)/20;
+      overlays.add(a);
+    }
+    if(indicators.contains('VWAP')){
+      final a=List<double?>.filled(close.length,null);double pv=0,vol=0;
+      for(int i=0;i<vals.length;i++){final r=vals[i];final h=(r[2]as num).toDouble(),l=(r[3]as num).toDouble(),cl=close[i];final v=r.length>5&&r[5] is num?(r[5]as num).toDouble():0;pv+=((h+l+cl)/3)*v;vol+=v;a[i]=vol>0?pv/vol:cl;} overlays.add(a);
+    }
     double minV=double.infinity,maxV=-double.infinity;
-    for(final r in vals){minV=math.min(minV,(r[3] as num).toDouble());maxV=math.max(maxV,(r[2] as num).toDouble());}
-    final range=math.max(maxV-minV,0.01); final width=size.width/vals.length;
-    final wick=Paint()..strokeWidth=1.2; final body=Paint()..strokeWidth=5;
+    for(final r in vals){minV=math.min(minV,(r[3]as num).toDouble());maxV=math.max(maxV,(r[2]as num).toDouble());}
+    for(final a in overlays)for(final x in a)if(x!=null){minV=math.min(minV,x);maxV=math.max(maxV,x);}
+    final hasRsi=indicators.contains('RSI 14');
+    final chartH=hasRsi?size.height*.75:size.height;
+    final range=math.max(maxV-minV,.01),width=size.width/vals.length;
+    double y(double v)=>chartH-(v-minV)/range*chartH;
+    final grid=Paint()..color=Theme.of(canvas.context).dividerColor;
+    final wick=Paint()..strokeWidth=1.2,body=Paint()..strokeWidth=math.max(2,width*.55);
     for(int i=0;i<vals.length;i++){
-      final r=vals[i]; final o=(r[1] as num).toDouble(),h=(r[2] as num).toDouble(),l=(r[3] as num).toDouble(),cl=(r[4] as num).toDouble();
-      double y(double v)=>size.height-(v-minV)/range*size.height;
-      final x=i*width+width/2; final up=cl>=o; wick.color=up?Colors.green:Colors.red; body.color=wick.color;
-      canvas.drawLine(Offset(x,y(h)),Offset(x,y(l)),wick);
-      canvas.drawLine(Offset(x,y(o)),Offset(x,y(cl)),body);
+      final r=vals[i];final o=(r[1]as num).toDouble(),h=(r[2]as num).toDouble(),l=(r[3]as num).toDouble(),cl=close[i];final x=i*width+width/2,up=cl>=o;
+      wick.color=up?Colors.green:Colors.red;body.color=wick.color;
+      canvas.drawLine(Offset(x,y(h)),Offset(x,y(l)),wick);canvas.drawLine(Offset(x,y(o)),Offset(x,y(cl)),body);
+    }
+    final colors=[Colors.cyan,Colors.amber,Colors.purple,Colors.orange];
+    for(int k=0;k<overlays.length;k++){final p=Paint()..color=colors[k%colors.length]..strokeWidth=1.5;final a=overlays[k];for(int i=1;i<a.length;i++)if(a[i-1]!=null&&a[i]!=null)canvas.drawLine(Offset((i-1)*width+width/2,y(a[i-1]!)),Offset(i*width+width/2,y(a[i]!)),p);}
+    if(hasRsi){
+      final rv=rsi(close,14),top=chartH+4,panelH=size.height-top-4,paint=Paint()..color=Colors.orange..strokeWidth=1.3;
+      for(int i=1;i<rv.length;i++)if(rv[i-1]!=null&&rv[i]!=null){double ry(double z)=>top+panelH-(z/100)*panelH;canvas.drawLine(Offset((i-1)*width+width/2,ry(rv[i-1]!)),Offset(i*width+width/2,ry(rv[i]!)),paint);}
+      final tp=TextPainter(text:const TextSpan(text:'RSI 14',style:TextStyle(fontSize:10,color:Colors.grey)),textDirection:TextDirection.ltr)..layout();tp.paint(canvas,Offset(4,top));
     }
   }
-  @override bool shouldRepaint(covariant CandlePainter old)=>old.rows!=rows;
+  @override bool shouldRepaint(covariant CandlePainter old)=>old.rows!=rows||old.indicators!=indicators;
 }
+
 class AngelApiForm extends StatefulWidget {
   final String backendUrl;
   final String apiToken;
