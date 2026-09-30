@@ -55,7 +55,7 @@ class _TerminalState extends State<Terminal> {
   bool angelDataBusy = false;
   bool lightMode = false;
   String marketFilter = 'Indices';
-  String optionFilter = 'ALL';
+  String optionFilter = 'NIFTY';
   String commodityQuery = '';
   final Set<String> selectedIndicators = <String>{};
   Map<String,dynamic>? terminalData;
