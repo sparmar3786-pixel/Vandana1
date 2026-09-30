@@ -204,7 +204,7 @@ def strategies(x_token:str=Header(None)):
     evidence = eng.strategy_evidence if isinstance(getattr(eng, "strategy_evidence", None), list) else []
     active = sum(1 for x in evidence if x.get("state") == "active")
     unavailable = sum(1 for x in evidence if x.get("state") == "unavailable")
-    return {"count": len(ALL_STRATEGIES), "active": active, "inactive": len(STRATEGIES)-active-unavailable, "unavailable": unavailable, "registry": ALL_STRATEGIES, "evidence": evidence}
+    return {"count": len(ALL_STRATEGIES), "active": active, "inactive": len(ALL_STRATEGIES)-active-unavailable, "unavailable": unavailable, "registry": ALL_STRATEGIES, "evidence": evidence}
 
 @app.get("/signal")
 def signal(x_token:str=Header(None)): auth(x_token); return terminal_snapshot()
