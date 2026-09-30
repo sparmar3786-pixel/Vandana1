@@ -656,7 +656,7 @@ class _TerminalState extends State<Terminal> {
 
   Future<void> runAIValidation() async {
     if(aiBusy) return;
-    setState(()=>{aiBusy=true, aiError='' });
+    setState(() { aiBusy=true; aiError=''; });
     try {
       final payload=<String,dynamic>{
         'terminal': terminalData ?? <String,dynamic>{},
