@@ -61,7 +61,14 @@ class _TerminalState extends State<Terminal> {
   bool aiBusy = false;
   String aiFinal = 'WAIT';
   String aiError = '';
-  List<dynamic> aiProviders = <dynamic>[];
+  List<dynamic> aiProviders = <dynamic>[
+    {'id':'gpt56-luna','name':'GPT-5.6 Luna','model':'gpt-5.6-luna','configured':false,'status':'Server key required'},
+    {'id':'claude-sonnet','name':'Claude Sonnet 4.6','model':'claude-sonnet-4-6','configured':false,'status':'Server key required'},
+    {'id':'gpt56-sol','name':'GPT-5.6 Sol','model':'gpt-5.6-sol','configured':false,'status':'Server key required'},
+    {'id':'deepseek','name':'DeepSeek Chat','model':'deepseek-chat','configured':false,'status':'Server key required'},
+    {'id':'gemini-flash','name':'Gemini 2.5 Flash','model':'gemini-2.5-flash','configured':false,'status':'Server key required'},
+    {'id':'grok-4','name':'Grok 4','model':'grok-4','configured':false,'status':'Server key required'},
+  ];
   String optionFilter = 'NIFTY';
   String commodityQuery = '';
   final Set<String> selectedIndicators = <String>{};
@@ -218,7 +225,7 @@ class _TerminalState extends State<Terminal> {
         const SizedBox(height:8),
         Wrap(spacing:7,runSpacing:7,children:[
           ActionChip(label:const Text('Indian Indices'),avatar:const Icon(Icons.show_chart,size:16),onPressed:()=>setState(()=>selected=1)),
-          ActionChip(label:const Text('Option Chain'),avatar:const Icon(Icons.table_chart,size:16),onPressed:()=>setState(()=>selected=8)),
+          ActionChip(label:const Text('Option Chain'),avatar:const Icon(Icons.table_chart,size:16),onPressed:(){setState(()=>selected=8);fetchOptionRows();}),
           ActionChip(label:const Text('Charts'),avatar:const Icon(Icons.candlestick_chart,size:16),onPressed:()=>setState(()=>selected=7)),
           ActionChip(label:const Text('Strategies'),avatar:const Icon(Icons.schema,size:16),onPressed:()=>setState(()=>selected=18)),
           ActionChip(label:const Text('NSE MCP'),avatar:const Icon(Icons.hub,size:16),onPressed:()=>setState(()=>selected=13)),
@@ -382,7 +389,7 @@ class _TerminalState extends State<Terminal> {
     TextField(decoration:const InputDecoration(prefixIcon:Icon(Icons.search),labelText:'Search commodity',hintText:'CRUDEOIL, GOLD, SILVER, NATURALGAS',border:OutlineInputBorder()),onChanged:(v)=>setState(()=>commodityQuery=v)),
     const SizedBox(height:8),
     Wrap(spacing:6,runSpacing:6,children:[
-      for(final x in const ['CRUDEOIL','GOLD','SILVER','NATURALGAS'])if(commodityQuery.isEmpty||x.contains(commodityQuery.toUpperCase()))ActionChip(label:Text(x),onPressed:()=>searchAndOpenCommodity(x)),
+      for(final x in const ['CRUDEOIL','CRUDEOILM','GOLD','SILVER','NATURALGAS'])if(commodityQuery.isEmpty||x.contains(commodityQuery.toUpperCase()))ActionChip(label:Text(x),onPressed:()=>searchAndOpenCommodity(x)),
     ]),
     const SizedBox(height:8),
     infoCard('Auto-select','Select a commodity above → Angel search resolves the contract → chart opens for the selected instrument.',Colors.blue),
@@ -472,7 +479,7 @@ class _TerminalState extends State<Terminal> {
     ])),
     const SizedBox(height:8),
     if(csvStatus.isNotEmpty) Text(csvStatus,style:const TextStyle(fontSize:11)),
-    if(liveOptionRows.isEmpty) infoCard('Live option chain','Select an index and connect Angel One. LTP and OI are read directly from SmartAPI.',Colors.orange),
+    if(liveOptionRows.isEmpty) infoCard('Live option chain','Connect Angel One from Angel API. LTP and OI are read directly from SmartAPI; NSE CSV is only a separate download.',Colors.orange),
     if(liveOptionRows.isNotEmpty) _optionTable(),
   ]);
 
@@ -729,9 +736,13 @@ class _TerminalState extends State<Terminal> {
         headers:<String,String>{'x-token':apiToken}).timeout(const Duration(seconds:8));
       if(r.statusCode==200 && mounted){
         final d=jsonDecode(r.body);
-        setState(()=>aiProviders=d is Map && d['providers'] is List ? d['providers'] : <dynamic>[]);
+        setState(()=>aiProviders=d is Map && d['providers'] is List ? d['providers'] : aiProviders);
+      } else if (mounted) {
+        setState(() => aiError = 'AI status unavailable; provider names retained.');
       }
-    } catch (_) {}
+    } catch (_) {
+      if (mounted) setState(() => aiError = 'AI status unavailable; provider names retained.');
+    }
   }
 
   Future<void> runAIValidation() async {
