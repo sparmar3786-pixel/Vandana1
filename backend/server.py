@@ -196,11 +196,22 @@ def ai_status(x_token:str=Header(None)):
 def ai_validate(body:AIValidationRequest,x_token:str=Header(None)):
     auth(x_token)
     payload=dict(body.payload or {})
+    try:
+        snap=terminal_snapshot()
+    except Exception:
+        snap={}
     if not payload:
-        payload=terminal_snapshot()
-    payload["engine_decision"]=terminal_snapshot().get("signals",{})
+        payload=snap
+    payload["engine_decision"]=snap.get("signals",{}) if isinstance(snap,dict) else {}
     payload["strategy_evidence"]=getattr(eng,"strategy_evidence",[])[:120]
-    return validate_all(payload)
+    try:
+        return validate_all(payload)
+    except Exception as e:
+        providers=provider_status()
+        for p in providers:
+            p["status"]="unavailable"
+            p["error"]="AI validation service unavailable: "+str(e)[:180]
+        return {"final":"NO QUALIFYING TRADE","providers":providers,"configured":0,"total":len(providers),"error":"AI validation service unavailable"}
 
 @app.get("/v1/strategies")
 def strategies(x_token:str=Header(None)):
