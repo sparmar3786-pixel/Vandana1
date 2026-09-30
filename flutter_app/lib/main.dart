@@ -51,6 +51,7 @@ class _TerminalState extends State<Terminal> {
   String selectedChartToken = '99926000';
   String selectedChartExchange = 'NSE';
   String selectedInterval = 'FIVE_MINUTE';
+  static const intervalMap = <String,String>{'1m':'ONE_MINUTE','2m':'TWO_MINUTE','3m':'THREE_MINUTE','5m':'FIVE_MINUTE','10m':'TEN_MINUTE','15m':'FIFTEEN_MINUTE','30m':'THIRTY_MINUTE','1H':'ONE_HOUR','1D':'ONE_DAY'};
   bool angelDataBusy = false;
   bool lightMode = false;
   String marketFilter = 'Indices';
