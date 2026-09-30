@@ -536,6 +536,26 @@ class _TerminalState extends State<Terminal> {
     infoCard('Color logic','CALL green • PUT red • strike blue. OI↑/price↑ green ↑↑; OI↑/price↓ red ↑↓; OI↓/price↓ red ↓↓. Missing live fields remain —.',Colors.blue),
   ]);
 
+  String _chainValue(dynamic strike,String type,String key){
+    for(final r in liveOptionRows){
+      if(r['strike']==strike && r['type']==type){
+        final value=r[key] ?? (key=='ltp' ? r['lastTradedPrice'] : null) ?? (key=='ltp' ? r['lastPrice'] : null);
+        return value == null ? '—' : value.toString();
+      }
+    }
+    return '—';
+  }
+
+  String _chainOi(dynamic strike,String type){
+    for(final r in liveOptionRows){
+      if(r['strike']==strike && r['type']==type){
+        final value=r['oi'] ?? r['openInterest'] ?? r['opnInterest'];
+        return value == null ? '—' : value.toString();
+      }
+    }
+    return '—';
+  }
+
   Widget _coloredOiCell(dynamic strike,String type){
     final m=<String,dynamic>{};
     for(final r in liveOptionRows){if(r['strike']==strike&&r['type']==type){m.addAll(Map<String,dynamic>.from(r));break;}}
