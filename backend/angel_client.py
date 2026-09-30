@@ -102,6 +102,41 @@ class AngelClient:
             "trades": api.tradeBook()
         }
 
+
+    def commodity_quotes(self):
+        api=self.require_api()
+        master=self._master()
+        wanted=("CRUDEOIL","NATURALGAS","GOLD","SILVER","COPPER","ALUMINIUM","ZINC","LEAD")
+        today=dt.date.today()
+        selected=[]
+        for name in wanted:
+            candidates=[]
+            for r in master:
+                if r.get("exch_seg")!="MCX" or not r.get("name","").upper().startswith(name): continue
+                exp=r.get("expiry","")
+                if exp:
+                    try:
+                        ed=dt.datetime.strptime(exp,"%d%b%Y").date()
+                        if ed>=today: candidates.append((ed,r))
+                    except Exception:
+                        pass
+            if candidates:
+                candidates.sort(key=lambda x:x[0])
+                selected.append(candidates[0][1])
+        tokens=[str(r["token"]) for r in selected]
+        if not tokens: return {"data":{"fetched":[],"unfetched":[]},"instruments":[]}
+        result=api.getMarketData("FULL",{"MCX":tokens})
+        by={str(r["symbolToken"]):r for r in result.get("data",{}).get("fetched",[])}
+        rows=[]
+        for r in selected:
+            q=by.get(str(r["token"]))
+            if q:
+                rows.append({"name":r.get("name"),"tradingSymbol":r.get("symbol"),"token":str(r["token"]),
+                             "expiry":r.get("expiry"),"ltp":q.get("ltp"),"open":q.get("open"),
+                             "high":q.get("high"),"low":q.get("low"),"close":q.get("close"),
+                             "volume":q.get("tradeVolume"),"oi":q.get("opnInterest")})
+        return {"data":{"fetched":rows,"unfetched":[]},"instruments":selected}
+
     def option_chain_rows(self, around=None, count=10):
         self.require_api()
         if not self.chain:
