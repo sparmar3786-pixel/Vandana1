@@ -4,6 +4,7 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:file_saver/file_saver.dart';
+import 'market_features.dart';
 
 void main() => runApp(const AlgoApp());
 
@@ -25,7 +26,7 @@ class Terminal extends StatefulWidget {
 
 class _TerminalState extends State<Terminal> {
   static const screens = <String>[
-    'Dashboard','Market','Commodity','Signals','OI Lab','Watchlist','Search',
+    'Dashboard','Indian Indices','Commodity','Signals','OI Lab','Watchlist','Search',
     'Charts','Option Chain','News','Market Details','Angel API','NSE',
     'NSE MCP','Data','Instruments','Settings','More'
   ];
@@ -58,6 +59,9 @@ class _TerminalState extends State<Terminal> {
   String optionFilter = 'NIFTY';
   String commodityQuery = '';
   final Set<String> selectedIndicators = <String>{};
+  String selectedDrawingTool = '';
+  final List<Offset> drawingPoints = <Offset>[];
+  String selectedMarketDetail = 'NIFTY';
   Map<String,dynamic>? terminalData;
   Timer? timer;
 
@@ -141,7 +145,7 @@ class _TerminalState extends State<Terminal> {
             SizedBox(height: 4),
             Text('18-screen live market terminal'),
           ])),
-          for (int i=0; i<screens.length; i++) ListTile(
+          for (int i=0; i<screens.length; i++) if (i != 6) ListTile(
             leading: Icon(icons[i]),
             title: Text(screens[i]),
             selected: selected == i,
@@ -230,30 +234,16 @@ class _TerminalState extends State<Terminal> {
   }
 
   Future<void> openNamedIndex(String name) async {
-    String norm(String x) => x.toUpperCase().replaceAll(RegExp(r'[^A-Z0-9]'), '');
     dynamic hit;
-    for (final q in liveMarket) {
-      final s = norm((q['tradingSymbol'] ?? q['tradingsymbol'] ?? q['symbol'] ?? q['indexName'] ?? '').toString());
-      final ok = (name == 'NIFTY 50' && s.contains('NIFTY')) ||
-          (name == 'BANK NIFTY' && s.contains('BANKNIFTY')) ||
-          (name == 'FINNIFTY' && s.contains('FINNIFTY')) ||
-          (name == 'MIDCAP SELECT' && (s.contains('MIDCP') || s.contains('MIDCAP'))) ||
-          (name == 'SENSEX' && s.contains('SENSEX')) ||
-          (name == 'BANKEX' && s.contains('BANKEX'));
-      if (ok) { hit = q; break; }
+    for(final q in liveMarket){
+      final s=(q['tradingSymbol']??q['tradingsymbol']??q['symbol']??q['indexName']??'').toString();
+      if(indexMatches(name,s)){hit=q;break;}
     }
-    if (hit != null) { await openQuoteChart(hit); return; }
+    if(hit!=null){await openQuoteChart(hit);return;}
     await fetchAngelMarket();
-    for (final q in liveMarket) {
-      final s = norm((q['tradingSymbol'] ?? q['tradingsymbol'] ?? q['symbol'] ?? q['indexName'] ?? '').toString());
-      if ((name == 'NIFTY 50' && s.contains('NIFTY')) ||
-          (name == 'BANK NIFTY' && s.contains('BANKNIFTY')) ||
-          (name == 'FINNIFTY' && s.contains('FINNIFTY')) ||
-          (name == 'MIDCAP SELECT' && (s.contains('MIDCP') || s.contains('MIDCAP'))) ||
-          (name == 'SENSEX' && s.contains('SENSEX')) ||
-          (name == 'BANKEX' && s.contains('BANKEX'))) {
-        await openQuoteChart(q); return;
-      }
+    for(final q in liveMarket){
+      final s=(q['tradingSymbol']??q['tradingsymbol']??q['symbol']??q['indexName']??'').toString();
+      if(indexMatches(name,s)){await openQuoteChart(q);return;}
     }
   }
 
@@ -302,7 +292,7 @@ class _TerminalState extends State<Terminal> {
   Future<void> fetchOptionRows() async {
     setState(()=>angelDataBusy=true);
     try {
-      final r=await http.get(Uri.parse(backendUrl+'/v1/angel/option-chain?count=10'),headers:<String,String>{'x-token':apiToken}).timeout(const Duration(seconds:15));
+      final r=await http.get(Uri.parse(backendUrl+'/v1/angel/option-chain?symbol='+Uri.encodeQueryComponent(optionFilter)+'&count='+optionChainCount.toString()),headers:<String,String>{'x-token':apiToken}).timeout(const Duration(seconds:15));
       if(r.statusCode==200){
         final d=jsonDecode(r.body);
         final rows=d is Map && d['rows'] is List ? d['rows'] : <dynamic>[];
@@ -336,33 +326,33 @@ class _TerminalState extends State<Terminal> {
   }
 
   Widget marketPage() => ListView(padding:const EdgeInsets.fromLTRB(12,10,12,20),children:<Widget>[
-    const Text('Market',style:TextStyle(fontSize:23,fontWeight:FontWeight.bold)),
-    const SizedBox(height:4),const Text('INDICES • NSE / BSE • tap an index to open its chart.',style:TextStyle(fontSize:12)),
+    const Text('Indian Indices',style:TextStyle(fontSize:23,fontWeight:FontWeight.bold)),
+    const SizedBox(height:4),const Text('NSE / BSE • live price, liquidity and index chart access.',style:TextStyle(fontSize:12)),
     const SizedBox(height:10),
     SingleChildScrollView(scrollDirection:Axis.horizontal,child:Row(children:[
-      for(final f in const ['Indices','NSE','BSE']) Padding(padding:const EdgeInsets.only(right:6),child:ChoiceChip(label:Text(f),selected:marketFilter==f,onSelected:(_)=>setState(()=>marketFilter=f))),
+      for(final f in const ['Indices','NSE','BSE'])Padding(padding:const EdgeInsets.only(right:6),child:ChoiceChip(label:Text(f),selected:marketFilter==f,onSelected:(_)=>setState(()=>marketFilter=f))),
     ])),
     const SizedBox(height:8),
-    Card(child:Padding(padding:const EdgeInsets.all(10),child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
-      const Text('INDICES',style:TextStyle(fontWeight:FontWeight.bold)),const SizedBox(height:6),
-      Wrap(spacing:6,runSpacing:6,children:[
-        for(final x in const ['NIFTY 50','BANK NIFTY','FINNIFTY','MIDCAP SELECT','SENSEX','BANKEX'])
-          ActionChip(label:Text(x),onPressed:()=>openNamedIndex(x)),
-      ]),
+    Card(child:Padding(padding:const EdgeInsets.all(10),child:Wrap(spacing:6,runSpacing:6,children:[
+      for(final x in const ['NIFTY 50','BANK NIFTY','FINNIFTY','MIDCAP SELECT','SENSEX','BANKEX'])ActionChip(label:Text(x),onPressed:()=>openNamedIndex(x)),
     ]))),
-    const SizedBox(height:8),
+    Card(child:Padding(padding:const EdgeInsets.all(10),child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
+      const Text('LIQUIDITY',style:TextStyle(fontWeight:FontWeight.bold)),
+      const SizedBox(height:4),const Text('Only real volume / buy+sell quantity from the live payload is plotted.',style:TextStyle(fontSize:11)),
+      const SizedBox(height:8),SizedBox(height:170,child:CustomPaint(painter:LiquidityPainter(liveMarket))),
+    ]))),
     ...liveMarket.where((q){
       final ex=(q['exchange']??q['exchangeType']??'').toString().toUpperCase();
-      return marketFilter=='Indices' || ex==marketFilter;
+      return marketFilter=='Indices'||ex==marketFilter;
     }).map((q)=>Card(child:ListTile(
       leading:const Icon(Icons.show_chart),
       title:Text((q['tradingSymbol']??q['tradingsymbol']??q['symbol']??'-').toString(),style:const TextStyle(fontWeight:FontWeight.bold)),
-      subtitle:Text('LTP '+(q['ltp']??'—').toString()+' • '+(q['exchange']??'').toString()),
+      subtitle:Text('LTP '+formatMarketPrice(q['ltp'])+' • '+(q['exchange']??'').toString()),
       trailing:Text((q['percentChange']??q['netChange']??'—').toString()),
       onTap:()=>openQuoteChart(q),
     ))),
-    if(liveMarket.isEmpty) infoCard('Live indices','Connect Angel One to load current prices and chart tokens.',Colors.orange),
-    FilledButton.icon(onPressed:fetchAngelMarket,icon:const Icon(Icons.refresh),label:const Text('REFRESH INDICES')),
+    if(liveMarket.isEmpty)infoCard('Live indices','Connect Angel One to load current prices and liquidity fields.',Colors.orange),
+    FilledButton.icon(onPressed:fetchAngelMarket,icon:const Icon(Icons.refresh),label:const Text('REFRESH INDIAN INDICES')),
   ]);
 
   Widget commodityPage() => ListView(padding:const EdgeInsets.fromLTRB(12,10,12,20),children:<Widget>[
@@ -400,38 +390,38 @@ class _TerminalState extends State<Terminal> {
     if(liveMarket.isEmpty) infoCard('Watchlist','Connect Angel One to populate live instruments.',Colors.orange),
   ]);
 
-  Widget searchPage() => ListView(padding:const EdgeInsets.all(16),children:<Widget>[
-    const Text('Search',style:TextStyle(fontSize:24,fontWeight:FontWeight.bold)),
-    const SizedBox(height:8),
-    const Text('Search Scrip • Angel One SmartAPI'),
-    const SizedBox(height:10),
-    TextField(
-      decoration:const InputDecoration(labelText:'NSE / BSE / MCX symbol',border:OutlineInputBorder()),
-      onSubmitted:(q) async {
-        if(q.trim().isEmpty)return;
-        try{
-          final r=await http.get(Uri.parse(backendUrl+'/v1/angel/search?exchange=NSE&q='+Uri.encodeQueryComponent(q.trim())),headers:<String,String>{'x-token':apiToken});
-          if(r.statusCode==200 && mounted) setState(()=>terminalData={'search':jsonDecode(r.body)});
-        }catch(_){}
-      },
-    ),
-    const SizedBox(height:12),
-    if(terminalData?['search'] is Map)
-      ...((terminalData!['search']['data'] is List ? terminalData!['search']['data'] : <dynamic>[]).map((x)=>Card(child:ListTile(title:Text((x['tradingsymbol']??'-').toString()),subtitle:Text((x['exchange']??'').toString()+' • Token '+(x['symboltoken']??'-').toString()))))),
-  ]);
+  Widget searchPage() => const SizedBox.shrink();
 
   Widget chartsPage() => ListView(padding:const EdgeInsets.fromLTRB(8,8,8,20),children:<Widget>[
-    Row(children:[const Expanded(child:Text('Charts',style:TextStyle(fontSize:23,fontWeight:FontWeight.bold))),IconButton(onPressed:fetchCandles,icon:const Icon(Icons.refresh))]),
+    Row(children:[const Expanded(child:Text('Chart',style:TextStyle(fontSize:23,fontWeight:FontWeight.bold))),IconButton(onPressed:fetchCandles,icon:const Icon(Icons.refresh))]),
     const SizedBox(height:6),
     Row(children:[
-      Expanded(child:OutlinedButton.icon(onPressed:()=>showModalBottomSheet<void>(context:context,builder:(_)=>_choiceSheet('TIME',intervalMap.keys.toList(),(x){setState(()=>selectedInterval=intervalMap[x]!);fetchCandles();})),icon:const Icon(Icons.schedule),label:Text('TIME'))),
+      Expanded(child:OutlinedButton.icon(onPressed:()=>showModalBottomSheet<void>(context:context,builder:(_)=>_choiceSheet('TIME',intervalMap.keys.toList(),(x){setState(()=>selectedInterval=intervalMap[x]!);fetchCandles();})),icon:const Icon(Icons.schedule),label:const Text('TIME'))),
       const SizedBox(width:8),
-      Expanded(child:OutlinedButton.icon(onPressed:()=>showModalBottomSheet<void>(context:context,builder:(_)=>_choiceSheet('INDICATORS',const ['EMA 8','EMA 13','SMA 20','SMA 50','VWAP','RSI 14','MACD','Bollinger','Volume','ATR 14'],(x){setState(()=>selectedIndicators.contains(x)?selectedIndicators.remove(x):selectedIndicators.add(x));})),icon:const Icon(Icons.tune),label:Text('INDICATORS'))),
+      Expanded(child:OutlinedButton.icon(onPressed:()=>showModalBottomSheet<void>(context:context,builder:(_)=>_choiceSheet('INDICATORS',const ['EMA 8','EMA 13','SMA 20','SMA 50','VWAP','RSI 14','MACD','Bollinger','Volume','ATR 14'],(x){setState(()=>selectedIndicators.contains(x)?selectedIndicators.remove(x):selectedIndicators.add(x));})),icon:const Icon(Icons.tune),label:const Text('INDICATORS'))),
     ]),
-    const SizedBox(height:8),
-    Card(child:Padding(padding:const EdgeInsets.all(6),child:SizedBox(height:420,width:double.infinity,child:liveCandles.isEmpty?const Center(child:Text('No live candle payload yet.')):CustomPaint(painter:CandlePainter(liveCandles,Set<String>.from(selectedIndicators)))))),
+    const SizedBox(height:6),
+    SingleChildScrollView(scrollDirection:Axis.horizontal,child:Row(children:[
+      for(final x in const ['Fibonacci','Horizontal','Vertical','Long Position','Short Position'])Padding(padding:const EdgeInsets.only(right:5),child:FilterChip(label:Text(x),selected:selectedDrawingTool==x,onSelected:(_){setState(()=>selectedDrawingTool=selectedDrawingTool==x?'':x);})),
+    ])),
+    const SizedBox(height:6),
+    Card(child:Padding(padding:const EdgeInsets.all(4),child:SizedBox(height:440,child:liveCandles.isEmpty?const Center(child:Text('No live candle payload yet.')):GestureDetector(
+      onTapDown:(d){
+        if(selectedDrawingTool.isEmpty)return;
+        setState((){
+          if(selectedDrawingTool=='Horizontal'||selectedDrawingTool=='Vertical'){drawingPoints..clear()..add(d.localPosition);}
+          else if(drawingPoints.length>=2){drawingPoints..clear()..add(d.localPosition);}
+          else{drawingPoints.add(d.localPosition);}
+        });
+      },
+      child:Stack(children:[
+        Positioned.fill(child:CustomPaint(painter:CandlePainter(liveCandles,Set<String>.from(selectedIndicators)))),
+        Positioned.fill(child:CustomPaint(painter:DrawingPainter(selectedDrawingTool,drawingPoints))),
+      ]),
+    )))),
     const SizedBox(height:6),
     Text('TIME: '+(intervalMap.entries.firstWhere((e)=>e.value==selectedInterval,orElse:()=>const MapEntry('5m','FIVE_MINUTE')).key)+' • Indicators: '+selectedIndicators.length.toString(),style:const TextStyle(fontSize:11)),
+    if(selectedDrawingTool.isNotEmpty)OutlinedButton.icon(onPressed:()=>setState(()=>drawingPoints.clear()),icon:const Icon(Icons.clear),label:const Text('CLEAR DRAWING')),
   ]);
 
   Widget _choiceSheet(String title,List<String> items,void Function(String) onTap) => SafeArea(child:Padding(
@@ -446,16 +436,14 @@ class _TerminalState extends State<Terminal> {
       for(final f in const ['NIFTY','BANKNIFTY','FINNIFTY','MIDCPNIFTY','SENSEX','BANKEX'])Padding(padding:const EdgeInsets.only(right:6),child:ChoiceChip(label:Text(f),selected:optionFilter==f,onSelected:(_){setState(()=>optionFilter=f);fetchOptionRows();})),
     ])),
     const SizedBox(height:8),
-    if(csvStatus.isNotEmpty) Text(csvStatus,style:const TextStyle(fontSize:11)),
-    if(liveOptionRows.isEmpty) infoCard('Live option chain','CALL LTP / CALL OI | STRIKE | PUT OI / PUT LTP appear when Angel One supplies the selected chain.',Colors.orange),
-    if(liveOptionRows.isNotEmpty) Card(child:SingleChildScrollView(scrollDirection:Axis.horizontal,child:DataTable(
+    if(liveOptionRows.isEmpty)infoCard('Live option chain','Select '+optionFilter+' and press LOAD FULL CHAIN. Current expiry rows are requested around ATM.',Colors.orange),
+    if(liveOptionRows.isNotEmpty)Card(child:SingleChildScrollView(scrollDirection:Axis.horizontal,child:DataTable(
       columns:const [DataColumn(label:Text('CALL LTP')),DataColumn(label:Text('CALL OI')),DataColumn(label:Text('STRIKE')),DataColumn(label:Text('PUT OI')),DataColumn(label:Text('PUT LTP'))],
-      rows:[for(final s in <dynamic>{for(final r in liveOptionRows) r['strike']}.toList()..sort((a,b)=>(a as num).compareTo(b as num))) DataRow(cells:[
-        DataCell(Text(_chainValue(s,'CE','ltp'))),DataCell(Text(_chainOi(s,'CE'))),DataCell(Text(s.toString(),style:const TextStyle(fontWeight:FontWeight.bold))),
-        DataCell(Text(_chainOi(s,'PE'))),DataCell(Text(_chainValue(s,'PE','ltp'))),
+      rows:[for(final s in <dynamic>{for(final r in liveOptionRows)r['strike']}.toList()..sort((a,b)=>(a as num).compareTo(b as num)))DataRow(cells:[
+        DataCell(Text(_chainValue(s,'CE','ltp'))),DataCell(Text(_chainOi(s,'CE'))),DataCell(Text(s.toString(),style:const TextStyle(fontWeight:FontWeight.bold))),DataCell(Text(_chainOi(s,'PE'))),DataCell(Text(_chainValue(s,'PE','ltp'))),
       ])],
     ))),
-    FilledButton.icon(onPressed:fetchOptionRows,icon:const Icon(Icons.download_for_offline),label:const Text('LOAD ANGEL OPTION CHAIN')),
+    FilledButton.icon(onPressed:fetchOptionRows,icon:const Icon(Icons.table_view),label:Text('LOAD FULL '+optionFilter+' CHAIN')),
     OutlinedButton.icon(onPressed:connection=='Connected'?downloadNseCsv:null,icon:const Icon(Icons.download),label:const Text('DOWNLOAD NSE CSV')),
   ]);
 
@@ -464,16 +452,9 @@ class _TerminalState extends State<Terminal> {
     return '—';
   }
   String _chainOi(dynamic strike,String type){
-    for(final r in liveOptionRows){
-      if(r['strike']==strike&&r['type']==type){
-        final v=r['oi']; final d=r['oiChange'];
-        final p=d is num&&d>0, n=d is num&&d<0;
-        return (p?'+':n?'-':'')+(v??'—').toString();
-      }
-    }
+    for(final r in liveOptionRows){if(r['strike']==strike&&r['type']==type){final v=r['oi'];final d=r['oiChange'];final p=d is num&&d>0,n=d is num&&d<0;return (p?'+':n?'-':'')+(v??'—').toString();}}
     return '—';
   }
-
 
   Widget newsPage() => ListView(padding:const EdgeInsets.fromLTRB(12,10,12,20),children:<Widget>[
     Row(children:[const Expanded(child:Text('News',style:TextStyle(fontSize:23,fontWeight:FontWeight.bold))),IconButton(onPressed:fetchTerminal,icon:const Icon(Icons.refresh))]),
@@ -488,34 +469,39 @@ class _TerminalState extends State<Terminal> {
 
   Widget marketDetailsPage() => ListView(padding:const EdgeInsets.fromLTRB(12,10,12,20),children:<Widget>[
     const Text('Market Details',style:TextStyle(fontSize:23,fontWeight:FontWeight.bold)),
-    const SizedBox(height:4),const Text('Sector breadth and buying/selling view — values only when live payload is available.',style:TextStyle(fontSize:12)),
+    const SizedBox(height:4),const Text('NIFTY • BANK NIFTY • SENSEX live selection and chart access.',style:TextStyle(fontSize:12)),
     const SizedBox(height:10),
-    Wrap(spacing:6,children:[for(final x in const ['NIFTY','BANK NIFTY','SENSEX'])ChoiceChip(label:Text(x),selected:terminalData?['market_detail_selected']==x,onSelected:(_){setState(()=>terminalData={...?terminalData,'market_detail_selected':x});} )]),
+    Wrap(spacing:6,children:[for(final x in const ['NIFTY','BANK NIFTY','SENSEX'])ChoiceChip(label:Text(x),selected:selectedMarketDetail==x,onSelected:(_){setState(()=>selectedMarketDetail=x);})]),
     const SizedBox(height:8),
+    ...liveMarket.where((q)=>indexMatches(selectedMarketDetail,(q['tradingSymbol']??q['tradingsymbol']??q['symbol']??'').toString())).map((q)=>Card(child:ListTile(
+      title:Text((q['tradingSymbol']??selectedMarketDetail).toString(),style:const TextStyle(fontWeight:FontWeight.bold)),
+      subtitle:Text('LTP '+formatMarketPrice(q['ltp'])+' • '+(q['exchange']??'').toString()),
+      trailing:Text((q['percentChange']??q['netChange']??'—').toString()),
+      onTap:()=>openQuoteChart(q),
+    ))),
     Card(child:Padding(padding:const EdgeInsets.all(12),child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
-      const Text('SECTOR BREADTH',style:TextStyle(fontWeight:FontWeight.bold)),
-      const SizedBox(height:8),
-      Row(children:[Expanded(child:_breadthBox('GREEN / BUYING','Live payload pending',Colors.green)),const SizedBox(width:8),Expanded(child:_breadthBox('RED / SELLING','Live payload pending',Colors.red))]),
+      const Text('LIQUIDITY / MARKET FLOW',style:TextStyle(fontWeight:FontWeight.bold)),
+      const SizedBox(height:8),SizedBox(height:150,child:CustomPaint(painter:LiquidityPainter(liveMarket.where((q)=>indexMatches(selectedMarketDetail,(q['tradingSymbol']??q['tradingsymbol']??q['symbol']??'').toString())).toList()))),
     ]))),
-    const SizedBox(height:8),
-    Card(child:Padding(padding:const EdgeInsets.all(12),child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
-      const Text('SECTOR BREAKDOWN',style:TextStyle(fontWeight:FontWeight.bold)),
-      const SizedBox(height:6),
-      for(final s in const ['IT','BANKING','AUTO','METAL','PHARMA','FMCG','ENERGY','REALTY'])ListTile(dense:true,leading:const Icon(Icons.circle,size:9),title:Text(s),subtitle:const Text('Live % change pending'),trailing:const Text('—')),
-    ]))),
-    infoCard('Reason / driver','Sector reason, advance/decline and percentage change will be shown from the live market-detail payload. No values are fabricated.',Colors.blue),
+    infoCard('BSE DISPLAY','SENSEX / BANKEX retain BSE identity whenever the live payload supplies BSE exchange data.',Colors.blue),
   ]);
 
-  Widget signalsPage() {
-    final action = signal?['action']?.toString() ?? 'WAIT';
-    final raw = signal?['reasons'];
-    final reasons = raw is List ? raw.map((e) => e.toString()).join('\n') : 'No live signal reasons received.';
-    return ListView(padding: const EdgeInsets.all(16), children: <Widget>[
-      const Text('Signals', style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
-      const SizedBox(height: 12),
-      infoCard(action.replaceAll('_',' '), reasons, Colors.blue),
-      const SizedBox(height: 12),
-      infoCard('Engine','Live signal values appear only when the backend supplies them.',Colors.orange),
+  Widget signalsPage(){
+    final action=signal?['action']?.toString()??'WAIT';
+    final raw=signal?['reasons'];
+    final reasons=raw is List?raw.map((e)=>e.toString()).join('\n'):'No live signal reasons received.';
+    final a=action.toUpperCase();
+    return ListView(padding:const EdgeInsets.all(16),children:[
+      const Text('Signals',style:TextStyle(fontSize:24,fontWeight:FontWeight.bold)),
+      const SizedBox(height:10),
+      Card(child:Padding(padding:const EdgeInsets.all(14),child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
+        const Text('TRADE SETUP',style:TextStyle(fontWeight:FontWeight.bold)),
+        const SizedBox(height:6),Text(a.contains('CALL')?'CALL BUY':a.contains('PUT')?'PUT BUY':'WAIT / NO QUALIFYING TRADE',style:const TextStyle(fontSize:22,fontWeight:FontWeight.bold)),
+        if(signal!=null)...[row('Symbol',signal!['symbol']),row('Entry / LTP',signal!['entry']??signal!['ltp']),row('Stop Loss',signal!['sl']??signal!['stopLoss']),row('Target',signal!['target'])],
+        if(signal==null)const Text('Live signal payload required. No trade value is invented.'),
+      ]))),
+      const SizedBox(height:8),infoCard('Why',reasons,Colors.blue),
+      const SizedBox(height:8),infoCard('Rule','Only the qualifying CALL/PUT action from the live backend is displayed; otherwise WAIT.',Colors.orange),
     ]);
   }
 
@@ -612,6 +598,62 @@ class _TerminalState extends State<Terminal> {
 
 
 
+class LiquidityPainter extends CustomPainter {
+  final List<dynamic> rows;
+  LiquidityPainter(this.rows);
+  @override void paint(Canvas canvas,Size size){
+    final values=<double>[]; final labels=<String>[];
+    for(final q in rows){
+      if(q is! Map)continue;
+      final m=liquidityMetric(Map<String,dynamic>.from(q));
+      if(m!=null){values.add(m);labels.add((q['tradingSymbol']??q['tradingsymbol']??q['symbol']??'').toString());}
+    }
+    if(values.isEmpty){
+      final tp=TextPainter(text:const TextSpan(text:'Live liquidity payload pending',style:TextStyle(fontSize:12,color:Colors.grey)),textDirection:TextDirection.ltr)..layout();
+      tp.paint(canvas,Offset(4,size.height/2-8));return;
+    }
+    final maxV=values.reduce(math.max);
+    final bw=size.width/values.length;
+    for(int i=0;i<values.length;i++){
+      final h=maxV>0?(values[i]/maxV)*(size.height-28):0;
+      final p=Paint()..color=Colors.cyan;
+      canvas.drawRect(Rect.fromLTWH(i*bw+4,size.height-24-h,math.max(4,bw-8),h),p);
+      final tp=TextPainter(text:TextSpan(text:labels[i].replaceAll(' ','\n'),style:const TextStyle(fontSize:8,color:Colors.grey)),textDirection:TextDirection.ltr)..layout(maxWidth:bw);
+      tp.paint(canvas,Offset(i*bw+2,size.height-22));
+    }
+  }
+  @override bool shouldRepaint(covariant LiquidityPainter old)=>old.rows!=rows;
+}
+
+class DrawingPainter extends CustomPainter {
+  final String tool;
+  final List<Offset> points;
+  DrawingPainter(this.tool,this.points);
+  @override void paint(Canvas canvas,Size size){
+    if(points.isEmpty||tool.isEmpty)return;
+    final p=Paint()..color=Colors.amber..strokeWidth=1.6..style=PaintingStyle.stroke;
+    final a=points.first;
+    if(tool=='Horizontal')canvas.drawLine(Offset(0,a.dy),Offset(size.width,a.dy),p);
+    if(tool=='Vertical')canvas.drawLine(Offset(a.dx,0),Offset(a.dx,size.height),p);
+    if(points.length<2)return;
+    final b=points[1];
+    if(tool=='Fibonacci'){
+      canvas.drawLine(a,b,p);
+      final levels=[0.0,.236,.382,.5,.618,.786,1.0];
+      for(final l in levels){final y=a.dy+(b.dy-a.dy)*l;canvas.drawLine(Offset(math.min(a.dx,b.dx),y),Offset(size.width,y),p);}
+    }else if(tool=='Long Position'||tool=='Short Position'){
+      final entry=b.dy;
+      final distance=(a.dy-b.dy).abs().clamp(20.0,size.height/2);
+      final sign=tool=='Long Position'?-1:1;
+      final target=entry+sign*distance, stop=entry-sign*distance*.6;
+      canvas.drawLine(Offset(0,entry),Offset(size.width,entry),p);
+      canvas.drawLine(Offset(0,target),Offset(size.width,target),p);
+      canvas.drawLine(Offset(0,stop),Offset(size.width,stop),p);
+    }
+  }
+  @override bool shouldRepaint(covariant DrawingPainter old)=>old.tool!=tool||old.points!=points;
+}
+
 class CandlePainter extends CustomPainter {
   final List<dynamic> rows;
   final Set<String> indicators;
@@ -658,6 +700,11 @@ class CandlePainter extends CustomPainter {
     double y(double v)=>chartH-(v-minV)/range*chartH;
     final grid=Paint()..color=Colors.white10..strokeWidth=.6;
     for(int i=0;i<5;i++){final yy=chartH*i/4;canvas.drawLine(Offset(0,yy),Offset(size.width,yy),grid);}
+    for(int i=0;i<5;i++){
+      final v=maxV-(maxV-minV)*i/4;
+      final tp=TextPainter(text:TextSpan(text:formatMarketPrice(v),style:const TextStyle(fontSize:9,color:Colors.grey)),textDirection:TextDirection.ltr)..layout();
+      tp.paint(canvas,Offset(size.width-tp.width-2,chartH*i/4-6));
+    }
     final wick=Paint()..strokeWidth=1.2,body=Paint()..strokeWidth=math.max(2,width*.55);
     for(int i=0;i<vals.length;i++){
       final r=vals[i];final o=(r[1]as num).toDouble(),h=(r[2]as num).toDouble(),l=(r[3]as num).toDouble(),cl=close[i];final x=i*width+width/2,up=cl>=o;
