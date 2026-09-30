@@ -9,6 +9,7 @@ from angel_client import AngelClient
 from signals import Engine
 from nse_client import NSEClient
 import nse_features
+from strategy_registry import STRATEGIES
 from nse_mcp import NSEMCP,result_to_csv
 
 app=FastAPI(title="NSE Algo Signal API"); eng=Engine(); client=AngelClient(); nse=NSEClient(); nse_mcp=NSEMCP()
@@ -177,6 +178,14 @@ def nse_option_chain_csv(symbol:str="NIFTY",expiry:Optional[str]=None,x_token:st
     except Exception as e:
         state["nse_mcp_error"]=str(e)
         raise HTTPException(502,str(e))
+
+@app.get("/v1/strategies")
+def strategies(x_token:str=Header(None)):
+    auth(x_token)
+    evidence = eng.strategy_evidence if isinstance(getattr(eng, "strategy_evidence", None), list) else []
+    active = sum(1 for x in evidence if x.get("state") == "active")
+    unavailable = sum(1 for x in evidence if x.get("state") == "unavailable")
+    return {"count": len(STRATEGIES), "active": active, "inactive": len(STRATEGIES)-active-unavailable, "unavailable": unavailable, "registry": STRATEGIES, "evidence": evidence}
 
 @app.get("/signal")
 def signal(x_token:str=Header(None)): auth(x_token); return terminal_snapshot()
