@@ -23,11 +23,12 @@ bool indexMatches(String indexName, String symbol) {
 double? liquidityMetric(Map<String, dynamic> row) {
   final volume = row['volume'] ?? row['tradeVolume'];
   if (volume is num && volume > 0) return volume.toDouble();
+
   final buy = row['buyQty'] ?? row['totalBuyQuantity'];
   final sell = row['sellQty'] ?? row['totalSellQuantity'];
   if (buy is num || sell is num) {
-    final value = (buy is num ? buy.toDouble() : 0) +
-        (sell is num ? sell.toDouble() : 0);
+    final value = (buy is num ? buy.toDouble() : 0.0) +
+        (sell is num ? sell.toDouble() : 0.0);
     if (value > 0) return value;
   }
   return null;
