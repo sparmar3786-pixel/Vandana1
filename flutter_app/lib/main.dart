@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:file_saver/file_saver.dart';
@@ -43,6 +44,14 @@ class _TerminalState extends State<Terminal> {
   String angelLoginStatus = '';
   String csvStatus = '';
   Map<String,dynamic>? signal;
+  List<dynamic> liveMarket = <dynamic>[];
+  List<dynamic> liveCandles = <dynamic>[];
+  List<dynamic> liveOptionRows = <dynamic>[];
+  List<dynamic> liveOIBuild = <dynamic>[];
+  String selectedChartToken = '99926000';
+  String selectedChartExchange = 'NSE';
+  String selectedInterval = 'FIVE_MINUTE';
+  bool angelDataBusy = false;
   Map<String,dynamic>? terminalData;
   Timer? timer;
 
@@ -68,9 +77,11 @@ class _TerminalState extends State<Terminal> {
         final s = terminalData?['signals'];
         final m = terminalData?['nse_mcp'];
         signal = s is Map<String,dynamic> ? s : null;
-        connection = response.statusCode == 200 && c is Map && c['server'] == true ? 'Connected' : 'HTTP ' + response.statusCode.toString();
+        connection = response.statusCode == 200 && c is Map && c['server'] == true && c['angel'] == true ? 'Connected' : response.statusCode == 200 && c is Map && c['server'] == true ? 'Backend connected / Angel not connected' : 'HTTP ' + response.statusCode.toString();
         nseMcpStatus = m is Map && m['connected'] == true ? 'Connected' : 'Not connected';
       });
+      final angel = c is Map && c['angel'] == true;
+      if (angel) await fetchAngelMarket();
     } catch (_) {
       if (mounted) setState(() => connection = 'Backend not connected');
     }
@@ -132,8 +143,16 @@ class _TerminalState extends State<Terminal> {
 
   Widget buildScreen() {
     if (selected == 0) return dashboard();
+    if (selected == 1) return marketPage();
+    if (selected == 2) return commodityPage();
     if (selected == 3) return signals();
+    if (selected == 4) return oiLabPage();
+    if (selected == 5) return watchlistPage();
+    if (selected == 6) return searchPage();
+    if (selected == 7) return chartsPage();
     if (selected == 8) return optionChain();
+    if (selected == 9) return newsPage();
+    if (selected == 10) return marketDetailsPage();
     if (selected == 11) return angelApi();
     if (selected == 13) return nseMcp();
     if (selected == 16) return settingsPage();
@@ -171,6 +190,176 @@ class _TerminalState extends State<Terminal> {
       infoCard('Data policy','Real API/data only. Paper signals only. No order placement.',Colors.blue),
     ]);
   }
+
+
+  Future<void> fetchAngelMarket() async {
+    try {
+      final r=await http.get(Uri.parse(backendUrl+'/v1/angel/market'),headers:<String,String>{'x-token':apiToken}).timeout(const Duration(seconds:8));
+      if(r.statusCode==200){
+        final d=jsonDecode(r.body);
+        final rows=d is Map && d['data'] is Map ? (d['data']['fetched'] ?? <dynamic>[]) : <dynamic>[];
+        if(mounted) setState(()=>liveMarket=rows is List ? rows : <dynamic>[]);
+      }
+    } catch (_) {}
+  }
+
+  Future<void> fetchCandles() async {
+    setState(()=>angelDataBusy=true);
+    try {
+      final u=backendUrl+'/v1/angel/candles?exchange='+selectedChartExchange+'&token='+selectedChartToken+'&interval='+selectedInterval+'&days=1';
+      final r=await http.get(Uri.parse(u),headers:<String,String>{'x-token':apiToken}).timeout(const Duration(seconds:12));
+      if(r.statusCode==200){
+        final d=jsonDecode(r.body);
+        final rows=d is Map && d['data'] is List ? d['data'] : <dynamic>[];
+        if(mounted) setState(()=>liveCandles=rows is List ? rows : <dynamic>[]);
+      }
+    } catch (_) {} finally { if(mounted) setState(()=>angelDataBusy=false); }
+  }
+
+  Future<void> fetchOptionRows() async {
+    setState(()=>angelDataBusy=true);
+    try {
+      final r=await http.get(Uri.parse(backendUrl+'/v1/angel/option-chain?count=10'),headers:<String,String>{'x-token':apiToken}).timeout(const Duration(seconds:15));
+      if(r.statusCode==200){
+        final d=jsonDecode(r.body);
+        final rows=d is Map && d['rows'] is List ? d['rows'] : <dynamic>[];
+        if(mounted) setState(()=>liveOptionRows=rows is List ? rows : <dynamic>[]);
+      }
+    } catch (_) {} finally { if(mounted) setState(()=>angelDataBusy=false); }
+  }
+
+  Future<void> fetchOIBuild() async {
+    setState(()=>angelDataBusy=true);
+    try {
+      final r=await http.get(Uri.parse(backendUrl+'/v1/angel/oi-buildup?datatype=Long%20Built%20Up&expirytype=NEAR'),headers:<String,String>{'x-token':apiToken}).timeout(const Duration(seconds:12));
+      if(r.statusCode==200){
+        final d=jsonDecode(r.body);
+        final rows=d is Map && d['data'] is List ? d['data'] : <dynamic>[];
+        if(mounted) setState(()=>liveOIBuild=rows is List ? rows : <dynamic>[]);
+      }
+    } catch (_) {} finally { if(mounted) setState(()=>angelDataBusy=false); }
+  }
+
+  Widget indexCard(dynamic q) {
+    final name=(q['tradingSymbol']??q['tradingsymbol']??'-').toString();
+    return Card(child:ListTile(
+      title:Text(name,style:const TextStyle(fontWeight:FontWeight.bold)),
+      subtitle:Text('Open '+(q['open']??'-').toString()+'  High '+(q['high']??'-').toString()+'  Low '+(q['low']??'-').toString()),
+      trailing:Column(mainAxisAlignment:MainAxisAlignment.center,crossAxisAlignment:CrossAxisAlignment.end,children:<Widget>[
+        Text((q['ltp']??'-').toString(),style:const TextStyle(fontSize:18,fontWeight:FontWeight.bold)),
+        Text((q['netChange']??'').toString()+' '+(q['percentChange']??'').toString())
+      ]),
+    ));
+  }
+
+  Widget marketPage() => ListView(padding:const EdgeInsets.all(16),children:<Widget>[
+    const Text('Market',style:TextStyle(fontSize:24,fontWeight:FontWeight.bold)),
+    const SizedBox(height:8),
+    infoCard('Data source','Angel One SmartAPI • Live Market Data API',Colors.blue),
+    ...liveMarket.map(indexCard),
+    if(liveMarket.isEmpty) infoCard('Live market','Connect Angel One to load NIFTY, BANKNIFTY, FINNIFTY and SENSEX.',Colors.orange),
+    FilledButton.icon(onPressed:fetchAngelMarket,icon:const Icon(Icons.refresh),label:const Text('REFRESH ANGEL DATA')),
+  ]);
+
+  Widget commodityPage() => ListView(padding:const EdgeInsets.all(16),children:<Widget>[
+    const Text('Commodity',style:TextStyle(fontSize:24,fontWeight:FontWeight.bold)),
+    const SizedBox(height:8),
+    infoCard('Data source','Angel One SmartAPI • MCX Market Data',Colors.blue),
+    infoCard('Segment','MCX',Colors.green),
+    infoCard('Instruments','CRUDEOIL, NATURALGAS, GOLD, SILVER and other contracts are fetched after token search.',Colors.orange),
+    FilledButton(onPressed:()=>setState(()=>selected=6),child:const Text('OPEN ANGEL SEARCH')),
+  ]);
+
+  Widget oiLabPage() => ListView(padding:const EdgeInsets.all(16),children:<Widget>[
+    const Text('OI Lab',style:TextStyle(fontSize:24,fontWeight:FontWeight.bold)),
+    const SizedBox(height:8),
+    infoCard('Live source','Angel One SmartAPI OI Buildup',Colors.blue),
+    ...liveOIBuild.map((x)=>Card(child:ListTile(
+      title:Text((x['tradingSymbol']??'-').toString()),
+      subtitle:Text('LTP '+(x['ltp']??'-').toString()+' • OI '+(x['opnInterest']??'-').toString()),
+      trailing:Text((x['netChangeOpnInterest']??'-').toString()),
+    ))),
+    if(liveOIBuild.isEmpty) infoCard('OI buildup','Press refresh to fetch Long Built Up from Angel One.',Colors.orange),
+    FilledButton.icon(onPressed:fetchOIBuild,icon:const Icon(Icons.refresh),label:const Text('REFRESH OI BUILDUP')),
+  ]);
+
+  Widget watchlistPage() => ListView(padding:const EdgeInsets.all(16),children:<Widget>[
+    const Text('Watchlist',style:TextStyle(fontSize:24,fontWeight:FontWeight.bold)),
+    const SizedBox(height:8),
+    infoCard('Live source','Angel One SmartAPI',Colors.blue),
+    ...liveMarket.map((q)=>ListTile(title:Text((q['tradingSymbol']??'-').toString()),trailing:Text((q['ltp']??'-').toString()))),
+    if(liveMarket.isEmpty) infoCard('Watchlist','Connect Angel One to populate live instruments.',Colors.orange),
+  ]);
+
+  Widget searchPage() => ListView(padding:const EdgeInsets.all(16),children:<Widget>[
+    const Text('Search',style:TextStyle(fontSize:24,fontWeight:FontWeight.bold)),
+    const SizedBox(height:8),
+    const Text('Search Scrip • Angel One SmartAPI'),
+    const SizedBox(height:10),
+    TextField(
+      decoration:const InputDecoration(labelText:'NSE / BSE / MCX symbol',border:OutlineInputBorder()),
+      onSubmitted:(q) async {
+        if(q.trim().isEmpty)return;
+        try{
+          final r=await http.get(Uri.parse(backendUrl+'/v1/angel/search?exchange=NSE&q='+Uri.encodeQueryComponent(q.trim())),headers:<String,String>{'x-token':apiToken});
+          if(r.statusCode==200 && mounted) setState(()=>terminalData={'search':jsonDecode(r.body)});
+        }catch(_){}
+      },
+    ),
+    const SizedBox(height:12),
+    if(terminalData?['search'] is Map)
+      ...((terminalData!['search']['data'] is List ? terminalData!['search']['data'] : <dynamic>[]).map((x)=>Card(child:ListTile(title:Text((x['tradingsymbol']??'-').toString()),subtitle:Text((x['exchange']??'').toString()+' • Token '+(x['symboltoken']??'-').toString()))))),
+  ]);
+
+  Widget chartsPage() => ListView(padding:const EdgeInsets.all(16),children:<Widget>[
+    const Text('Charts',style:TextStyle(fontSize:24,fontWeight:FontWeight.bold)),
+    const SizedBox(height:8),
+    infoCard('Chart source','Angel One SmartAPI Historical API',Colors.blue),
+    DropdownButton<String>(value:selectedInterval,items:const[
+      DropdownMenuItem(value:'ONE_MINUTE',child:Text('1 Minute')),
+      DropdownMenuItem(value:'THREE_MINUTE',child:Text('3 Minute')),
+      DropdownMenuItem(value:'FIVE_MINUTE',child:Text('5 Minute')),
+      DropdownMenuItem(value:'TEN_MINUTE',child:Text('10 Minute')),
+      DropdownMenuItem(value:'FIFTEEN_MINUTE',child:Text('15 Minute')),
+      DropdownMenuItem(value:'THIRTY_MINUTE',child:Text('30 Minute')),
+      DropdownMenuItem(value:'ONE_HOUR',child:Text('1 Hour')),
+      DropdownMenuItem(value:'ONE_DAY',child:Text('1 Day')),
+    ],onChanged:(v){if(v!=null){setState(()=>selectedInterval=v);fetchCandles();}}),
+    SizedBox(height:260,child:liveCandles.isEmpty?const Center(child:Text('Press refresh to load Angel candles.')):CustomPaint(painter:CandlePainter(liveCandles))),
+    FilledButton.icon(onPressed:fetchCandles,icon:const Icon(Icons.refresh),label:Text(angelDataBusy?'LOADING...':'REFRESH ANGEL CHART')),
+    const SizedBox(height:8),
+    const Text('Default index token: NIFTY 50 • 99926000'),
+  ]);
+
+  Widget optionChain() => ListView(padding:const EdgeInsets.all(16),children:<Widget>[
+    const Text('Option Chain',style:TextStyle(fontSize:24,fontWeight:FontWeight.bold)),
+    const SizedBox(height:8),
+    infoCard('Live source','Angel One SmartAPI NFO FULL market data • OI/LTP/volume',Colors.blue),
+    if(liveOptionRows.isEmpty) infoCard('Option chain','Press refresh to fetch live CE/PE rows around ATM.',Colors.orange),
+    ...liveOptionRows.map((r)=>Card(child:ListTile(
+      title:Text((r['strike']??'-').toString()+' '+(r['type']??'').toString()),
+      subtitle:Text('LTP '+(r['ltp']??'-').toString()+' • OI '+(r['oi']??'-').toString()+' • Vol '+(r['volume']??'-').toString()),
+      trailing:Text((r['buyQty']??'-').toString()+' / '+(r['sellQty']??'-').toString()),
+    ))),
+    FilledButton.icon(onPressed:fetchOptionRows,icon:const Icon(Icons.refresh),label:Text(angelDataBusy?'LOADING...':'REFRESH ANGEL OPTION CHAIN')),
+    const SizedBox(height:8),
+    FilledButton.icon(onPressed:connection=='Connected'?downloadNseCsv:null,icon:const Icon(Icons.download),label:const Text('DOWNLOAD NSE OPTION CHAIN CSV')),
+  ]);
+
+  Widget newsPage() => ListView(padding:const EdgeInsets.all(16),children:<Widget>[
+    const Text('News',style:TextStyle(fontSize:24,fontWeight:FontWeight.bold)),
+    const SizedBox(height:8),
+    infoCard('Source','Server-side verified news adapter. Angel SmartAPI is not a news-feed API.',Colors.blue),
+    infoCard('Status','No fabricated headlines.',Colors.orange),
+  ]);
+
+  Widget marketDetailsPage() => ListView(padding:const EdgeInsets.all(16),children:<Widget>[
+    const Text('Market Details',style:TextStyle(fontSize:24,fontWeight:FontWeight.bold)),
+    const SizedBox(height:8),
+    infoCard('Indices','Angel One live market payload',Colors.blue),
+    ...liveMarket.map(indexCard),
+    infoCard('OI / breadth','Angel OI APIs are available through the backend.',Colors.green),
+  ]);
 
   Widget signals() {
     final action = signal?['action']?.toString() ?? 'WAIT';
@@ -281,6 +470,27 @@ class _TerminalState extends State<Terminal> {
 }
 
 
+
+class CandlePainter extends CustomPainter {
+  final List<dynamic> rows;
+  CandlePainter(this.rows);
+  @override void paint(Canvas canvas,Size size){
+    final vals=rows.where((r)=>r is List && r.length>=5).toList();
+    if(vals.isEmpty)return;
+    double minV=double.infinity,maxV=-double.infinity;
+    for(final r in vals){minV=math.min(minV,(r[3] as num).toDouble());maxV=math.max(maxV,(r[2] as num).toDouble());}
+    final range=math.max(maxV-minV,0.01); final width=size.width/vals.length;
+    final wick=Paint()..strokeWidth=1.2; final body=Paint()..strokeWidth=5;
+    for(int i=0;i<vals.length;i++){
+      final r=vals[i]; final o=(r[1] as num).toDouble(),h=(r[2] as num).toDouble(),l=(r[3] as num).toDouble(),cl=(r[4] as num).toDouble();
+      double y(double v)=>size.height-(v-minV)/range*size.height;
+      final x=i*width+width/2; final up=cl>=o; wick.color=up?Colors.green:Colors.red; body.color=wick.color;
+      canvas.drawLine(Offset(x,y(h)),Offset(x,y(l)),wick);
+      canvas.drawLine(Offset(x,y(o)),Offset(x,y(cl)),body);
+    }
+  }
+  @override bool shouldRepaint(covariant CandlePainter old)=>old.rows!=rows;
+}
 class AngelApiForm extends StatefulWidget {
   final String backendUrl;
   final String apiToken;
