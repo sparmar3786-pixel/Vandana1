@@ -39,27 +39,31 @@ class _TerminalState extends State<Terminal> {
   String apiToken = 'change-me';
   String connection = 'Connecting...';
   Map<String,dynamic>? signal;
+  Map<String,dynamic>? terminalData;
   Timer? timer;
 
   @override void initState() {
     super.initState();
-    fetchSignal();
-    timer = Timer.periodic(const Duration(seconds: 5), (_) => fetchSignal());
+    fetchTerminal();
+    timer = Timer.periodic(const Duration(seconds: 5), (_) => fetchTerminal());
   }
   @override void dispose() { timer?.cancel(); super.dispose(); }
 
-  Future<void> fetchSignal() async {
+  Future<void> fetchTerminal() async {
     try {
       final response = await http.get(
-        Uri.parse(backendUrl + '/signal'),
+        Uri.parse(backendUrl + '/v1/terminal'),
         headers: <String,String>{'x-token': apiToken},
       ).timeout(const Duration(seconds: 5));
       if (!mounted) return;
       dynamic decoded;
       try { decoded = jsonDecode(response.body); } catch (_) { decoded = null; }
       setState(() {
-        signal = decoded is Map<String,dynamic> ? decoded : null;
-        connection = response.statusCode == 200 ? 'Connected' : 'HTTP ' + response.statusCode.toString();
+        terminalData = decoded is Map<String,dynamic> ? decoded : null;
+        final c = terminalData?['connection'];
+        final s = terminalData?['signals'];
+        signal = s is Map<String,dynamic> ? s : null;
+        connection = response.statusCode == 200 && c is Map && c['server'] == true ? 'Connected' : 'HTTP ' + response.statusCode.toString();
       });
     } catch (_) {
       if (mounted) setState(() => connection = 'Backend not connected');
@@ -70,7 +74,7 @@ class _TerminalState extends State<Terminal> {
     appBar: AppBar(
       title: Text(screens[selected]),
       actions: <Widget>[
-        IconButton(onPressed: fetchSignal, icon: const Icon(Icons.refresh)),
+        IconButton(onPressed: fetchTerminal, icon: const Icon(Icons.refresh)),
         IconButton(onPressed: openSettings, icon: const Icon(Icons.settings)),
       ],
     ),
@@ -195,7 +199,7 @@ class _TerminalState extends State<Terminal> {
       ]),
       actions: <Widget>[TextButton(onPressed: () {
         setState(() { backendUrl = u.text.trim().replaceAll(RegExp(r'/$'), ''); apiToken = k.text.trim(); });
-        Navigator.pop(d); fetchSignal();
+        Navigator.pop(d); fetchTerminal();
       }, child: const Text('Save'))],
     ));
     u.dispose(); k.dispose();
