@@ -62,9 +62,23 @@ class AngelClient:
         api=self.require_api()
         now=dt.datetime.now(dt.timezone(dt.timedelta(hours=5,minutes=30)))
         start=now-dt.timedelta(days=max(1,min(int(days),30)))
-        p={"exchange":exchange,"symboltoken":str(token),"interval":interval,
+        api_interval="ONE_MINUTE" if interval=="TWO_MINUTE" else interval
+        p={"exchange":exchange,"symboltoken":str(token),"interval":api_interval,
            "fromdate":start.strftime("%Y-%m-%d %H:%M"),"todate":now.strftime("%Y-%m-%d %H:%M")}
-        return api.getCandleData(p)
+        result=api.getCandleData(p)
+        if interval!="TWO_MINUTE": return result
+        buckets={}
+        for row in result.get("data") or []:
+            if not isinstance(row,list) or len(row)<6: continue
+            try:
+                t=dt.datetime.fromisoformat(str(row[0]))
+                key=t.replace(minute=(t.minute//2)*2,second=0,microsecond=0).isoformat()
+            except Exception:
+                key=str(row[0])[:16]
+            if key not in buckets: buckets[key]=[key,row[1],row[2],row[3],row[4],row[5]]
+            else:
+                b=buckets[key]; b[2]=max(b[2],row[2]); b[3]=min(b[3],row[3]); b[4]=row[4]; b[5]=(b[5] or 0)+(row[5] or 0)
+        return {"status":True,"message":"SUCCESS","data":[buckets[k] for k in sorted(buckets)]}
 
     def oi_history(self, token, interval="THREE_MINUTE", hours=6):
         api=self.require_api()
