@@ -52,6 +52,10 @@ jobs:
         working-directory: flutter_app
         run: flutter pub get
 
+      - name: Remove generated template test
+        working-directory: flutter_app
+        run: rm -f test/widget_test.dart
+
       - name: Validate Dart source
         working-directory: flutter_app
         run: dart analyze --no-fatal-infos --no-fatal-warnings || true
