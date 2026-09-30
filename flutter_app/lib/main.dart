@@ -540,7 +540,8 @@ async function ask(w,prompt){
       const Text('RISK • REWARD CALCULATOR',style:TextStyle(fontWeight:FontWeight.bold)),
       const SizedBox(height:8),
       _riskRewardCalculator(signal),
-    ])),
+    ]))),
+
     const SizedBox(height:8),infoCard('Live source','Angel One SmartAPI • index/equity universe',Colors.blue),
     const Text('EQUITY / INDEX',style:TextStyle(fontWeight:FontWeight.bold)),
     ...liveMarket.map((q){
@@ -558,7 +559,7 @@ async function ask(w,prompt){
     const SizedBox(height:12),const Text('RISK REWARD • STRIKE TABLE',style:TextStyle(fontWeight:FontWeight.bold)),
     if(liveOptionRows.isEmpty)infoCard('Strike table','Load Option Chain. Priority appears only when the live row supplies a score.',Colors.orange),
     if(liveOptionRows.isNotEmpty)Card(child:SingleChildScrollView(scrollDirection:Axis.horizontal,child:DataTable(
-      columns:const [DataColumn(label:Text('P')),DataColumn(label:Text('TYPE')),DataColumn(label:Text('STRIKE')),DataColumn(label:Text('LTP')),DataColumn(label:Text('OI')),DataColumn(label:Text('RISK')),DataColumn(label:Text('REWARD')),DataColumn(label:Text('R:R'))],
+      columns:const [DataColumn(label:Text('P')),DataColumn(label:Text('TYPE')),DataColumn(label:Text('STRIKE')),DataColumn(label:Text('ENTRY')),DataColumn(label:Text('RISK')),DataColumn(label:Text('REWARD')),DataColumn(label:Text('R:R'))],
       rows:[for(final r in liveOptionRows.take(25))DataRow(cells:[
         DataCell(Text(optionPriority(Map<String,dynamic>.from(r))?.toString()??'—')),
         DataCell(Text((r['type']??'—').toString())),
