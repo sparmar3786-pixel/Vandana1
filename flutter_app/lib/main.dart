@@ -40,6 +40,7 @@ class _TerminalState extends State<Terminal> {
   String backendUrl = 'https://vandana1-angel-api.onrender.com';
   String apiToken = 'change-me';
   String connection = 'Connecting...';
+  bool angelConnected = false;
   String nseMcpStatus = 'Not checked';
   String angelLoginStatus = '';
   String csvStatus = '';
