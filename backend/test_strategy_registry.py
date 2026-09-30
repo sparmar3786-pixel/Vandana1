@@ -6,8 +6,8 @@ class MasterStrategyRegistryTests(unittest.TestCase):
         self.assertEqual(len(STRATEGIES), 377)
         self.assertEqual([s["id"] for s in STRATEGIES], list(range(1, 378)))
         self.assertEqual(len({s["name"] for s in STRATEGIES}), 377)
-        self.assertEqual(len(ALL_STRATEGIES), 424)
-        self.assertEqual([s["id"] for s in ALL_STRATEGIES], list(range(1, 425)))
+        self.assertEqual(len(ALL_STRATEGIES), 426)
+        self.assertEqual([s["id"] for s in ALL_STRATEGIES], list(range(1, 427)))
 
     def test_core_option_classification_is_evaluable(self):
         rows = [{
