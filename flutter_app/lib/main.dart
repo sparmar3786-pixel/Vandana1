@@ -221,27 +221,59 @@ class _TerminalState extends State<Terminal> {
       ..setJavaScriptMode(JavaScriptMode.unrestricted)
       ..setBackgroundColor(Colors.transparent)
       ..loadHtmlString('''<!doctype html><html><body style="font-family:Arial;background:#111;color:#eee;padding:16px">
-<h2>3-Layer AI • $tab</h2><div id="status">AI Bot collecting...</div><pre id="out" style="white-space:pre-wrap"></pre>
+<h2>6 AI Validation • $tab</h2><div id="status">AI 1 collecting...</div><pre id="out" style="white-space:pre-wrap"></pre>
 <script src="https://js.puter.com/v2/"></script><script>
 const data=JSON.stringify("PLACEHOLDER");
 const out=document.getElementById('out'), status=document.getElementById('status');
-async function ask(model,prompt){const r=await puter.ai.chat(prompt,{model:model,temperature:0.1,max_tokens:900,normalize:true});return r?.message?.content ?? String(r);}
+const wanted=[
+ {n:1,name:'GPT-5.6 Luna',id:'gpt-5.6-luna',keys:['gpt-5.6-luna','gpt-5.6 luna','luna']},
+ {n:2,name:'Claude Sonnet 4.6',id:'claude-sonnet-4-6',keys:['claude-sonnet-4-6','claude sonnet 4.6']},
+ {n:3,name:'GPT-5.6 Sol',id:'gpt-5.6-sol',keys:['gpt-5.6-sol','gpt-5.6 sol','sol']},
+ {n:4,name:'DeepSeek Chat',id:'deepseek-chat',keys:['deepseek-chat','deepseek chat']},
+ {n:5,name:'Gemini 2.5 Flash',id:'gemini-2.5-flash',keys:['gemini-2.5-flash','gemini 2.5 flash']},
+ {n:6,name:'Grok 4',id:'grok-4',keys:['grok-4','grok 4']}
+];
+let available=[];
+async function resolveModel(w){
+ try{
+  if(!available.length) available=await puter.ai.listModels();
+  const rows=Array.isArray(available)?available:[];
+  const exact=rows.find(x=>w.keys.some(k=>String(x?.id||'').toLowerCase()===k));
+  if(exact?.id) return exact.id;
+  const match=rows.find(x=>{
+    const s=(String(x?.id||'')+' '+String(x?.name||'')+' '+JSON.stringify(x?.aliases||[])).toLowerCase();
+    return w.keys.some(k=>s.includes(k));
+  });
+  return match?.id||w.id;
+ }catch(_){return w.id;}
+}
+async function ask(w,prompt){
+ const model=await resolveModel(w);
+ const r=await puter.ai.chat(prompt,{model:model,temperature:0.1,max_tokens:900,normalize:true});
+ return {name:w.name,model:model,text:r?.message?.content ?? String(r)};
+}
 (async()=>{
  try{
-  const bot=await ask('gpt-5.6-luna','AI BOT: Extract only facts from this live market snapshot. Do not invent prices or strikes. Identify candidate indices/strikes and missing data. SNAPSHOT: '+data);
-  status.textContent='AI Admin verifying...';
-  const admin=await ask('claude-sonnet-4-6','AI ADMIN: Cross-check this snapshot and AI Bot result. Reject unsupported strike/entry claims. Validate CALL vs PUT, OI/price flow, Greeks and freshness. Return verified findings only. SNAPSHOT: '+data+' BOT: '+bot);
-  status.textContent='AI ChatGPT final validation...';
-  const final=await ask('gpt-5.6-sol','AI CHATGPT: Produce the final concise Hindi validation. Use only verified data. Never invent strike, entry, SL, target or win rate. If no qualifying setup exists, say WAIT / NO QUALIFYING TRADE. SNAPSHOT: '+data+' BOT: '+bot+' ADMIN: '+admin);
-  status.textContent='3-layer validation complete';
-  out.textContent='AI BOT\n'+bot+'\n\nAI ADMIN\n'+admin+'\n\nAI CHATGPT\n'+final;
+  status.textContent='AI 1 • GPT-5.6 Luna';
+  const a1=await ask(wanted[0],'Extract only facts from this live market snapshot. Do not invent prices or strikes. Identify candidate indices/strikes and missing data. SNAPSHOT: '+data);
+  status.textContent='AI 2 • Claude Sonnet 4.6';
+  const a2=await ask(wanted[1],'Cross-check the snapshot and AI 1 result. Reject unsupported strike/entry claims. Validate CALL vs PUT, OI/price flow, Greeks and freshness. Return verified findings only. SNAPSHOT: '+data+' AI 1: '+a1.text);
+  status.textContent='AI 3 • GPT-5.6 Sol';
+  const a3=await ask(wanted[2],'Validate the verified findings independently. Use only supplied data. Never invent strike, entry, SL, target or win rate. Identify contradictions. SNAPSHOT: '+data+' AI 1: '+a1.text+' AI 2: '+a2.text);
+  status.textContent='AI 4 • DeepSeek Chat';
+  const a4=await ask(wanted[3],'Act as the quantitative/OI auditor. Recalculate or cross-check option-flow logic, OI direction, Greeks and strike consistency using only supplied data. Reject unsupported numbers. SNAPSHOT: '+data+' PRIOR: '+a1.text+' | '+a2.text+' | '+a3.text);
+  status.textContent='AI 5 • Gemini 2.5 Flash';
+  const a5=await ask(wanted[4],'Act as the market-structure auditor. Cross-check index trend, option-chain context, support/resistance and freshness. Do not invent market data or trade levels. SNAPSHOT: '+data+' PRIOR: '+a2.text+' | '+a3.text+' | '+a4.text);
+  status.textContent='AI 6 • Grok 4';
+  const a6=await ask(wanted[5],'Act as the final risk challenger. Look for errors, stale data, unsupported CALL/PUT conclusions and missing evidence. Give only evidence-based validation. If no setup is fully supported, say WAIT / NO QUALIFYING TRADE. SNAPSHOT: '+data+' PRIOR: '+a3.text+' | '+a4.text+' | '+a5.text);
+  status.textContent='6 AI validation complete';
+  out.textContent='1. '+a1.name+'\\n'+a1.text+'\\n\\n2. '+a2.name+'\\n'+a2.text+'\\n\\n3. '+a3.name+'\\n'+a3.text+'\\n\\n4. '+a4.name+'\\n'+a4.text+'\\n\\n5. '+a5.name+'\\n'+a5.text+'\\n\\n6. '+a6.name+'\\n'+a6.text;
  }catch(e){status.textContent='Puter AI error';out.textContent=String(e);}
 })();
 </script></body></html>'''.replace('PLACEHOLDER',snapshot));
     if(!mounted)return;
     await showModalBottomSheet<void>(context:context,isScrollControlled:true,builder:(_)=>SizedBox(height:MediaQuery.of(context).size.height*.82,child:WebViewWidget(controller:controller)));
   }
-
   Future<void> _activateAi(String tab) async {
     await _saveAiMemory(DateTime.now().toIso8601String()+' • '+tab+' • market snapshot selected');
     if(mounted)setState(()=>aiActiveTab=tab);
