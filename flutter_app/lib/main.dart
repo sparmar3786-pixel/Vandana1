@@ -151,7 +151,7 @@ class _TerminalState extends State<Terminal> {
       )),
     ),
     body: buildScreen(),
-      )),
+      )));
 
   Widget buildScreen() {
     if (selected == 0) return dashboard();
