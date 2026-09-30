@@ -102,7 +102,7 @@ def angel_market(x_token:str=Header(None)):
 @app.get("/v1/angel/candles")
 def angel_candles(exchange:str="NSE",token:str="99926000",interval:str="FIVE_MINUTE",days:int=1,x_token:str=Header(None)):
     auth(x_token); angel_required()
-    allowed={"ONE_MINUTE","THREE_MINUTE","FIVE_MINUTE","TEN_MINUTE","FIFTEEN_MINUTE","THIRTY_MINUTE","ONE_HOUR","ONE_DAY"}
+    allowed={"ONE_MINUTE","TWO_MINUTE","THREE_MINUTE","FIVE_MINUTE","TEN_MINUTE","FIFTEEN_MINUTE","THIRTY_MINUTE","ONE_HOUR","ONE_DAY"}
     if interval not in allowed: raise HTTPException(400,"Unsupported interval")
     try: return client.candles(exchange,token,interval,days)
     except Exception as e: raise HTTPException(502,str(e))
