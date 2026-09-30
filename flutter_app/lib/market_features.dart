@@ -34,3 +34,50 @@ String formatMarketPrice(dynamic value) {
   final n = double.tryParse(value.toString());
   return n == null ? value.toString() : n.toStringAsFixed(2);
 }
+
+String trendState(Map<String, dynamic> q, {required bool marketClosed}) {
+  if (marketClosed) return 'CLOSE';
+  final raw = q['percentChange'] ?? q['netChange'] ?? q['change'];
+  final n = double.tryParse(raw?.toString().replaceAll('%', '') ?? '');
+  if (n != null) return n > 0 ? 'UP' : n < 0 ? 'DOWN' : 'FLAT';
+  return 'UNKNOWN';
+}
+
+double? numericField(Map<String, dynamic> q, List<String> keys) {
+  for (final key in keys) {
+    final v = q[key];
+    if (v is num) return v.toDouble();
+    final n = double.tryParse(v?.toString().replaceAll('%', '') ?? '');
+    if (n != null) return n;
+  }
+  return null;
+}
+
+String optionMoveState(Map<String, dynamic> q) {
+  final oi = numericField(q, const ['oiChange', 'netChangeOpnInterest', 'oi_change']);
+  final price = numericField(q, const ['priceChange', 'netChange', 'change']);
+  if (oi == null || price == null) return 'WAIT';
+  if (oi > 0 && price > 0) return 'OI↑ PRICE↑';
+  if (oi > 0 && price < 0) return 'OI↑ PRICE↓';
+  if (oi < 0 && price < 0) return 'OI↓ PRICE↓';
+  if (oi < 0 && price > 0) return 'OI↓ PRICE↑';
+  return 'FLAT';
+}
+
+int? optionPriority(Map<String, dynamic> q) {
+  final score = numericField(q, const ['signalScore', 'score', 'priorityScore']);
+  if (score == null) return null;
+  if (score >= 90) return 1;
+  if (score >= 80) return 2;
+  if (score >= 70) return 3;
+  if (score >= 60) return 4;
+  if (score >= 50) return 5;
+  return null;
+}
+
+bool isIndianMarketClosed(DateTime nowIst) {
+  final weekday = nowIst.weekday;
+  if (weekday == DateTime.saturday || weekday == DateTime.sunday) return true;
+  final minutes = nowIst.hour * 60 + nowIst.minute;
+  return minutes < 9 * 60 + 15 || minutes > 15 * 60 + 30;
+}
