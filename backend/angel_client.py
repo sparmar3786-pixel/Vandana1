@@ -10,7 +10,7 @@ CACHE="scrip_master.json"
 
 class AngelClient:
     def __init__(self):
-        self.api=None; self.chain={}; self.strikes=[]; self.expiry=None
+        self.api=None; self.chain={}; self.strikes=[]; self.expiry=None; self.prev_oi={}
     def login(self, api_key=None, client_code=None, pin=None, totp=None):
         api_key=api_key or C.API_KEY; client_code=client_code or C.CLIENT; pin=pin or C.PIN
         totp=totp or (pyotp.TOTP(C.TOTP_SECRET).now() if C.TOTP_SECRET else None)
@@ -50,21 +50,45 @@ class AngelClient:
 
     def index_quote(self, symbols=None):
         api=self.require_api()
-        symbols=symbols or {
-            "NIFTY":"99926000","BANKNIFTY":"99926009","FINNIFTY":"99926037",
-            "SENSEX":"99919000"
-        }
-        tokens=list(symbols.values())
-        result=api.getMarketData("FULL", {"NSE": [t for t in tokens if t!="99919000"], "BSE":["99919000"]})
+        master=self._master()
+        wanted=["NIFTY","BANKNIFTY","FINNIFTY","MIDCPNIFTY","SENSEX","BANKEX"]
+        selected=[]
+        for name in wanted:
+            matches=[r for r in master if str(r.get("name","")).upper()==name and str(r.get("exch_seg","")).upper() in ("NSE","BSE")]
+            if matches: selected.append(matches[0])
+        if not selected: raise RuntimeError("No supported index instruments found in Angel instrument master.")
+        tokens_by_ex={}
+        for r in selected: tokens_by_ex.setdefault(str(r["exch_seg"]),[]).append(str(r["token"]))
+        result=api.getMarketData("FULL",tokens_by_ex)
+        fetched=(result.get("data") or {}).get("fetched") or []
+        meta={str(r["token"]):r for r in selected}
+        for q in fetched:
+            m=meta.get(str(q.get("symbolToken")))
+            if m:
+                q["exchange"]=m.get("exch_seg")
+                q["tradingSymbol"]=m.get("symbol") or m.get("name")
+                q["indexName"]=m.get("name")
         return result
 
     def candles(self, exchange, token, interval="FIVE_MINUTE", days=1):
         api=self.require_api()
         now=dt.datetime.now(dt.timezone(dt.timedelta(hours=5,minutes=30)))
         start=now-dt.timedelta(days=max(1,min(int(days),30)))
-        p={"exchange":exchange,"symboltoken":str(token),"interval":interval,
+        api_interval="ONE_MINUTE" if interval=="TWO_MINUTE" else interval
+        p={"exchange":exchange,"symboltoken":str(token),"interval":api_interval,
            "fromdate":start.strftime("%Y-%m-%d %H:%M"),"todate":now.strftime("%Y-%m-%d %H:%M")}
-        return api.getCandleData(p)
+        result=api.getCandleData(p)
+        if interval!="TWO_MINUTE": return result
+        data=result.get("data") or []; bucket={}
+        for row in data:
+            if not isinstance(row,list) or len(row)<6: continue
+            try:
+                dtm=dt.datetime.fromisoformat(str(row[0])); key=dtm.replace(minute=(dtm.minute//2)*2,second=0,microsecond=0).isoformat()
+            except Exception: key=str(row[0])[:16]
+            if key not in bucket: bucket[key]=[key,row[1],row[2],row[3],row[4],row[5]]
+            else:
+                b=bucket[key]; b[2]=max(b[2],row[2]); b[3]=min(b[3],row[3]); b[4]=row[4]; b[5]=(b[5] or 0)+(row[5] or 0)
+        return {"status":True,"message":"SUCCESS","data":[bucket[k] for k in sorted(bucket)]}
 
     def oi_history(self, token, interval="THREE_MINUTE", hours=6):
         api=self.require_api()
@@ -165,6 +189,12 @@ class AngelClient:
                     "volume":q.get("tradeVolume"),"buyQty":q.get("totalBuyQuantity"),
                     "sellQty":q.get("totalSellQuantity")
                 })
+                try:
+                    cur=float(q.get("opnInterest",0)); prev=self.prev_oi.get(str(q.get("symbolToken")))
+                    rows[-1]["oiChange"]=None if prev is None else cur-prev
+                    self.prev_oi[str(q.get("symbolToken"))]=cur
+                except Exception:
+                    pass
         return {"symbol":C.SYMBOL,"spot":spot,"atm":atm,"expiry":str(self.expiry),"rows":rows}
 
     def snapshot(self):
