@@ -550,6 +550,8 @@ class _TerminalState extends State<Terminal> {
     u.dispose(); k.dispose();
   }
 
+  Widget _breadthBox(String title,String value,Color color)=>Container(padding:const EdgeInsets.all(10),decoration:BoxDecoration(borderRadius:BorderRadius.circular(10),border:Border.all(color:color.withOpacity(.35))),child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[Text(title,style:TextStyle(fontSize:10,color:color,fontWeight:FontWeight.bold)),const SizedBox(height:5),Text(value,style:const TextStyle(fontSize:11))]));
+
   Widget infoCard(String title,String value,Color color) => Card(child: ListTile(
     leading: Icon(Icons.circle,color:color,size:13), title: Text(title), subtitle: Text(value),
   ));
