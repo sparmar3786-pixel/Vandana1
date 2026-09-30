@@ -108,9 +108,12 @@ def angel_candles(exchange:str="NSE",token:str="99926000",interval:str="FIVE_MIN
     except Exception as e: raise HTTPException(502,str(e))
 
 @app.get("/v1/angel/option-chain")
-def angel_option_chain(count:int=10,x_token:str=Header(None)):
+def angel_option_chain(symbol:str="NIFTY",count:int=200,x_token:str=Header(None)):
     auth(x_token); angel_required()
-    try: return client.option_chain_rows(count=count)
+    symbol=symbol.upper().strip()
+    if symbol not in {"NIFTY","BANKNIFTY","FINNIFTY","MIDCPNIFTY","SENSEX","BANKEX"}:
+        raise HTTPException(400,"Unsupported option-chain symbol")
+    try: return client.option_chain_rows(symbol=symbol,count=min(max(int(count),10),500))
     except Exception as e: raise HTTPException(502,str(e))
 
 @app.get("/v1/angel/oi")
