@@ -31,15 +31,25 @@ class Terminal extends StatefulWidget {
 }
 
 class _TerminalState extends State<Terminal> {
+  // 30-screen reference layout: the first 18 screens remain functional/live,
+  // while screens 19-30 provide the complete design-system views from the supplied
+  // 30 Screen Layout reference. No order-placement UI is added.
   static const screens = <String>[
     'Dashboard','Market','Commodity','Signals','OI Lab','Watchlist','Charts',
-    'Option Chain','News','Market Details','Angel API','NSE','NSE MCP','Data','Strategies','AI Models','Settings','More'
+    'Option Chain','News','Market Details','Angel API','NSE','NSE MCP','Data',
+    'Strategies','AI Models','Settings','More',
+    'Splash / Launch','Login / Authentication','Market Overview','OI Heatmap',
+    'Premium / Volume','Greeks / IV Surface','Signal Flow','Market Regime',
+    'Trade Plans (S+)','Backtest','Strategy Registry','AI 6-Layer Panel'
   ];
   static const icons = <IconData>[
     Icons.dashboard, Icons.show_chart, Icons.precision_manufacturing,
     Icons.notifications_active, Icons.analytics, Icons.star, Icons.candlestick_chart,
     Icons.table_chart, Icons.article, Icons.info_outline, Icons.key, Icons.language,
-    Icons.hub, Icons.storage, Icons.rule, Icons.psychology, Icons.tune, Icons.more_horiz
+    Icons.hub, Icons.storage, Icons.rule, Icons.psychology, Icons.tune, Icons.more_horiz,
+    Icons.rocket_launch, Icons.login, Icons.dashboard_customize, Icons.bar_chart,
+    Icons.stacked_line_chart, Icons.auto_graph, Icons.swap_vert, Icons.insights,
+    Icons.view_list, Icons.history, Icons.menu_book, Icons.psychology_alt
   ];
   int selected = 0;
   String backendUrl = defaultBackendUrl;
@@ -160,7 +170,7 @@ class _TerminalState extends State<Terminal> {
             SizedBox(height: 10),
             Text('NSE Algo Signal', style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
             SizedBox(height: 4),
-            Text('18-screen paper terminal'),
+            Text('30-screen NSE AI terminal'),
           ])),
           for (int i=0; i<screens.length; i++) ListTile(
             leading: Icon(icons[i]),
@@ -217,6 +227,7 @@ class _TerminalState extends State<Terminal> {
     if (selected == 15) return aiModelsPage();
     if (selected == 16) return settingsPage();
     if (selected == 17) return morePage();
+    if (selected >= 18) return referenceLayoutScreen(selected);
     return dataPage(screens[selected]);
   }
 
@@ -730,6 +741,263 @@ class _TerminalState extends State<Terminal> {
     if (host == 'railway.app' || host.endsWith('.railway.app')) return 'Railway';
     if (host.isEmpty) return 'Railway URL not configured';
     return 'Invalid backend';
+  }
+
+  Widget referenceLayoutScreen(int index) {
+    final specs = <Map<String,dynamic>>[
+      {'title':'Splash / Launch','subtitle':'Smart Analysis • Disciplined Execution • AI Powered','icon':Icons.rocket_launch},
+      {'title':'Login / Authentication','subtitle':'Secure Angel One connection through backend','icon':Icons.login},
+      {'title':'Market Overview','subtitle':'Indices • Options • Watchlist','icon':Icons.dashboard_customize},
+      {'title':'OI Heatmap','subtitle':'CE / PE concentration and change in OI','icon':Icons.bar_chart},
+      {'title':'Premium / Volume','subtitle':'CE-PE premium spread • volume flow','icon':Icons.stacked_line_chart},
+      {'title':'Greeks / IV Surface','subtitle':'ATM IV • Delta • Gamma • Vega • Theta','icon':Icons.auto_graph},
+      {'title':'Signal Flow','subtitle':'Signal lifecycle • no order placement','icon':Icons.swap_vert},
+      {'title':'Market Regime','subtitle':'Trend • Volatility • Momentum • Mode','icon':Icons.insights},
+      {'title':'Trade Plans (S+)','subtitle':'Qualifying setups with entry, SL and targets','icon':Icons.view_list},
+      {'title':'Backtest','subtitle':'Strategy performance • equity curve • trade count','icon':Icons.history},
+      {'title':'Strategy Registry','subtitle':'Searchable strategy families and validation state','icon':Icons.menu_book},
+      {'title':'AI 6-Layer Panel','subtitle':'Six-layer validation context','icon':Icons.psychology_alt},
+    ];
+    final spec = specs[index - 18];
+    final isDarkVariant = index >= 26;
+    final bg = isDarkVariant ? const Color(0xFF07111D) : Theme.of(context).scaffoldBackgroundColor;
+    final accent = Theme.of(context).colorScheme.primary;
+    final pct = liveIndices.isNotEmpty
+        ? (liveIndices.first['percentChange'] ?? liveIndices.first['netChange'] ?? '--').toString()
+        : '--';
+    final ltp = liveIndices.isNotEmpty
+        ? (liveIndices.first['ltp'] ?? '--').toString()
+        : '--';
+
+    Widget metric(String label, String value, {Color? color}) => Expanded(
+      child: Card(
+        color: color?.withValues(alpha: .10),
+        child: Padding(
+          padding: const EdgeInsets.all(11),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: <Widget>[
+              Text(label, style: Theme.of(context).textTheme.labelSmall),
+              const SizedBox(height: 5),
+              Text(value, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+            ],
+          ),
+        ),
+      ),
+    );
+
+    Widget section(String title, Widget child) => Card(
+      child: Padding(
+        padding: const EdgeInsets.all(13),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: <Widget>[
+            Text(title, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+            const SizedBox(height: 10),
+            child,
+          ],
+        ),
+      ),
+    );
+
+    Widget miniBars() => SizedBox(
+      height: 92,
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.end,
+        children: List<Widget>.generate(12, (i) {
+          final h = 20.0 + ((i * 17) % 58);
+          return Expanded(
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 2),
+              child: Container(
+                height: h,
+                decoration: BoxDecoration(
+                  color: i.isEven ? Colors.green.withValues(alpha: .72) : Colors.red.withValues(alpha: .62),
+                  borderRadius: const BorderRadius.vertical(top: Radius.circular(3)),
+                ),
+              ),
+            ),
+          );
+        }),
+      ),
+    );
+
+    Widget signalRow(String side, String strike, String entry, String sl, String target) => ListTile(
+      dense: true,
+      leading: CircleAvatar(
+        radius: 15,
+        child: Text(side, style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
+      ),
+      title: Text('$side  $strike', style: const TextStyle(fontWeight: FontWeight.bold)),
+      subtitle: Text('Entry $entry  •  SL $sl  •  T1 $target'),
+      trailing: const Icon(Icons.chevron_right),
+    );
+
+    final content = <Widget>[
+      section('LIVE MARKET SNAPSHOT', Row(children: <Widget>[
+        metric('Index LTP', ltp, color: Colors.blue),
+        const SizedBox(width: 7),
+        metric('Change', pct, color: Colors.green),
+        const SizedBox(width: 7),
+        metric('Connection', connection, color: Colors.green),
+      ])),
+      section('REFERENCE LAYOUT', Column(children: <Widget>[
+        Row(children: <Widget>[
+          Icon(spec['icon'] as IconData, color: accent, size: 28),
+          const SizedBox(width: 10),
+          Expanded(child: Text(spec['title'] as String, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold))),
+        ]),
+        const SizedBox(height: 5),
+        Text(spec['subtitle'] as String),
+      ])),
+    ];
+
+    if (index == 18) {
+      content.add(section('LAUNCH PANEL', Column(children: <Widget>[
+        const Icon(Icons.candlestick_chart, size: 56),
+        const SizedBox(height: 8),
+        const Text('NSE-AI-TERMINAL', style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
+        const SizedBox(height: 4),
+        const Text('Smart Analysis  •  Disciplined Execution  •  AI Powered'),
+        const SizedBox(height: 14),
+        FilledButton(onPressed: () => setState(() => selected = 0), child: const Text('GET STARTED')),
+        const SizedBox(height: 6),
+        const Text('Live data only • No order placement'),
+      ])));
+    } else if (index == 19) {
+      content.add(section('BROKER AUTHENTICATION', Column(children: <Widget>[
+        infoCard('Angel One', 'Client ID • MPIN • TOTP • API key', Colors.blue),
+        infoCard('Backend', backendUrl.isEmpty ? 'Not configured' : backendUrl, Colors.orange),
+        FilledButton(onPressed: () => setState(() => selected = 10), child: const Text('OPEN ANGEL API LOGIN')),
+      ])));
+    } else if (index == 20) {
+      content.add(section('INDICES', Column(children: <Widget>[
+        ...liveIndices.take(6).map((q) => _quoteCard(q)),
+        if (liveIndices.isEmpty) const ListTile(title: Text('Waiting for live index feed')),
+      ])));
+    } else if (index == 21) {
+      content.add(section('OI HEATMAP', Column(children: <Widget>[
+        miniBars(),
+        const SizedBox(height: 8),
+        const Text('Green = CE concentration • Red = PE concentration'),
+        const SizedBox(height: 8),
+        Wrap(spacing: 6, runSpacing: 6, children: const <Widget>[
+          Chip(label: Text('Long Buildup')),
+          Chip(label: Text('Short Covering')),
+          Chip(label: Text('Short Buildup')),
+          Chip(label: Text('Long Unwinding')),
+        ]),
+      ])));
+    } else if (index == 22) {
+      content.add(section('PREMIUM / VOLUME', Column(children: <Widget>[
+        miniBars(),
+        Row(children: <Widget>[
+          metric('CE Premium', '--'),
+          metric('PE Premium', '--'),
+          metric('Volume', '--'),
+        ]),
+      ])));
+    } else if (index == 23) {
+      content.add(section('IV SURFACE', Column(children: <Widget>[
+        Row(children: <Widget>[
+          metric('ATM IV', '--'),
+          metric('Delta', '--'),
+          metric('Gamma', '--'),
+        ]),
+        Row(children: <Widget>[
+          metric('Vega', '--'),
+          metric('Theta', '--'),
+          metric('PCR', '--'),
+        ]),
+        const SizedBox(height: 8),
+        const Text('Greeks are displayed only when the live backend supplies them.'),
+      ])));
+    } else if (index == 24) {
+      content.add(section('SIGNAL FLOW', Column(children: <Widget>[
+        signalRow('CE', 'ATM', '--', '--', '--'),
+        signalRow('PE', 'ATM', '--', '--', '--'),
+        infoCard('Execution', 'Signal/read-only terminal. Order placement is intentionally absent.', Colors.blue),
+      ])));
+    } else if (index == 25) {
+      content.add(section('MARKET REGIME', Column(children: <Widget>[
+        Row(children: <Widget>[
+          metric('Trend', 'LIVE'),
+          metric('Volatility', 'LIVE'),
+        ]),
+        Row(children: <Widget>[
+          metric('Momentum', 'LIVE'),
+          metric('Mode', 'LIVE'),
+        ]),
+        miniBars(),
+      ])));
+    } else if (index == 26) {
+      content.add(section('QUALIFYING TRADE PLANS', Column(children: <Widget>[
+        signalRow('CE', '24700', '102.30', '94.50', '112.40'),
+        signalRow('PE', '24600', '96.40', '88.00', '109.20'),
+        const Text('Reference values are UI placeholders; live values come from the backend.'),
+      ])));
+    } else if (index == 27) {
+      content.add(section('STRATEGY PERFORMANCE', Column(children: <Widget>[
+        Row(children: <Widget>[
+          metric('Win Rate', '--'),
+          metric('Avg R', '--'),
+          metric('Trades', '--'),
+        ]),
+        const SizedBox(height: 8),
+        miniBars(),
+        FilledButton(onPressed: () => setState(() => selected = 14), child: const Text('OPEN STRATEGIES')),
+      ])));
+    } else if (index == 28) {
+      content.add(section('STRATEGY REGISTRY', Column(children: <Widget>[
+        TextField(decoration: const InputDecoration(prefixIcon: Icon(Icons.search), hintText: 'Search strategy modules...')),
+        const SizedBox(height: 8),
+        for (final item in const ['S001 • Long Buildup','S002 • Short Covering','S003 • Short Buildup','S004 • Long Unwinding','S005 • OI Wall'])
+          ListTile(
+            dense: true,
+            title: Text(item),
+            subtitle: const Text('OI / Position • validation state'),
+            trailing: const Icon(Icons.verified),
+          ),
+      ])));
+    } else {
+      content.add(section('6-LAYER AI VALIDATION', Column(children: <Widget>[
+        for (final layer in const ['GPT-5.6 Luna','Claude Sonnet','GPT-5.6 Sol','DeepSeek Chat','Gemini 2.5 Flash','Grok 4'])
+          ListTile(
+            dense: true,
+            leading: const CircleAvatar(child: Icon(Icons.psychology, size: 16)),
+            title: Text(layer),
+            trailing: const Chip(label: Text('AGREE')),
+          ),
+        infoCard('Final output', 'WAIT / NO TRADE until live validation is available.', Colors.blue),
+      ])));
+    }
+
+    return Theme(
+      data: Theme.of(context).copyWith(
+        scaffoldBackgroundColor: bg,
+        cardTheme: Theme.of(context).cardTheme.copyWith(
+          margin: const EdgeInsets.symmetric(vertical: 5),
+        ),
+      ),
+      child: ListView(
+        padding: const EdgeInsets.fromLTRB(12, 10, 12, 24),
+        children: <Widget>[
+          Row(children: <Widget>[
+            Expanded(child: Text(spec['title'] as String, style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold))),
+            Chip(label: Text(isDarkVariant ? 'DARK' : 'LIGHT')),
+          ]),
+          Text(spec['subtitle'] as String),
+          const SizedBox(height: 8),
+          ...content,
+          const SizedBox(height: 8),
+          Text(
+            'NSE-AI-TERMINAL • Live data from configured backend • UI reference screen',
+            textAlign: TextAlign.center,
+            style: TextStyle(color: Theme.of(context).colorScheme.onSurface.withValues(alpha: .55), fontSize: 11),
+          ),
+        ],
+      ),
+    );
   }
 
   String cleanUrl(String s) {
