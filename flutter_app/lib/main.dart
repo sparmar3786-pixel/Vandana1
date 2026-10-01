@@ -133,7 +133,9 @@ class _TerminalState extends State<Terminal> {
     }
   }
 
-  @override Widget build(BuildContext context) => Scaffold(
+  @override Widget build(BuildContext context) => Theme(
+    data: ThemeData(useMaterial3: true, brightness: darkMode ? Brightness.dark : Brightness.light),
+    child: Scaffold(
     appBar: AppBar(
       title: Text(screens[selected]),
       actions: <Widget>[
@@ -151,7 +153,7 @@ class _TerminalState extends State<Terminal> {
             SizedBox(height: 10),
             Text('NSE Algo Signal', style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
             SizedBox(height: 4),
-            Text('18-screen paper terminal'),
+            Text('17-screen paper terminal'),
           ])),
           for (int i=0; i<screens.length; i++) ListTile(
             leading: Icon(icons[i]),
@@ -162,7 +164,7 @@ class _TerminalState extends State<Terminal> {
         ],
       )),
     ),
-    body: Theme(data: ThemeData(useMaterial3: true, brightness: darkMode ? Brightness.dark : Brightness.light), child: Stack(
+    body: Stack(
       children: <Widget>[
         buildScreen(),
         if (latestAlert != null)
@@ -188,6 +190,7 @@ class _TerminalState extends State<Terminal> {
           ),
       ],
     ),
+  ),
   );
 
   Widget buildScreen() {
