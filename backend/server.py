@@ -160,7 +160,12 @@ def angel_option_chain(symbol:str="NIFTY",count:int=200,x_token:str=Header(None)
         # Angel's Option Greeks endpoint is currently NSE-only. Enrich NSE rows when live expiry data is available.
         if symbol in {"NIFTY","BANKNIFTY","FINNIFTY","MIDCPNIFTY","MIDCAPSELECT"} and result.get("expiry"):
             try:
-                gd=client.option_greeks(symbol, str(result["expiry"]).upper())
+                expiry_value=str(result["expiry"])
+                try:
+                    expiry_value=dt.datetime.fromisoformat(expiry_value).strftime("%d%b%Y").upper()
+                except Exception:
+                    expiry_value=expiry_value.upper()
+                gd=client.option_greeks(symbol, expiry_value)
                 greeks=gd.get("data",[]) if isinstance(gd,dict) else []
                 gm={(float(g.get("strikePrice")),str(g.get("optionType")).upper()):g for g in greeks if isinstance(g,dict) and g.get("strikePrice") is not None}
                 for row in result.get("rows",[]):
