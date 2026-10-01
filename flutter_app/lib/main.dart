@@ -520,6 +520,7 @@ class _TerminalState extends State<Terminal> {
 
 
 
+// APK build fix: settings dialog and widget-scoped connection UI are syntactically closed.
 class CandlePainter extends CustomPainter {
   final List<dynamic> rows;
   CandlePainter(this.rows);
