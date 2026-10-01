@@ -28,12 +28,12 @@ class SignalAlertService {
   bool _busy = false;
   bool _stopped = false;
   String baseUrl;
-  String apiToken;
+  String? apiToken;
   SignalAlert? latest;
   final List<SignalAlert> history = [];
   void Function(SignalAlert alert)? onAlert;
 
-  SignalAlertService(this.baseUrl, this.apiToken);
+  SignalAlertService(this.baseUrl, [this.apiToken]);
 
   Future<void> start() async {
     const android = AndroidInitializationSettings('@mipmap/ic_launcher');
@@ -52,7 +52,15 @@ class SignalAlertService {
       final prefs = await SharedPreferences.getInstance();
       final saved = prefs.getInt(_seqKey);
       final uri = Uri.parse(baseUrl + '/api/alerts' + (saved == null ? '' : '?since=$saved'));
-      final r = await http.get(uri, headers: {'x-token': apiToken}).timeout(const Duration(seconds: 8));
+      final r = await http.get(
+        uri,
+        headers: {
+          if (apiToken != null && apiToken!.isNotEmpty)
+            'Authorization': 'Bearer $apiToken',
+          if (apiToken != null && apiToken!.isNotEmpty)
+            'x-token': apiToken!,
+        },
+      ).timeout(const Duration(seconds: 8));
       if (r.statusCode != 200) return;
       final d = jsonDecode(r.body);
       if (d is! Map) return;
