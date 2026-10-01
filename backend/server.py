@@ -14,12 +14,13 @@ from nse_mcp import NSEMCP,result_to_csv
 from ai_model import p_up,label
 from ai_orchestrator import provider_status, validate_all
 from market_core import router as market_core_router, ingest_chain, put_spot, mount_mcp, install_mcp_auth
+from candles import router as candle_router
 from strategy_api import router as strategy_router
 from council import router as council_router
 from notifier import router as alert_router, alert_loop
 from strategy_store import save_oi_snapshot
 
-app=FastAPI(title="NSE Algo Signal API"); app.add_middleware(GZipMiddleware,minimum_size=1024); app.include_router(strategy_router); app.include_router(council_router); app.include_router(alert_router); eng=Engine(); client=AngelClient(); nse=NSEClient(); nse_mcp=NSEMCP()
+app=FastAPI(title="NSE Algo Signal API"); app.add_middleware(GZipMiddleware,minimum_size=1024); app.include_router(market_core_router); app.include_router(candle_router); app.include_router(strategy_router); app.include_router(council_router); app.include_router(alert_router); eng=Engine(); client=AngelClient(); nse=NSEClient(); nse_mcp=NSEMCP()
 state={"error":None,"nse_error":None,"last_update":None,"angel_message":"Not connected","nse_mcp_error":None}
 prev_chain={"c":None}; workers_started=False; last_oi_save=0.0
 
