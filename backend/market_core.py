@@ -16,6 +16,7 @@ INDICES=("NIFTY","BANKNIFTY","FINNIFTY","MIDCPNIFTY","SENSEX","BANKEX")
 STALE_SEC=float(os.getenv("MARKET_STALE_SEC","15"))
 MCP_AUTH=os.getenv("MCP_AUTH_TOKEN","").strip()
 MAX_ROWS=int(os.getenv("MARKET_CORE_MAX_ROWS","42"))
+SOURCE_PRIORITY={"nse":1,"angel_rest":2,"angel_ws":3}
 LOCK=threading.RLock()
 STORE={}
 
@@ -45,7 +46,10 @@ def put(index,strike,side,src,ts=None,**values):
     with LOCK:
         idx=_ensure(index); legs=idx["rows"].setdefault(strike,{})
         leg=legs.setdefault(side,{"ts":0.0,"source":None})
-        if incoming<float(leg.get("ts",0.0)): return False
+        current_ts=float(leg.get("ts",0.0)); current_src=str(leg.get("source") or "")
+        if incoming<current_ts: return False
+        if current_src=="angel_ws" and src=="nse" and time.time()-current_ts<=STALE_SEC: return False
+        if incoming==current_ts and SOURCE_PRIORITY.get(src,0)<SOURCE_PRIORITY.get(current_src,0): return False
         leg.update({k:v for k,v in values.items() if v is not None})
         leg["ts"]=incoming; leg["source"]=src
         idx["ts"]=max(float(idx["ts"]),incoming); idx["source"]=src
@@ -55,7 +59,10 @@ def put_spot(index,spot,src,ts=None,atm=None,expiry=None):
     incoming=_ts(ts)
     with LOCK:
         idx=_ensure(index)
-        if incoming<float(idx["source_ts"].get("spot",0.0)): return False
+        current_ts=float(idx["source_ts"].get("spot",0.0)); current_src=str(idx.get("source") or "")
+        if incoming<current_ts: return False
+        if current_src=="angel_ws" and src=="nse" and time.time()-current_ts<=STALE_SEC: return False
+        if incoming==current_ts and SOURCE_PRIORITY.get(src,0)<SOURCE_PRIORITY.get(current_src,0): return False
         if spot is not None: idx["spot"]=float(spot)
         if atm is not None: idx["atm"]=float(atm)
         if expiry is not None: idx["expiry"]=expiry
