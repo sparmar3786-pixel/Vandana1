@@ -14,6 +14,7 @@ class AngelClient:
         self.api=None; self.chain={}; self.strikes=[]; self.expiry=None; self.chain_symbol=C.SYMBOL; self.chain_exchange="NFO"
         self.last_chain_cache={}; self.last_chain_cache_ts={}
         self.ws=None; self.ws_thread=None; self.ws_quotes={}; self.ws_lock=threading.Lock(); self.login_lock=threading.Lock(); self.session_started=0.0; self.session_ttl=6*60*60
+        self.active_api_key=None; self.active_client_code=None
     def login(self, api_key=None, client_code=None, pin=None, totp=None, force=False):
         # Reuse one successful Angel session for 6 hours; avoid repeated TOTP/session calls.
         now=time.time()
@@ -28,6 +29,8 @@ class AngelClient:
             if not api_key or not client_code or not pin or not totp:
                 raise RuntimeError("Angel credentials are not configured.")
             self.api=SmartConnect(api_key=api_key)
+            self.active_api_key=api_key
+            self.active_client_code=client_code
             d=self.api.generateSession(client_code,pin,totp)
             if not d.get("status"):
                 self.api=None; self.session_started=0.0
@@ -94,12 +97,14 @@ class AngelClient:
         data=session.get("data",{}) if isinstance(session,dict) else {}
         jwt=data.get("jwtToken") or data.get("jwt_token")
         feed=data.get("feedToken") or data.get("feed_token")
-        if not jwt or not feed or not C.API_KEY or not C.CLIENT:
+        api_key=self.active_api_key or C.API_KEY
+        client_code=self.active_client_code or C.CLIENT
+        if not jwt or not feed or not api_key or not client_code:
             return
         try:
             if self.ws:
                 self.ws.close_connection()
-            self.ws=SmartWebSocketV2(jwt,C.API_KEY,C.CLIENT,feed,max_retry_attempt=5,retry_strategy=1,retry_delay=3,retry_multiplier=2,retry_duration=5)
+            self.ws=SmartWebSocketV2(jwt,api_key,client_code,feed,max_retry_attempt=5,retry_strategy=1,retry_delay=3,retry_multiplier=2,retry_duration=5)
             self.ws.on_open=self._ws_on_open
             self.ws.on_data=self._ws_on_data
             self.ws.on_error=self._ws_on_error
