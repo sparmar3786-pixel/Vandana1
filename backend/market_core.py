@@ -105,7 +105,7 @@ def ingest_chain(payload,src):
 def ingest_angel_snapshot(index,snapshot):
     if not isinstance(snapshot,dict): return 0
     ts=_ts(snapshot.get("ts")); spot=snapshot.get("spot")
-    put_spot(index,spot,"angel_ws",ts)
+    put_spot(index,spot,"angel_ws",ts,snapshot.get("atm"),snapshot.get("expiry"))
     count=0
     for key,q in (snapshot.get("opts") or {}).items():
         try:
@@ -120,7 +120,15 @@ def snapshot(index,limit=MAX_ROWS,include_stale=True):
     index=_idx(index); now=time.time()
     with LOCK: idx=deepcopy(_ensure(index))
     rows=[]
-    for strike,legs in sorted(idx["rows"].items()):
+    strikes=sorted(idx["rows"].keys())
+    if idx.get("atm") is not None and strikes:
+        atm=float(idx["atm"])
+        strikes=sorted(strikes,key=lambda x:abs(float(x)-atm))[:max(1,min((MAX_ROWS+1)//2,21))]
+        strikes=sorted(strikes)
+    else:
+        strikes=strikes[:max(1,min((MAX_ROWS+1)//2,21))]
+    for strike in strikes:
+        legs=idx["rows"].get(strike,{})
         for side in ("CE","PE"):
             leg=legs.get(side)
             if not leg: continue
