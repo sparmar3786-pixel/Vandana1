@@ -26,7 +26,10 @@ class Terminal extends StatefulWidget {
 }
 
 class _TerminalState extends State<Terminal> {
-  static const String defaultBackendUrl = 'https://vandana1-api.fly.dev';
+  static const String flyBackendUrl = 'https://vandana1-api.fly.dev';
+  // Railway public URL is intentionally supplied at build time; never invent or hard-code it.
+  static const String railwayBackendUrl = String.fromEnvironment('RAILWAY_BACKEND_URL', defaultValue: '');
+  static const String defaultBackendUrl = railwayBackendUrl.isNotEmpty ? railwayBackendUrl : flyBackendUrl;
   static const screens = <String>[
     'Dashboard','Market','Commodity','Signals','OI Lab','Watchlist','Charts',
     'Option Chain','News','Market Details','Angel API','NSE','NSE MCP','Data',
@@ -485,6 +488,8 @@ class _TerminalState extends State<Terminal> {
     const SizedBox(height: 12),
     infoCard('Official endpoint','https://mcp.nseindia.in/cmmkt/mcp',Colors.blue),
     infoCard('Connection',nseMcpStatus,nseMcpStatus == 'Connected' ? Colors.green : Colors.orange),
+    infoCard('Internal Market MCP',backendUrl + '/mcp',Colors.blue),
+    infoCard('Strategy Evidence MCP',backendUrl + '/mcp-strategy',Colors.blue),
     infoCard('CSV route',backendUrl + '/v1/nse/option-chain.csv?symbol=NIFTY',Colors.blue),
     const Text('MCP access is server-side; APK never stores NSE/Angel credentials.', style: TextStyle(color: Colors.grey)),
   ]);
@@ -501,7 +506,9 @@ class _TerminalState extends State<Terminal> {
   Widget settingsPage() => ListView(padding: const EdgeInsets.all(16), children: <Widget>[
     const Text('Settings', style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
     const SizedBox(height: 12),
+    infoCard('Backend provider',backendProvider(),backendProvider() == 'Railway' ? Colors.green : Colors.blue),
     infoCard('Backend URL',backendUrl,Colors.blue),
+    infoCard('MCP servers','Market MCP + Strategy Evidence MCP + official NSE MCP client',Colors.blue),
     infoCard('Mode','Paper signals only',Colors.orange),
     infoCard('Timeframes','1m 2m 3m 5m 10m 15m 30m 1h 2h 4h 1D',Colors.blue),
     infoCard('Indicators','8 EMA / 13 EMA',Colors.blue),
@@ -523,6 +530,14 @@ class _TerminalState extends State<Terminal> {
     const SizedBox(height: 10),
     infoCard('Data source', title == 'NSE MCP' ? 'NSE MCP integration is configured by the backend.' : 'Corresponding API/data adapter is handled by the backend.', Colors.blue),
   ]);
+
+  String backendProvider() {
+    final host = Uri.tryParse(cleanUrl(backendUrl))?.host.toLowerCase() ?? '';
+    if (host.contains('railway.app')) return 'Railway';
+    if (host.endsWith('.fly.dev') || host.contains('fly.dev')) return 'Fly.io';
+    if (host.contains('onrender.com')) return 'Render (removed)';
+    return 'Custom';
+  }
 
   String cleanUrl(String s) {
     s = s.trim();
@@ -678,10 +693,19 @@ class _AngelApiFormState extends State<AngelApiForm> {
     try {
       final base = widget.backendUrl.trim();
       final normalized = base.isEmpty
-          ? 'https://vandana1-api.fly.dev'
+          ? (railwayBackendUrl.isNotEmpty ? railwayBackendUrl : 'https://vandana1-api.fly.dev')
           : (base.startsWith('http://') || base.startsWith('https://') ? base : 'https://' + base);
-      final loginUri = Uri.tryParse(normalized + '/v1/angel/login');
-      if (loginUri == null || loginUri.host.isEmpty) {
+      final normalizedUri = Uri.tryParse(normalized);
+      if (normalizedUri == null || normalizedUri.host.isEmpty || normalizedUri.scheme != 'https') {
+        widget.onStatus('Invalid backend URL. Enter a valid HTTPS Railway/Fly.io backend host in Settings.');
+        return;
+      }
+      if (normalizedUri.host.contains('onrender.com')) {
+        widget.onStatus('Render backend is removed. Set the Railway backend URL in Settings.');
+        return;
+      }
+      final loginUri = normalizedUri.replace(path: '/v1/angel/login');
+      if (loginUri.host.isEmpty) {
         widget.onStatus('Invalid backend URL. Enter a valid HTTPS backend host in Settings.');
         return;
       }
