@@ -38,7 +38,7 @@ class _TerminalState extends State<Terminal> {
     Icons.hub, Icons.storage, Icons.psychology, Icons.tune, Icons.more_horiz
   ];
   int selected = 0;
-  String backendUrl = 'https://vandana1-angel-api.onrender.com';
+  String backendUrl = '';
   String apiToken = 'change-me';
   String connection = 'Connecting...';
   bool darkMode = true;
@@ -476,7 +476,7 @@ class _TerminalState extends State<Terminal> {
           infoCard('AI orchestration','Six-provider evidence verification. Engine remains the final decision owner.',Colors.blue),
           ...ps.map((p)=>Card(child:ListTile(leading:Icon(p['configured']==true?Icons.check_circle:Icons.cloud_off,color:p['configured']==true?Colors.green:Colors.orange),title:Text((p['provider']??p['name']??'-').toString()),subtitle:Text((p['status']??'server key required').toString())))),
           infoCard('Configured',(d['configured']??0).toString()+' / '+(d['total']??6).toString(),Colors.green),
-          infoCard('API keys','Read from Render server environment only. Never stored in APK.',Colors.orange),
+          infoCard('API keys','Read from the secure backend environment only. Never stored in APK.',Colors.orange),
         ]);
       }catch(_){return infoCard('AI status','Unable to read /v1/ai/status from backend.',Colors.orange);}
     });  Widget nseMcp() => ListView(padding: const EdgeInsets.all(16), children: <Widget>[
@@ -659,7 +659,7 @@ class _AngelApiFormState extends State<AngelApiForm> {
     }
 
     setState(() => busy = true);
-    widget.onStatus('Connecting to Angel One through Render backend...');
+    widget.onStatus('Connecting to Angel One through secure backend...');
 
     try {
       final response = await http.post(
@@ -802,7 +802,7 @@ class _AngelApiFormState extends State<AngelApiForm> {
               ],
               const SizedBox(height: 8),
               Text(
-                'Frontend → Render backend → Angel One SmartAPI',
+                'Frontend → Secure backend → Angel One SmartAPI',
                 style: TextStyle(color: Theme.of(context).colorScheme.primary),
               ),
             ],
