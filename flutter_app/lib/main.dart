@@ -237,6 +237,15 @@ class _TerminalState extends State<Terminal> {
       ]))),
       const SizedBox(height: 10),
       Card(child: ListTile(leading: Icon(Icons.local_fire_department, color: color), title: const Text('CURRENT SIGNAL • HOT SPOT'), subtitle: Text('$hot • Spot $spot'), trailing: Text(action, style: TextStyle(color: color, fontWeight: FontWeight.bold)))),
+      Card(child:Padding(padding:const EdgeInsets.all(14),child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:<Widget>[
+        const Text('CURRENT ENGINE STATE',style:TextStyle(fontSize:18,fontWeight:FontWeight.bold)),
+        row('Underlying',terminalData?['market']?['symbol'] ?? selectedOptionSymbol),
+        row('Spot / Index LTP',terminalData?['market']?['spot'] ?? '-'),
+        row('Option Symbol',signal?['optionSymbol'] ?? signal?['tradingSymbol'] ?? '-'),
+        row('Option LTP',signal?['ltp'] ?? terminalData?['market']?['ltp'] ?? '-'),
+        row('Strike',signal?['strike'] ?? terminalData?['market']?['atm'] ?? '-'),
+        row('Side / Action',signal?['type'] ?? signal?['action'] ?? 'WAIT'),
+      ]))),
       if (signal != null) Card(child: Padding(padding: const EdgeInsets.all(14), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: <Widget>[
         const Text('CURRENT SIGNAL'), const SizedBox(height: 8), row('Symbol', signal!['symbol']), row('Spot', signal!['spot']), row('Strike', (signal!['strike'] ?? '-').toString() + ' ' + (signal!['type'] ?? '').toString()), row('Entry', signal!['entry']), row('LTP', signal!['ltp']), row('Stop Loss', signal!['sl']), row('Target', signal!['target']),
       ]))),
