@@ -61,8 +61,11 @@ def start_workers():
     asyncio.create_task(alert_loop(), name="qualified-alert-loop")
 
 def _ensure_angel():
-    if client.api is None:
-        client.login(); state["angel_message"]="Connected using server credentials (6h session reuse)."
+    # App login is the normal path. Only auto-login on startup when complete
+    # server-side Angel credentials are configured in Railway environment.
+    if client.api is None and C.API_KEY and C.CLIENT and C.PIN and C.TOTP_SECRET:
+        client.login()
+        state["angel_message"]="Connected using server credentials (6h session reuse)."
 
 def loop():
     global last_oi_save
