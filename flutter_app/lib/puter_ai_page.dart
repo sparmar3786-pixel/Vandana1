@@ -77,4 +77,4 @@ async function runSix(){if(running)return;running=true;document.getElementById('
 document.getElementById('run').onclick=runSix;document.getElementById('auth').onclick=async function(){try{await ensureAuth();document.getElementById('status').innerHTML='<span class="live">● Puter authenticated</span>'}catch(e){document.getElementById('status').textContent=e.message||e}};
 document.getElementById('auto').onclick=function(){auto=!auto;document.getElementById('auto').textContent='AUTO: '+(auto?'ON':'OFF');if(auto){runSix();autoTimer=setInterval(runSix,60000)}else{clearInterval(autoTimer);autoTimer=null}};
 window.addEventListener('load',function(){setTimeout(function(){runSix()},1200);autoTimer=setInterval(runSix,60000)});
-</script></body></html>
+</script></body></html>\n''';
