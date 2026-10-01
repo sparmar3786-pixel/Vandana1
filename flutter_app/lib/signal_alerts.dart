@@ -33,7 +33,8 @@ class SignalAlertService {
   final List<SignalAlert> history = [];
   void Function(SignalAlert alert)? onAlert;
 
-  // Accept the optional API token used by the APK alert poller.\n  SignalAlertService(this.baseUrl, [this.apiToken]);
+  // Accept the optional API token used by the APK alert poller.
+  SignalAlertService(this.baseUrl, [this.apiToken]);
 
   Future<void> start() async {
     const android = AndroidInitializationSettings('@mipmap/ic_launcher');
