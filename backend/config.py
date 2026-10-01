@@ -2,7 +2,7 @@ import os
 from dotenv import load_dotenv
 load_dotenv()
 g = os.getenv
-API_KEY = g("ANGEL_API_KEY"); CLIENT = g("ANGEL_CLIENT_CODE")
+API_KEY = g("ANGEL_API_KEY"); CLIENT = g("ANGEL_CLIENT_CODE") or g("ANGEL_CLIENT")
 PIN = g("ANGEL_PIN"); TOTP_SECRET = g("ANGEL_TOTP_SECRET")
 SYMBOL = g("SYMBOL", "NIFTY")
 N = int(g("STRIKES_EACH_SIDE", 5))
