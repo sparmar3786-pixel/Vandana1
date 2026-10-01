@@ -114,7 +114,7 @@ class AngelClient:
         tokens=self._ws_tokens()
         if not tokens:
             return
-        exchange_type=3 if self.chain_exchange=="BFO" else 2
+        exchange_type=4 if self.chain_exchange=="BFO" else 2
         index_token=str(self._index_token(self.chain_symbol))
         option_tokens=[t for t in tokens if t!=index_token]
         groups=[]
