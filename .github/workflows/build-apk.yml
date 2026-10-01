@@ -105,7 +105,7 @@ jobs:
 
       - name: Validate Railway backend URL
         env:
-          RAILWAY_BACKEND_URL: ${{ vars.RAILWAY_BACKEND_URL }}
+          RAILWAY_BACKEND_URL: ${{ vars.RAILWAY_BACKEND_URL || 'https://nse-algo-backend-production.up.railway.app' }}
         run: |
           python - <<'PY'
           import os
@@ -123,7 +123,7 @@ jobs:
           PY
       - name: Build installable APK
         working-directory: flutter_app
-        run: flutter build apk --debug --dart-define=RAILWAY_BACKEND_URL="${{ vars.RAILWAY_BACKEND_URL }}"
+        run: flutter build apk --debug --dart-define=RAILWAY_BACKEND_URL="${{ vars.RAILWAY_BACKEND_URL || 'https://nse-algo-backend-production.up.railway.app' }}"
 
       - name: Verify APK
         run: |
