@@ -33,8 +33,7 @@ class Terminal extends StatefulWidget {
 class _TerminalState extends State<Terminal> {
   static const screens = <String>[
     'Dashboard','Market','Commodity','Signals','OI Lab','Watchlist','Charts',
-    'Option Chain','News','Market Details','Angel API','NSE','NSE MCP','Data',
-    'AI Models','Settings','More'
+    'Option Chain','News','Market Details','Angel API','NSE','NSE MCP','Data','Strategies','AI Models','Settings','More'
   ];
   static const icons = <IconData>[
     Icons.dashboard, Icons.show_chart, Icons.precision_manufacturing,
@@ -161,7 +160,7 @@ class _TerminalState extends State<Terminal> {
             SizedBox(height: 10),
             Text('NSE Algo Signal', style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
             SizedBox(height: 4),
-            Text('17-screen paper terminal'),
+            Text('18-screen paper terminal'),
           ])),
           for (int i=0; i<screens.length; i++) ListTile(
             leading: Icon(icons[i]),
