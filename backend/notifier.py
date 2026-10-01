@@ -12,7 +12,8 @@ from datetime import datetime
 from typing import Optional
 from zoneinfo import ZoneInfo
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Header, HTTPException
+import config as C
 from market_core import snapshot
 
 router = APIRouter(tags=["alerts"])
@@ -64,7 +65,7 @@ def emit(kind: str, sig: dict, reason: str, ltp=None):
 
 
 def _current_ltp(sig: dict):
-    snap = snapshot(sig["index"], window=15) if False else snapshot(sig["index"], True)
+    snap = snapshot(sig["index"], True)
     if not snap:
         return None
     strike = float(sig["strike"])
@@ -145,12 +146,20 @@ async def alert_loop():
 
 
 @router.get("/api/alerts")
-def alerts(since: Optional[int] = None):
+def _auth(x_token: Optional[str]):
+    if x_token != C.API_TOKEN:
+        raise HTTPException(401, "bad token")
+
+
+@router.get("/api/alerts")
+def alerts(since: Optional[int] = None, x_token: Optional[str] = Header(None)):
+    _auth(x_token)
     if since is None:
         return {"seq": SEQ, "events": []}
     return {"seq": SEQ, "events": [e for e in EVENTS if e["seq"] > since]}
 
 
 @router.get("/api/alerts/active")
-def active():
+def active(x_token: Optional[str] = Header(None)):
+    _auth(x_token)
     return list(ACTIVE.values())
