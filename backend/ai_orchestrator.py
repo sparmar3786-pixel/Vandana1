@@ -7,8 +7,13 @@ import os
 import re
 import time
 import requests
+import hashlib
+import threading
 
 TIMEOUT = int(os.getenv("AI_TIMEOUT_SEC", "15"))
+AI_CACHE_SEC = int(os.getenv("AI_CACHE_SEC", "45"))
+_ai_cache = {}
+_ai_cache_lock = threading.Lock()
 
 PROVIDERS = [
     {"id":"gpt56-luna","name":"GPT-5.6 Luna","env":"OPENAI_API_KEY","kind":"openai","model":os.getenv("OPENAI_LUNA_MODEL","gpt-5.6-luna")},
