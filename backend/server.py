@@ -2,6 +2,7 @@
 import threading,time,datetime as dt,os
 from typing import Optional
 from fastapi import FastAPI,Header,HTTPException,Response
+from fastapi.middleware.gzip import GZipMiddleware
 from pydantic import BaseModel
 import uvicorn
 import config as C
@@ -13,7 +14,7 @@ from nse_mcp import NSEMCP,result_to_csv
 from ai_model import p_up,label
 from ai_orchestrator import provider_status, validate_all
 
-app=FastAPI(title="NSE Algo Signal API"); eng=Engine(); client=AngelClient(); nse=NSEClient(); nse_mcp=NSEMCP()
+app=FastAPI(title="NSE Algo Signal API"); app.add_middleware(GZipMiddleware,minimum_size=1024); eng=Engine(); client=AngelClient(); nse=NSEClient(); nse_mcp=NSEMCP()
 state={"error":None,"nse_error":None,"last_update":None,"angel_message":"Not connected","nse_mcp_error":None}
 prev_chain={"c":None}; workers_started=False
 
