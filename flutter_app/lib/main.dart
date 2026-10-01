@@ -54,6 +54,7 @@ class _TerminalState extends State<Terminal> {
   List<dynamic> liveMarket = <dynamic>[];
   List<dynamic> liveCandles = <dynamic>[];
   List<dynamic> liveOptionRows = <dynamic>[];
+  dynamic optionSpot;
   List<dynamic> liveOIBuild = <dynamic>[];
   String selectedChartToken = '99926000';
   String selectedChartExchange = 'NSE';
@@ -286,7 +287,7 @@ class _TerminalState extends State<Terminal> {
       if(r.statusCode==200){
         final d=jsonDecode(r.body);
         final rows=d is Map && d['rows'] is List ? d['rows'] : <dynamic>[];
-        if(mounted) setState(()=>liveOptionRows=rows is List ? rows : <dynamic>[]);
+        if(mounted) setState(() { liveOptionRows=rows is List ? rows : <dynamic>[]; optionSpot=d is Map ? d['spot'] : null; });
       }
     } catch (_) {} finally { if(mounted) setState(()=>angelDataBusy=false); }
   }
@@ -379,17 +380,38 @@ class _TerminalState extends State<Terminal> {
   ]);
 
   List<Widget> _optionChainCards() {
-    final rows=[...liveOptionRows]..sort((a,b)=>(double.tryParse('${a['strike']}')??0).compareTo(double.tryParse('${b['strike']}')??0));
-    final out=<Widget>[];
-    for(final r in rows.where((x)=>x['type']=='CE'||x['type']=='PE')){
-      final ch=double.tryParse('${r['priceChange']??r['netChange']??0}')??0; final oiCh=double.tryParse('${r['oiChangePct']??0}')??0;
-      final oiArrow=oiCh>0?'↑':oiCh<0?'↓':'—'; final priceArrow=ch>0?'↑':ch<0?'↓':'—'; final color=ch>0?Colors.green:ch<0?Colors.red:Colors.blue;
-      out.add(Card(child:Padding(padding:const EdgeInsets.all(8),child:Row(children:<Widget>[
-        Expanded(child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:<Widget>[Text('${r['strike']} ${r['type']}',style:const TextStyle(fontWeight:FontWeight.bold)),Text('LTP ${r['ltp']??'-'} • OI ${r['oi']??'-'}'),Text('OI $oiArrow   PRICE $priceArrow',style:TextStyle(color:color,fontWeight:FontWeight.bold))])),
-        Column(crossAxisAlignment:CrossAxisAlignment.end,children:<Widget>[Text('Δ ${r['delta']??'-'}  Γ ${r['gamma']??'-'}'),Text('Θ ${r['theta']??'-'}  V ${r['vega']??'-'}'),Text('POP ${r['pop']??'-'}')]),
-      ]))));
+    final byStrike=<String,Map<String,dynamic>>{};
+    for(final r in liveOptionRows.where((x)=>x is Map)){
+      final key=(r['strike']??'-').toString();
+      byStrike.putIfAbsent(key,()=>{}); byStrike[key]![r['type'].toString()]=r;
     }
-    return out;
+    final keys=byStrike.keys.toList()..sort((a,b)=>(double.tryParse(a)??0).compareTo(double.tryParse(b)??0));
+    return keys.map((strike){
+      final ce=byStrike[strike]!['CE']; final pe=byStrike[strike]!['PE'];
+      final atm=optionSpot!=null && (double.tryParse(strike)??-1)==(double.tryParse(optionSpot.toString())??-2);
+      return Card(child:Padding(padding:const EdgeInsets.all(8),child:Column(children:<Widget>[
+        Container(width:double.infinity,padding:const EdgeInsets.symmetric(vertical:5),color:Theme.of(context).brightness==Brightness.dark?Colors.white.withOpacity(.08):Colors.black.withOpacity(.04),child:Center(child:Text(atm?'SPOT  '+strike+'  SPOT':strike,style:const TextStyle(fontWeight:FontWeight.bold)))),
+        const SizedBox(height:6), Row(crossAxisAlignment:CrossAxisAlignment.start,children:<Widget>[
+          Expanded(child:_optionCell(ce,'CE')), const SizedBox(width:8), Expanded(child:_optionCell(pe,'PE')),
+        ]),
+      ])));
+    }).toList();
+  }
+
+  Widget _optionCell(dynamic r,String side) {
+    if(r==null)return Card(child:Padding(padding:const EdgeInsets.all(8),child:Text(side+' —')));
+    final ch=double.tryParse(r['priceChange']?.toString() ?? r['netChange']?.toString() ?? '0')??0;
+    final oiCh=double.tryParse(r['oiChangePct']?.toString() ?? '0')??0;
+    final color=ch>0?Colors.green:ch<0?Colors.red:Colors.blue;
+    final oiArrow=oiCh>0?'↑':oiCh<0?'↓':'—'; final priceArrow=ch>0?'↑':ch<0?'↓':'—';
+    return Column(crossAxisAlignment:CrossAxisAlignment.start,children:<Widget>[
+      Text(side,style:TextStyle(fontWeight:FontWeight.bold,color:side=='CE'?Colors.green:Colors.red)),
+      Text('LTP '+(r['ltp']??'-').toString()+'  OI '+(r['oi']??'-').toString()),
+      Text('OI $oiArrow  PRICE $priceArrow',style:TextStyle(color:color,fontWeight:FontWeight.bold)),
+      Text('Δ '+(r['delta']??'-').toString()+'  Γ '+(r['gamma']??'-').toString()),
+      Text('Θ '+(r['theta']??'-').toString()+'  V '+(r['vega']??'-').toString()),
+      Text('POP '+(r['pop']??'-').toString()),
+    ]);
   }
 
   Widget newsPage() => ListView(padding:const EdgeInsets.all(16),children:<Widget>[
