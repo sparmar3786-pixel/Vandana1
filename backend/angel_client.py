@@ -14,7 +14,7 @@ class AngelClient:
         self.api=None; self.chain={}; self.strikes=[]; self.expiry=None; self.chain_symbol=C.SYMBOL; self.chain_exchange="NFO"
         self.last_chain_cache={}; self.last_chain_cache_ts={}
         self.ws=None; self.ws_thread=None; self.ws_quotes={}; self.ws_lock=threading.Lock(); self.login_lock=threading.Lock(); self.session_started=0.0; self.session_ttl=6*60*60
-        self.active_api_key=None; self.active_client_code=None
+        self.active_api_key=None; self.active_client_code=None; self.active_pin=None; self.active_totp=None; self.last_snapshot=None
     def login(self, api_key=None, client_code=None, pin=None, totp=None, force=False):
         # Reuse one successful Angel session for 6 hours; avoid repeated TOTP/session calls.
         now=time.time()
@@ -31,6 +31,8 @@ class AngelClient:
             self.api=SmartConnect(api_key=api_key)
             self.active_api_key=api_key
             self.active_client_code=client_code
+            self.active_pin=pin
+            self.active_totp=totp
             d=self.api.generateSession(client_code,pin,totp)
             if not d.get("status"):
                 self.api=None; self.session_started=0.0
@@ -321,7 +323,7 @@ class AngelClient:
                 if attempt==0:
                     try:
                         self.api=None
-                        self.login()
+                        self.login(api_key=self.active_api_key, client_code=self.active_client_code, pin=self.active_pin, totp=self.active_totp, force=True)
                     except Exception as relogin_error:
                         last=relogin_error
                         break
@@ -409,4 +411,16 @@ class AngelClient:
                 for q in r["data"]["fetched"]:
                     k=tok2key.get(q["symbolToken"])
                     if k: opts[k]={"ltp":float(q["ltp"]),"oi":float(q.get("opnInterest",0)),"vol":float(q.get("tradeVolume",0)),"symbol":self.chain[k].get("symbol"),"token":self.chain[k].get("token")}
-        return {"ts":time.time(),"symbol":self.chain_symbol or C.SYMBOL,"spot":spot,"atm":atm,"opts":opts,"expiry":str(self.expiry) if self.expiry else None}
+        previous = self.last_snapshot.get("opts", {}) if isinstance(self.last_snapshot, dict) else {}
+        for key, item in opts.items():
+            old = previous.get(key) if isinstance(previous, dict) else None
+            if isinstance(old, dict):
+                if item.get("ltp") is not None and old.get("ltp") is not None:
+                    item["ltp_change"] = float(item["ltp"]) - float(old["ltp"])
+                if item.get("oi") is not None and old.get("oi") is not None:
+                    item["oi_change"] = float(item["oi"]) - float(old["oi"])
+                if item.get("vol") is not None and old.get("vol") is not None:
+                    item["volume_change"] = float(item["vol"]) - float(old["vol"])
+        result = {"ts":time.time(),"symbol":self.chain_symbol or C.SYMBOL,"spot":spot,"atm":atm,"opts":opts,"expiry":str(self.expiry) if self.expiry else None}
+        self.last_snapshot = {"ts":result["ts"],"opts":{k:dict(v) for k,v in opts.items()}}
+        return result
