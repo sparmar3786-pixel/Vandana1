@@ -108,10 +108,10 @@ class Engine:
                 elif ai_flip: reason = "NSE AI TREND FLIPPED"
                 pnl = round((ltp / p["entry"] - 1) * 100, 2)
                 if reason:
-                    self.last = {"action": "EXIT", "strike": p["strike"], "type": p["typ"], "ltp": ltp,
+                    self.last = {"action": "EXIT", "symbol": snap.get("symbol", C.SYMBOL), "strike": p["strike"], "type": p["typ"], "ltp": ltp,
                                  "pnl_pct": pnl, "reasons": [reason] + reasons, **self._meta(snap, score)}
                     self.position = None; return self.last
-                self.last = {"action": "HOLD", "strike": p["strike"], "type": p["typ"], "entry": p["entry"],
+                self.last = {"action": "HOLD", "symbol": snap.get("symbol", C.SYMBOL), "strike": p["strike"], "type": p["typ"], "entry": p["entry"],
                              "ltp": ltp, "sl": p["sl"], "target": p["target"], "pnl_pct": pnl,
                              "reasons": reasons, **self._meta(snap, score)}
                 return self.last
@@ -135,7 +135,7 @@ class Engine:
                 entry = opt["ltp"]
                 sl = round(entry * (1 - C.SL_PCT), 2); tgt = round(entry * (1 + C.SL_PCT * C.RR), 2)
                 self.position = {"strike": atm, "typ": typ, "entry": entry, "sl": sl, "target": tgt}
-                self.last = {"action": f"BUY_{typ}", "strike": atm, "type": typ, "entry": entry, "sl": sl,
+                self.last = {"action": f"BUY_{typ}", "symbol": snap.get("symbol", C.SYMBOL), "strike": atm, "type": typ, "entry": entry, "sl": sl,
                              "target": tgt, "ai_confidence": round(conf, 3), "reasons": reasons,
                              "exit_rule": "SL / Target / Angel reversal / NSE-AI flip", **self._meta(snap, score)}
                 return self.last
