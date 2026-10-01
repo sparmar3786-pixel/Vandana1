@@ -8,6 +8,8 @@ class PuterAiPage extends StatefulWidget {
   final String backendUrl;
   final String apiToken;
   final Map<String, dynamic>? initialSnapshot;
+  Map<String, dynamic> mcpContext = <String, dynamic>{};
+  Map<String, dynamic> strategyContext = <String, dynamic>{};
   const PuterAiPage({super.key, required this.backendUrl, required this.apiToken, this.initialSnapshot});
   @override State<PuterAiPage> createState() => _PuterAiPageState();
 }
@@ -40,7 +42,25 @@ class _PuterAiPageState extends State<PuterAiPage> {
     try {
       final base = widget.backendUrl.replaceFirst(RegExp(r'/+$'), '');
       final r = await http.get(Uri.parse(base + '/v1/terminal'), headers: <String,String>{'x-token': widget.apiToken}).timeout(const Duration(seconds: 8));
-      if (r.statusCode == 200) { final d = jsonDecode(r.body); if (d is Map<String,dynamic>) await _pushSnapshot(d); }
+      if (r.statusCode == 200) {
+        final d = jsonDecode(r.body);
+        if (d is Map<String,dynamic>) {
+          await _pushSnapshot(d);
+          final sym = (d['market'] is Map ? d['market']['symbol'] : null) ?? 'NIFTY';
+          await _loadEvidence(base, sym.toString());
+        }
+      }
+    } catch (_) {}
+  }
+  Future<void> _loadEvidence(String base, String symbol) async {
+    try {
+      final h = <String,String>{'x-token': widget.apiToken};
+      final m = await http.get(Uri.parse(base + '/v1/nse/mcp/context?symbol=' + Uri.encodeQueryComponent(symbol)), headers:h).timeout(const Duration(seconds: 10));
+      final s = await http.get(Uri.parse(base + '/v1/strategy/refresh'), headers:h).timeout(const Duration(seconds: 10));
+      if (mounted) setState(() {
+        if (m.statusCode == 200) { final x=jsonDecode(m.body); if(x is Map<String,dynamic>) mcpContext=x; }
+        if (s.statusCode == 200) { final x=jsonDecode(s.body); if(x is Map<String,dynamic>) strategyContext=x; }
+      });
     } catch (_) {}
   }
   Future<void> _pushSnapshot(Map<String,dynamic>? snapshot) async {
@@ -70,8 +90,8 @@ renderCards();
 async function ensureAuth(){if(puter.auth.isSignedIn())return true;try{if(puter.ui&&puter.ui.authenticateWithPuter){await puter.ui.authenticateWithPuter()}else{await puter.auth.signIn({attempt_temp_user_creation:true})}return puter.auth.isSignedIn()}catch(e){throw new Error('Puter sign-in required: '+(e?.msg||e?.message||e))}}
 async function loadModels(){try{modelCatalog=await puter.ai.listModels()}catch(e){modelCatalog=[]}}
 function resolveModel(a){const ids=(modelCatalog||[]).map(function(x){return String(x.id||'')});for(const c of a.candidates){const exact=ids.find(function(x){return x===c});if(exact)return exact}for(const term of a.match){const hit=ids.find(function(x){return x.toLowerCase().includes(term.toLowerCase())});if(hit)return hit}return a.candidates[0]}
-async function internetEvidence(){const out={};try{const n=await puter.net.fetch('https://www.nseindia.com/option-chain',{headers:{'User-Agent':'Mozilla/5.0','Accept':'text/html'}});const t=await n.text();out.nse=t.replace(/<script[\s\S]*?<\/script>/gi,' ').replace(/<style[\s\S]*?<\/style>/gi,' ').replace(/<[^>]+>/g,' ').replace(/\s+/g,' ').slice(0,9000)}catch(e){out.nse='Official NSE page fetch unavailable in this run.'}try{const n=await puter.net.fetch('https://news.google.com/rss/search?q=NIFTY%20BANKNIFTY%20India%20stock%20market&hl=en-IN&gl=IN&ceid=IN:en');const t=await n.text();out.news=t.replace(/<item>/g,'\n').replace(/<[^>]+>/g,' ').replace(/\s+/g,' ').slice(0,6000)}catch(e){out.news='Current news feed unavailable in this run.'}return out}
-function promptFor(a,web){return 'You are '+a.label+', an independent market-analysis engine for an Indian paper-trading terminal.\nUse ONLY the supplied Angel/NSE market snapshot plus the supplied Internet evidence. Do not invent prices, OI, news, or API results.\nEvaluate NIFTY/Indian index option context. Return concise JSON with keys: state (CALL BUY, PUT BUY, WAIT, or NO QUALIFYING TRADE), confidence (0-100), summary, positives, negatives, risks, watch.\nA trade is valid only when the supplied evidence actually supports it; otherwise WAIT/NO QUALIFYING TRADE.\nNo order placement, no profit guarantee, no fabricated win rate.\nMARKET SNAPSHOT:\n'+JSON.stringify(snapshot).slice(0,24000)+'\nOFFICIAL NSE / INTERNET EVIDENCE:\n'+JSON.stringify(web).slice(0,15000)}
+async function internetEvidence(){const out={mcp:mcpContext,strategy:strategyContext};try{const n=await puter.net.fetch('https://www.nseindia.com/option-chain',{headers:{'User-Agent':'Mozilla/5.0','Accept':'text/html'}});const t=await n.text();out.nse=t.replace(/<script[\s\S]*?<\/script>/gi,' ').replace(/<style[\s\S]*?<\/style>/gi,' ').replace(/<[^>]+>/g,' ').replace(/\s+/g,' ').slice(0,9000)}catch(e){out.nse='Official NSE page fetch unavailable in this run.'}try{const n=await puter.net.fetch('https://news.google.com/rss/search?q=NIFTY%20BANKNIFTY%20India%20stock%20market&hl=en-IN&gl=IN&ceid=IN:en');const t=await n.text();out.news=t.replace(/<item>/g,'\n').replace(/<[^>]+>/g,' ').replace(/\s+/g,' ').slice(0,6000)}catch(e){out.news='Current news feed unavailable in this run.'}return out}
+function promptFor(a,web){return 'You are '+a.label+', an independent market-analysis engine for an Indian paper-trading terminal.\nUse ONLY the supplied Angel/NSE market snapshot plus the supplied Internet evidence. Do not invent prices, OI, news, or API results.\nEvaluate NIFTY/Indian index option context. Return concise JSON with keys: state (CALL BUY, PUT BUY, WAIT, or NO QUALIFYING TRADE), confidence (0-100), summary, positives, negatives, risks, watch.\nA trade is valid only when the supplied evidence actually supports it; otherwise WAIT/NO QUALIFYING TRADE.\nNo order placement, no profit guarantee, no fabricated win rate.\nMARKET SNAPSHOT:\n'+JSON.stringify(snapshot).slice(0,24000)+'\nNSE MCP + OFFICIAL NSE SITE + INTERNET EVIDENCE:\n'+JSON.stringify(web).slice(0,22000)}
 async function one(a,i,web){const badge=document.getElementById('b'+i),out=document.getElementById('r'+i),meta=document.getElementById('m'+i);badge.textContent='RUNNING';badge.style.background='#fff0cf';out.textContent='Analyzing live snapshot + Internet...';try{const model=resolveModel(a);meta.textContent=model;const opts={model:model,temperature:0.15,max_tokens:700};if(a.openai)opts.tools=[{type:'web_search'}];const res=await puter.ai.chat(promptFor(a,web),opts);const text=typeof res==='string'?res:(res?.message?.content??res?.text??JSON.stringify(res));badge.textContent='CONNECTED';badge.style.background='#dff5e8';out.textContent=text;return {ok:true,text:text}}catch(e){badge.textContent='ERROR';badge.style.background='#ffe0e0';out.textContent=String(e?.message||e);return {ok:false,error:String(e?.message||e)}}}
 async function runSix(){if(running)return;running=true;document.getElementById('run').disabled=true;document.getElementById('status').innerHTML='<span class="live">● RUNNING</span> 6 independent AI analyses...';try{await ensureAuth();await loadModels();const web=await internetEvidence();const results=await Promise.all(AI.map(function(a,i){return one(a,i,web)}));const ok=results.filter(function(x){return x.ok}).length;document.getElementById('status').innerHTML='<span class="live">● LIVE</span> '+ok+'/6 AI responses completed • NSE + Internet evidence included • '+new Date().toLocaleTimeString()}catch(e){document.getElementById('status').innerHTML='<span class="err">'+esc(e?.message||e)+'</span>'}finally{running=false;document.getElementById('run').disabled=false}}
 document.getElementById('run').onclick=runSix;document.getElementById('auth').onclick=async function(){try{await ensureAuth();document.getElementById('status').innerHTML='<span class="live">● Puter authenticated</span>'}catch(e){document.getElementById('status').textContent=e.message||e}};
