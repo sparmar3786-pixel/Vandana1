@@ -101,9 +101,19 @@ class AngelClient:
 
     def _ws_tokens(self):
         out=[]
-        if self.chain:
-            keys=list(self.chain.values())
-            out.extend(str(x["token"]) for x in keys[:42] if x.get("token"))
+        if self.chain and self.strikes:
+            try:
+                spot=self.spot(self.chain_symbol)
+                atm=min(self.strikes,key=lambda x:abs(x-spot))
+                i=self.strikes.index(atm)
+                selected=self.strikes[max(0,i-10):i+11]
+                for strike in selected:
+                    for typ in ("CE","PE"):
+                        item=self.chain.get((strike,typ))
+                        if item and item.get("token"):
+                            out.append(str(item["token"]))
+            except Exception:
+                pass
         try:
             out.append(str(self._index_token(self.chain_symbol)))
         except Exception:
