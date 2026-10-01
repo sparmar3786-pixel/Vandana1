@@ -143,4 +143,12 @@ class Engine:
         return self.last
 
     def _meta(self, snap, score):
-        return {"spot": snap["spot"], "atm": snap["atm"], "score": round(score, 3), "ts": snap["ts"]}
+        opt = None
+        for typ in ("CE","PE"):
+            candidate = snap.get("opts", {}).get((snap.get("atm"), typ))
+            if candidate:
+                opt = candidate
+                break
+        return {"spot": snap["spot"], "atm": snap["atm"], "score": round(score, 3), "ts": snap["ts"],
+                "underlying": C.SYMBOL, "optionSymbol": (opt or {}).get("symbol"),
+                "optionToken": (opt or {}).get("token"), "ltp": (opt or {}).get("ltp")}
