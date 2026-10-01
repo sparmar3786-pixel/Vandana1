@@ -6,7 +6,7 @@ import json, os
 from typing import Any
 from mcp.server import MCPServer
 from strategy_engine import run_backtest, evaluate_strategy
-from strategy_store import get_version
+from strategy_store import get_version, get_oi_snapshots
 
 mcp=MCPServer("NSE Strategy Evidence MCP")
 
