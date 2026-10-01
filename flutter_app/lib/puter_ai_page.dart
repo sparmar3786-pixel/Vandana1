@@ -48,7 +48,7 @@ class _PuterAiPageState extends State<PuterAiPage> {
     final b64 = base64Encode(utf8.encode(jsonEncode(snapshot)));
     try { await controller.runJavaScript("window.updateMarketSnapshot('" + b64 + "');"); } catch (_) {}
   }
-  String _html() => r'''
+  String _html() => r"""
 <!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1">
 <script src="https://js.puter.com/v2/"></script>
 <style>*{box-sizing:border-box}body{margin:0;background:#f8f5fa;color:#17131d;font-family:Arial,sans-serif}.wrap{padding:14px}.hero{background:#eee7ff;border:1px solid #d7c7ff;border-radius:18px;padding:16px}h1{font-size:23px;margin:0 0 5px}.sub{font-size:13px;color:#665f70}.row{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}button{border:0;border-radius:24px;padding:12px 17px;font-weight:700;font-size:14px;background:#6946b9;color:#fff}button.secondary{background:#e4dff0;color:#322c3a}.status{margin:12px 0;font-size:13px}.ok{color:#198754}.warn{color:#d98200}.err{color:#c0392b}.card{background:#fff;border-radius:16px;margin:10px 0;padding:14px;box-shadow:0 2px 7px #00000018}.head{display:flex;justify-content:space-between;gap:8px}.name{font-size:17px;font-weight:800}.badge{font-size:11px;padding:5px 9px;border-radius:15px;background:#eee}pre{white-space:pre-wrap;font:13px/1.45 Arial;margin:10px 0}.meta{font-size:11px;color:#777;margin-top:5px}.small{font-size:12px;color:#625b6a}.live{color:#16834d;font-weight:700}</style>
