@@ -339,11 +339,35 @@ class _TerminalState extends State<Terminal> {
   ]);
 
   Widget oiLabPage() => ListView(padding:const EdgeInsets.all(12),children:<Widget>[
-    const Text('OI Lab • Indian Indices Only',style:TextStyle(fontSize:24,fontWeight:FontWeight.bold)), const SizedBox(height:8),
-    infoCard('Scope','Index universe only. MCX/futures are excluded.',Colors.blue),
-    ...liveIndices.map((q){final pct=num.tryParse((q['percentChange']??q['netChange']??'').toString())??0;final color=pct>0?Colors.green:pct<0?Colors.red:Colors.blue;return Card(child:ListTile(title:Text((q['name']??q['symbol']??'-').toString()),subtitle:Text('Spot '+(q['ltp']??'-').toString()+' • Change '+(q['percentChange']??q['netChange']??'-').toString()),trailing:Text(pct>0?'POSITIVE ↑':pct<0?'NEGATIVE ↓':'NEUTRAL —',style:TextStyle(color:color,fontWeight:FontWeight.bold))));}),
-    if(liveIndices.isEmpty) infoCard('OI data','No index snapshot received yet.',Colors.orange),
+    const Text('OI Lab • Indian Index Options',style:TextStyle(fontSize:24,fontWeight:FontWeight.bold)),
+    const SizedBox(height:8),
+    infoCard('Scope','Only Indian index option OI. MCX/futures are excluded.',Colors.blue),
+    Wrap(spacing:6,children:<Widget>[
+      for(final sym in const['NIFTY','BANKNIFTY','FINNIFTY','MIDCPNIFTY','SENSEX','BANKEX'])
+        FilterChip(label:Text(sym),selected:selectedOptionSymbol==sym,onSelected:(_){setState(()=>selectedOptionSymbol=sym);fetchOptionRows();})
+    ]),
+    const SizedBox(height:8),
+    if(liveOptionRows.isNotEmpty) _oiSummaryCards(),
+    if(liveOptionRows.isEmpty) infoCard('OI snapshot','Select an index to load its live CE/PE OI snapshot.',Colors.orange),
   ]);
+
+  Widget _oiSummaryCards() {
+    num ceOI=0,peOI=0,ceUp=0,peUp=0,ceDown=0,peDown=0;
+    for(final r in liveOptionRows){
+      final oi=num.tryParse((r['oi']??0).toString())??0;
+      final ch=num.tryParse((r['oiChangePct']??0).toString())??0;
+      if(r['type']=='CE'){ceOI+=oi;if(ch>0)ceUp++;if(ch<0)ceDown++;}
+      if(r['type']=='PE'){peOI+=oi;if(ch>0)peUp++;if(ch<0)peDown++;}
+    }
+    return Column(children:<Widget>[
+      Row(children:<Widget>[
+        Expanded(child:infoCard('CALL OI',ceOI.toStringAsFixed(0)+' • ↑ '+ceUp.toString()+' ↓ '+ceDown.toString(),Colors.green)),
+        const SizedBox(width:8),
+        Expanded(child:infoCard('PUT OI',peOI.toStringAsFixed(0)+' • ↑ '+peUp.toString()+' ↓ '+peDown.toString(),Colors.red)),
+      ]),
+      infoCard('OI direction','↑ OI = addition • ↓ OI = reduction • selected index: '+selectedOptionSymbol,Colors.blue),
+    ]);
+  }
 
   Widget watchlistPage() => ListView(padding:const EdgeInsets.all(12),children:<Widget>[
     const Text('Watchlist • All Indian Indices',style:TextStyle(fontSize:24,fontWeight:FontWeight.bold)), const SizedBox(height:8),
