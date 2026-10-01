@@ -1,0 +1,5 @@
+{
+  "name":"vandana-lightweight-chart",
+  "private":true,
+  "dependencies":{"lightweight-charts":"4.2.0"}
+}
