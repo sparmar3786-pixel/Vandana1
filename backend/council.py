@@ -35,6 +35,7 @@ COUNCIL_SL_PCT = float(os.getenv("COUNCIL_SL_PCT", "0.25"))
 COUNCIL_RR = float(os.getenv("COUNCIL_RR", "2.0"))
 
 _CACHE: dict[str, tuple[float, dict]] = {}
+_ALL_CACHE: tuple[float, dict] | None = None
 _CACHE_LOCK = threading.Lock()
 
 # Four deterministic, allow-listed modules. They never execute arbitrary code.
@@ -388,21 +389,29 @@ def api_signals(index: str = "NIFTY", x_token: str | None = Header(None)):
         _CACHE[key] = (time.monotonic(), result)
     return {**result, "cached": False}
 
-@router.get("/api/signals/all")
-def api_signals_all(x_token: str | None = Header(None)):
-    _auth(x_token)
-    out = []
-    for idx in ("NIFTY", "BANKNIFTY", "FINNIFTY", "MIDCPNIFTY", "SENSEX", "BANKEX"):
-        out.append(_build(idx))
-    qualified = [c for r in out for c in r.get("qualified", [])]
-    watchlist = [c for r in out for c in r.get("watchlist", [])]
-    return {
-        "qualified": qualified[:MAX_IDEAS],
-        "watchlist": watchlist[:MAX_IDEAS],
+def get_all_cached() -> dict:
+    global _ALL_CACHE
+    now = time.monotonic()
+    with _CACHE_LOCK:
+        if _ALL_CACHE and now - _ALL_CACHE[0] < CACHE_SEC:
+            return _ALL_CACHE[1]
+    out = [_build(idx) for idx in ("NIFTY", "BANKNIFTY", "FINNIFTY", "MIDCPNIFTY", "SENSEX", "BANKEX")]
+    result = {
+        "qualified": [c for r in out for c in r.get("qualified", [])][:MAX_IDEAS],
+        "watchlist": [c for r in out for c in r.get("watchlist", [])][:MAX_IDEAS],
         "indices": out,
         "max_visible_ideas": MAX_IDEAS,
         "no_forced_quota": True,
     }
+    with _CACHE_LOCK:
+        _ALL_CACHE = (time.monotonic(), result)
+    return result
+
+
+@router.get("/api/signals/all")
+def api_signals_all(x_token: str | None = Header(None)):
+    _auth(x_token)
+    return get_all_cached()
 
 @router.get("/api/council/status")
 def council_status(x_token: str | None = Header(None)):
