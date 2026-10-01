@@ -316,6 +316,13 @@ def strategy_refresh(x_token:str=Header(None)):
     last=eng.last if isinstance(eng.last,dict) else {}
     nse_view=eng.nse_view if isinstance(eng.nse_view,dict) else {}
     chain=last.get("chain") or last.get("opts") or {}
+    try:
+        if client.api is not None:
+            fresh=client.snapshot()
+            chain=fresh.get("opts") or chain
+            last={**last,"spot":fresh.get("spot"),"atm":fresh.get("atm")}
+    except Exception:
+        pass
     rows=[]
     if isinstance(chain,dict):
         for key,val in chain.items():
