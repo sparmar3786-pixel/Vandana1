@@ -105,12 +105,9 @@ def market_open(now: datetime) -> bool:
 
 
 def _qualified_all():
-    # Internal call avoids an HTTP loopback and does not bypass council gates.
-    from council import _build
-    result = []
-    for index in ("NIFTY", "BANKNIFTY", "FINNIFTY", "MIDCPNIFTY", "SENSEX", "BANKEX"):
-        result.extend(_build(index).get("qualified", []))
-    return result
+    # Reuse council's 30-second aggregate cache; no fresh AI round every 15 seconds.
+    from council import get_all_cached
+    return get_all_cached().get("qualified", [])
 
 
 async def alert_loop():
