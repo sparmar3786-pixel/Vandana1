@@ -8,97 +8,96 @@ class PuterAiPage extends StatefulWidget {
   final String backendUrl;
   final String apiToken;
   final Map<String, dynamic>? initialSnapshot;
-  Map<String, dynamic> mcpContext = <String, dynamic>{};
-  Map<String, dynamic> strategyContext = <String, dynamic>{};
   const PuterAiPage({super.key, required this.backendUrl, required this.apiToken, this.initialSnapshot});
   @override State<PuterAiPage> createState() => _PuterAiPageState();
 }
 
 class _PuterAiPageState extends State<PuterAiPage> {
   late final WebViewController controller;
-  Timer? snapshotTimer;
-  bool ready = false;
-  String bridgeStatus = 'Starting Puter AI bridge...';
-  @override void initState() {
+  Timer? autoTimer;
+  bool ready=false, running=false, auto=true;
+  Map<String,dynamic> snapshot={};
+  String status='Starting live AI bridge...';
+  @override void initState(){
     super.initState();
-    controller = WebViewController()
+    snapshot=widget.initialSnapshot ?? <String,dynamic>{};
+    controller=WebViewController()
       ..setJavaScriptMode(JavaScriptMode.unrestricted)
       ..setBackgroundColor(const Color(0xFFF8F5FA))
       ..setNavigationDelegate(NavigationDelegate(
-        onPageStarted: (_) { if (mounted) setState(() => bridgeStatus = 'Loading Puter.js...'); },
+        onPageStarted: (_) { if(mounted) setState(()=>status='Loading Puter.js...'); },
         onPageFinished: (_) async {
-          ready = true;
-          if (mounted) setState(() => bridgeStatus = 'Puter AI ready');
-          await _pushSnapshot(widget.initialSnapshot);
-          snapshotTimer?.cancel();
-          snapshotTimer = Timer.periodic(const Duration(seconds: 15), (_) => _refreshSnapshot());
+          ready=true;
+          if(mounted) setState(()=>status='Live AI bridge ready');
+          await _pushSnapshot(snapshot);
+          autoTimer?.cancel();
+          autoTimer=Timer.periodic(const Duration(seconds:60),(_)=>runValidation());
         },
-        onWebResourceError: (e) { if (mounted) setState(() => bridgeStatus = 'Puter network error: ' + e.description); },
+        onWebResourceError:(e){if(mounted)setState(()=>status='Puter network error: '+e.description);},
       ))
       ..loadHtmlString(_html());
   }
-  @override void dispose() { snapshotTimer?.cancel(); super.dispose(); }
-  Future<void> _refreshSnapshot() async {
-    try {
-      final base = widget.backendUrl.replaceFirst(RegExp(r'/+$'), '');
-      final r = await http.get(Uri.parse(base + '/v1/terminal'), headers: <String,String>{'x-token': widget.apiToken}).timeout(const Duration(seconds: 8));
-      if (r.statusCode == 200) {
-        final d = jsonDecode(r.body);
-        if (d is Map<String,dynamic>) {
-          await _pushSnapshot(d);
-          final sym = (d['market'] is Map ? d['market']['symbol'] : null) ?? 'NIFTY';
-          await _loadEvidence(base, sym.toString());
-        }
+  @override void dispose(){autoTimer?.cancel();super.dispose();}
+  Future<void> _pushSnapshot(Map<String,dynamic>? value) async {
+    if(!ready || value==null) return;
+    final b64=base64Encode(utf8.encode(jsonEncode(value)));
+    try{await controller.runJavaScript("window.setSnapshot('"+b64+"');");}catch(_){ }
+  }
+  Future<void> refreshContext() async {
+    try{
+      final base=widget.backendUrl.replaceFirst(RegExp(r'/+$'),'');
+      final r=await http.get(Uri.parse(base+'/v1/ai/context?index=NIFTY'),headers:<String,String>{'x-token':widget.apiToken}).timeout(const Duration(seconds:18));
+      if(r.statusCode==200){
+        final d=jsonDecode(r.body);
+        if(d is Map<String,dynamic>){snapshot=d;await _pushSnapshot(d);}
       }
-    } catch (_) {}
+    }catch(_){ }
   }
-  Future<void> _loadEvidence(String base, String symbol) async {
-    try {
-      final h = <String,String>{'x-token': widget.apiToken};
-      final m = await http.get(Uri.parse(base + '/v1/nse/mcp/context?symbol=' + Uri.encodeQueryComponent(symbol)), headers:h).timeout(const Duration(seconds: 10));
-      final s = await http.get(Uri.parse(base + '/v1/strategy/refresh'), headers:h).timeout(const Duration(seconds: 10));
-      if (mounted) setState(() {
-        if (m.statusCode == 200) { final x=jsonDecode(m.body); if(x is Map<String,dynamic>) mcpContext=x; }
-        if (s.statusCode == 200) { final x=jsonDecode(s.body); if(x is Map<String,dynamic>) strategyContext=x; }
-      });
-    } catch (_) {}
+  Future<void> runValidation() async {
+    if(running || !ready)return;
+    running=true;
+    if(mounted)setState(()=>status='Collecting Angel API + NSE MCP + Internet evidence...');
+    await refreshContext();
+    try{await controller.runJavaScript('window.runSixAI();');}catch(e){if(mounted)setState(()=>status='AI bridge error: '+e.toString());}
+    running=false;
   }
-  Future<void> _pushSnapshot(Map<String,dynamic>? snapshot) async {
-    if (!ready || snapshot == null) return;
-    final b64 = base64Encode(utf8.encode(jsonEncode(snapshot)));
-    try { await controller.runJavaScript("window.updateMarketSnapshot('" + b64 + "');"); } catch (_) {}
-  }
-  String _html() => r"""
+  String _html()=>r'''
 <!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1">
 <script src="https://js.puter.com/v2/"></script>
-<style>*{box-sizing:border-box}body{margin:0;background:#f8f5fa;color:#17131d;font-family:Arial,sans-serif}.wrap{padding:14px}.hero{background:#eee7ff;border:1px solid #d7c7ff;border-radius:18px;padding:16px}h1{font-size:23px;margin:0 0 5px}.sub{font-size:13px;color:#665f70}.row{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}button{border:0;border-radius:24px;padding:12px 17px;font-weight:700;font-size:14px;background:#6946b9;color:#fff}button.secondary{background:#e4dff0;color:#322c3a}.status{margin:12px 0;font-size:13px}.ok{color:#198754}.warn{color:#d98200}.err{color:#c0392b}.card{background:#fff;border-radius:16px;margin:10px 0;padding:14px;box-shadow:0 2px 7px #00000018}.head{display:flex;justify-content:space-between;gap:8px}.name{font-size:17px;font-weight:800}.badge{font-size:11px;padding:5px 9px;border-radius:15px;background:#eee}pre{white-space:pre-wrap;font:13px/1.45 Arial;margin:10px 0}.meta{font-size:11px;color:#777;margin-top:5px}.small{font-size:12px;color:#625b6a}.live{color:#16834d;font-weight:700}</style>
-</head><body><div class="wrap"><div class="hero"><h1>6-AI • LIVE WORKING MODE</h1><div class="sub">Puter.js • Angel/NSE snapshot • official NSE • Internet evidence</div><div class="row"><button id="run">RUN 6-AI VALIDATION</button><button class="secondary" id="auth">PUTER SIGN IN</button><button class="secondary" id="auto">AUTO: ON</button></div><div id="status" class="status warn">Preparing...</div><div class="small">API keys are not stored in the APK. Puter user authentication handles AI access.</div></div><div id="cards"></div></div>
+<style>
+*{box-sizing:border-box}body{margin:0;background:#f8f5fa;color:#17131d;font-family:Arial,sans-serif}.wrap{padding:14px}.hero{background:#eee7ff;border:1px solid #d7c7ff;border-radius:18px;padding:16px}.h1{font-size:23px;font-weight:800}.sub{font-size:13px;color:#665f70;margin-top:5px}.row{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}button{border:0;border-radius:24px;padding:12px 15px;font-weight:700;background:#6946b9;color:white}button.alt{background:#e4dff0;color:#322c3a}.status{margin:12px 0;font-size:13px}.live{color:#16834d;font-weight:700}.warn{color:#d98200}.err{color:#c0392b}.sources{display:grid;grid-template-columns:repeat(3,1fr);gap:7px;margin-top:12px}.src{background:#fff;border-radius:12px;padding:10px;font-size:11px}.src b{display:block;font-size:12px;margin-bottom:4px}.card{background:#fff;border-radius:16px;margin:10px 0;padding:14px;box-shadow:0 2px 7px #00000018}.head{display:flex;justify-content:space-between;gap:8px}.name{font-size:17px;font-weight:800}.badge{font-size:11px;padding:5px 9px;border-radius:15px;background:#eee}.meta{font-size:11px;color:#777;margin-top:4px}.result{white-space:pre-wrap;font:13px/1.45 Arial;margin:10px 0}.consensus{background:#eee7ff;border-radius:16px;padding:14px;margin-top:10px}.pill{display:inline-block;padding:6px 9px;border-radius:16px;background:#eee;margin:3px;font-size:11px;font-weight:700}.data{font-size:12px;color:#4f4857;margin-top:10px;line-height:1.45}
+</style></head><body><div class="wrap">
+<div class="hero"><div class="h1">6-AI • LIVE WORKING MODE</div><div class="sub">Angel API + official NSE MCP + Internet evidence • paper-only strategy validation</div>
+<div class="row"><button id="run">RUN 6-AI VALIDATION</button><button class="alt" id="auto">AUTO: ON</button><button class="alt" id="login">PUTER SIGN IN</button></div>
+<div id="status" class="status warn">Waiting for live context...</div><div id="sources" class="sources"><div class="src"><b>ANGEL API</b><span id="s1">checking</span></div><div class="src"><b>NSE MCP</b><span id="s2">checking</span></div><div class="src"><b>INTERNET</b><span id="s3">checking</span></div></div>
+</div><div id="consensus" class="consensus">Final validation: WAIT until all available evidence is reconciled.</div><div id="data" class="data"></div><div id="cards"></div></div>
 <script>
 const AI=[
-{label:'GPT-5.6 Luna',candidates:['openai/gpt-5.6-luna','gpt-5.6-luna'],match:['gpt-5.6-luna'],openai:true},
-{label:'Claude Sonnet 4.6',candidates:['claude-sonnet-4-6','anthropic/claude-sonnet-4-6'],match:['claude-sonnet-4-6','sonnet-4.6'],openai:false},
-{label:'GPT-5.6 Sol',candidates:['openai/gpt-5.6-sol','gpt-5.6-sol'],match:['gpt-5.6-sol'],openai:true},
-{label:'DeepSeek Chat',candidates:['deepseek-chat','deepseek/deepseek-chat'],match:['deepseek-chat'],openai:false},
-{label:'Gemini 2.5 Flash',candidates:['gemini-2.5-flash','google/gemini-2.5-flash'],match:['gemini-2.5-flash'],openai:false},
-{label:'Grok 4',candidates:['grok-4','xai/grok-4'],match:['grok-4'],openai:false}];
-let snapshot={};let running=false;let auto=true;let autoTimer=null;let modelCatalog=[];
+{label:'GPT-5.6 Luna',ids:['openai/gpt-5.6-luna','gpt-5.6-luna'],web:true},
+{label:'Claude Sonnet 4.6',ids:['claude-sonnet-4-6','anthropic/claude-sonnet-4-6']},
+{label:'GPT-5.6 Sol',ids:['openai/gpt-5.6-sol','gpt-5.6-sol'],web:true},
+{label:'DeepSeek Chat',ids:['deepseek-chat','deepseek/deepseek-chat']},
+{label:'Gemini 2.5 Flash',ids:['gemini-2.5-flash','google/gemini-2.5-flash']},
+{label:'Grok 4',ids:['grok-4','xai/grok-4']}];
+let snapshot={};let catalog=[];let running=false;let auto=true;
 function esc(s){return String(s??'').replace(/[&<>\"]/g,function(m){return {'&':'&amp;','<':'&lt;','>':'&gt;','\"':'&quot;'}[m]})}
-function b64json(b){try{return JSON.parse(new TextDecoder().decode(Uint8Array.from(atob(b),function(c){return c.charCodeAt(0)})))}catch(e){return {}}}
-window.updateMarketSnapshot=function(b64){snapshot=b64json(b64);document.getElementById('status').innerHTML='<span class="live">● LIVE</span> Market snapshot updated from Railway/Angel/NSE';};
-function renderCards(){document.getElementById('cards').innerHTML=AI.map(function(a,i){return '<div class="card" id="c'+i+'"><div class="head"><div class="name">'+(i+1)+' • '+esc(a.label)+'</div><div class="badge" id="b'+i+'">READY</div></div><div class="meta" id="m'+i+'">'+esc(a.candidates[0])+'</div><pre id="r'+i+'">Waiting for validation...</pre></div>'}).join('')}
-renderCards();
-async function ensureAuth(){if(puter.auth.isSignedIn())return true;try{if(puter.ui&&puter.ui.authenticateWithPuter){await puter.ui.authenticateWithPuter()}else{await puter.auth.signIn({attempt_temp_user_creation:true})}return puter.auth.isSignedIn()}catch(e){throw new Error('Puter sign-in required: '+(e?.msg||e?.message||e))}}
-async function loadModels(){try{modelCatalog=await puter.ai.listModels()}catch(e){modelCatalog=[]}}
-function resolveModel(a){const ids=(modelCatalog||[]).map(function(x){return String(x.id||'')});for(const c of a.candidates){const exact=ids.find(function(x){return x===c});if(exact)return exact}for(const term of a.match){const hit=ids.find(function(x){return x.toLowerCase().includes(term.toLowerCase())});if(hit)return hit}return a.candidates[0]}
-async function internetEvidence(){const out={mcp:mcpContext,strategy:strategyContext};try{const n=await puter.net.fetch('https://www.nseindia.com/option-chain',{headers:{'User-Agent':'Mozilla/5.0','Accept':'text/html'}});const t=await n.text();out.nse=t.replace(/<script[\s\S]*?<\/script>/gi,' ').replace(/<style[\s\S]*?<\/style>/gi,' ').replace(/<[^>]+>/g,' ').replace(/\s+/g,' ').slice(0,9000)}catch(e){out.nse='Official NSE page fetch unavailable in this run.'}try{const n=await puter.net.fetch('https://news.google.com/rss/search?q=NIFTY%20BANKNIFTY%20India%20stock%20market&hl=en-IN&gl=IN&ceid=IN:en');const t=await n.text();out.news=t.replace(/<item>/g,'\n').replace(/<[^>]+>/g,' ').replace(/\s+/g,' ').slice(0,6000)}catch(e){out.news='Current news feed unavailable in this run.'}return out}
-function promptFor(a,web){return 'You are '+a.label+', an independent market-analysis engine for an Indian paper-trading terminal.\nUse ONLY the supplied Angel/NSE market snapshot plus the supplied Internet evidence. Do not invent prices, OI, news, or API results.\nEvaluate NIFTY/Indian index option context. Return concise JSON with keys: state (CALL BUY, PUT BUY, WAIT, or NO QUALIFYING TRADE), confidence (0-100), summary, positives, negatives, risks, watch.\nA trade is valid only when the supplied evidence actually supports it; otherwise WAIT/NO QUALIFYING TRADE.\nNo order placement, no profit guarantee, no fabricated win rate.\nMARKET SNAPSHOT:\n'+JSON.stringify(snapshot).slice(0,24000)+'\nNSE MCP + OFFICIAL NSE SITE + INTERNET EVIDENCE:\n'+JSON.stringify(web).slice(0,22000)}
-async function one(a,i,web){const badge=document.getElementById('b'+i),out=document.getElementById('r'+i),meta=document.getElementById('m'+i);badge.textContent='RUNNING';badge.style.background='#fff0cf';out.textContent='Analyzing live snapshot + Internet...';try{const model=resolveModel(a);meta.textContent=model;const opts={model:model,temperature:0.15,max_tokens:700};if(a.openai)opts.tools=[{type:'web_search'}];const res=await puter.ai.chat(promptFor(a,web),opts);const text=typeof res==='string'?res:(res?.message?.content??res?.text??JSON.stringify(res));badge.textContent='CONNECTED';badge.style.background='#dff5e8';out.textContent=text;return {ok:true,text:text}}catch(e){badge.textContent='ERROR';badge.style.background='#ffe0e0';out.textContent=String(e?.message||e);return {ok:false,error:String(e?.message||e)}}}
-async function runSix(){if(running)return;running=true;document.getElementById('run').disabled=true;document.getElementById('status').innerHTML='<span class="live">● RUNNING</span> 6 independent AI analyses...';try{await ensureAuth();await loadModels();const web=await internetEvidence();const results=await Promise.all(AI.map(function(a,i){return one(a,i,web)}));const ok=results.filter(function(x){return x.ok}).length;document.getElementById('status').innerHTML='<span class="live">● LIVE</span> '+ok+'/6 AI responses completed • NSE + Internet evidence included • '+new Date().toLocaleTimeString()}catch(e){document.getElementById('status').innerHTML='<span class="err">'+esc(e?.message||e)+'</span>'}finally{running=false;document.getElementById('run').disabled=false}}
-document.getElementById('run').onclick=runSix;document.getElementById('auth').onclick=async function(){try{await ensureAuth();document.getElementById('status').innerHTML='<span class="live">● Puter authenticated</span>'}catch(e){document.getElementById('status').textContent=e.message||e}};
-document.getElementById('auto').onclick=function(){auto=!auto;document.getElementById('auto').textContent='AUTO: '+(auto?'ON':'OFF');if(auto){runSix();autoTimer=setInterval(runSix,60000)}else{clearInterval(autoTimer);autoTimer=null}};
-window.addEventListener('load',function(){setTimeout(function(){runSix()},1200);autoTimer=setInterval(runSix,60000)});
-</script></body></html>\n''';
-
-  @override
-  Widget build(BuildContext context) => WebViewWidget(controller: controller);
+function textOf(r){if(typeof r==='string')return r;let x=r&&r.message&&r.message.content;if(Array.isArray(x))return x.map(function(v){return v&&v.text?v.text:''}).join('\n');return String(x??r?.text??JSON.stringify(r));}
+function stateOf(t){let m=String(t).match(/(?:STATE|state)\s*[:=]\s*(CALL BUY|PUT BUY|WAIT|NO QUALIFYING TRADE)/i);return m?m[1].toUpperCase():'WAIT'}
+window.setSnapshot=function(v){try{snapshot=JSON.parse(new TextDecoder().decode(Uint8Array.from(atob(v),function(c){return c.charCodeAt(0)})));renderSourceStatus();}catch(e){}};
+function renderSourceStatus(){let s=snapshot.three_sources||{};let a=s.angel_api||{},m=s.nse_mcp||{},n=s.nse_internet||{};document.getElementById('s1').textContent=a.connected?'CONNECTED':'NOT CONNECTED';document.getElementById('s2').textContent=m.connected?'CONNECTED':'UNAVAILABLE';document.getElementById('s3').textContent=n.connected?'CONNECTED':'UNAVAILABLE';let me=snapshot.market_evidence||{};document.getElementById('data').textContent='Symbol: '+(me.index||snapshot?.terminal?.market?.symbol||'NIFTY')+' • Spot/LTP: '+(me.spot??snapshot?.terminal?.market?.spot??'-')+' • ATM: '+(me.atm??snapshot?.terminal?.market?.atm??'-')+' • PCR: '+(me.pcr??'-')+' • Support: '+(me.top_pe_oi?.[0]?.strike??'-')+' • Resistance: '+(me.top_ce_oi?.[0]?.strike??'-');}
+function render(){document.getElementById('cards').innerHTML=AI.map(function(a,i){return '<div class="card"><div class="head"><div class="name">'+(i+1)+' • '+esc(a.label)+'</div><div class="badge" id="b'+i+'">READY</div></div><div class="meta" id="m'+i+'">'+esc(a.ids[0])+'</div><div class="result" id="r'+i+'">Waiting...</div></div>'}).join('')}
+render();
+async function signIn(){try{await puter.auth.signIn({attempt_temp_user_creation:true});document.getElementById('status').innerHTML='<span class="live">● Puter authenticated</span>';}catch(e){document.getElementById('status').textContent='Sign-in: '+(e?.msg||e?.message||e);}}
+async function models(){try{catalog=await puter.ai.listModels();}catch(e){catalog=[]}}
+function modelFor(a){const ids=catalog.map(function(x){return String(x.id||'')});for(const id of a.ids){const exact=ids.find(function(x){return x===id});if(exact)return exact}for(const id of a.ids){const base=id.split('/').pop().toLowerCase();const hit=ids.find(function(x){return x.toLowerCase().includes(base)});if(hit)return hit}return a.ids[0]}
+async function internetPacket(){try{const p='Search current Indian market information for '+((snapshot.market_evidence||{}).index||'NIFTY')+' and current option-market context. Use reliable sources, prefer official NSE and reputable financial news. Return only a compact evidence list with source names, timestamps if available, and facts. Do not give a trade recommendation.';const r=await puter.ai.chat(p,{model:'openai/gpt-5.6-luna',tools:[{type:'web_search'}],max_tokens:700,temperature:0.1});return textOf(r);}catch(e){return 'Internet search unavailable: '+(e?.message||e)}}
+function promptFor(a,web){return 'You are '+a.label+', one of six independent validators inside an Indian index-options paper terminal. Reconcile THREE SOURCE GROUPS: (1) Angel One API live payload, (2) official NSE MCP payload, (3) Internet evidence. Never invent values. High OI is an OI concentration/potential writer zone, not proof of a seller.\nReturn headings exactly: STATE, SUMMARY, DATA, OI/STRIKES, RISKS, MISSING_DATA. STATE must be CALL BUY, PUT BUY, WAIT, or NO QUALIFYING TRADE. If sources conflict or are stale, use WAIT. No order placement and no guaranteed win rate.\nANGEL/API + ENGINE + STRATEGY CONTEXT:\n'+JSON.stringify(snapshot).slice(0,26000)+'\nINTERNET EVIDENCE:\n'+web.slice(0,9000);}
+async function one(a,i,web){const b=document.getElementById('b'+i),r=document.getElementById('r'+i),m=document.getElementById('m'+i);b.textContent='RUNNING';r.textContent='Reading API + NSE MCP + Internet...';try{const model=modelFor(a);m.textContent=model;const opt={model:model,normalize:true,temperature:0.1,max_tokens:800};const ans=await puter.ai.chat(promptFor(a,web),opt);const t=textOf(ans);b.textContent='DONE';b.style.background='#dff5e8';r.textContent=t;return {state:stateOf(t),ok:true,text:t};}catch(e){b.textContent='ERROR';b.style.background='#ffe0e0';r.textContent=String(e?.message||e);return {state:'WAIT',ok:false,error:String(e?.message||e)};}}
+async function runSixAI(){if(running)return;running=true;document.getElementById('run').disabled=true;document.getElementById('status').innerHTML='<span class="live">● LIVE</span> Six-AI validation in progress...';try{await models();const web=await internetPacket();const results=await Promise.all(AI.map(function(a,i){return one(a,i,web)}));const states=results.map(function(x){return x.state});const valid=states.filter(function(x){return x});let final='WAIT';if(valid.length===6&&new Set(valid).size===1)final=valid[0];document.getElementById('consensus').innerHTML='<b>FINAL VALIDATION: '+final+'</b><br><span class="pill">6 AI '+(results.filter(function(x){return x.ok}).length)+'/6 completed</span><span class="pill">Three-source evidence used</span><span class="pill">Conflict ⇒ WAIT</span>';document.getElementById('status').innerHTML='<span class="live">● LIVE</span> Validation completed • '+new Date().toLocaleTimeString();}catch(e){document.getElementById('status').innerHTML='<span class="err">'+esc(e?.message||e)+'</span>'}finally{running=false;document.getElementById('run').disabled=false}}
+window.runSixAI=runSixAI;
+document.getElementById('run').onclick=runSixAI;document.getElementById('login').onclick=signIn;document.getElementById('auto').onclick=function(){auto=!auto;document.getElementById('auto').textContent='AUTO: '+(auto?'ON':'OFF');};
+window.addEventListener('load',function(){setTimeout(runSixAI,1500)});
+</script></body></html>
+''';
+  @override Widget build(BuildContext context)=>WebViewWidget(controller:controller);
 }
