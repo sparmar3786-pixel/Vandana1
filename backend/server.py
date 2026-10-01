@@ -310,6 +310,30 @@ def diagnostics(x_token:str=Header(None)):
     auth(x_token); providers=ai_status(x_token)["providers"]; ev=getattr(eng,"strategy_evidence",[]) if hasattr(eng,"strategy_evidence") else []
     return {"angel":{"connected":client.api is not None,"message":state["angel_message"]},"nse":{"available":state["nse_error"] is None,"error":state["nse_error"]},"ai":{"configured":sum(1 for p in providers if p["configured"]),"providers":providers},"strategies":{"registered":len(ev),"evaluated":len(ev),"active":sum(1 for x in ev if isinstance(x,dict) and x.get("state")=="active"),"unavailable":sum(1 for x in ev if isinstance(x,dict) and x.get("state")=="unavailable"),"not_evaluated":0}}
 
+@app.get("/v1/strategy/refresh")
+def strategy_refresh(x_token:str=Header(None)):
+    auth(x_token)
+    last=eng.last if isinstance(eng.last,dict) else {}
+    nse_view=eng.nse_view if isinstance(eng.nse_view,dict) else {}
+    chain=last.get("chain") or last.get("opts") or {}
+    rows=[]
+    if isinstance(chain,dict):
+        for key,val in chain.items():
+            try: strike,side=key; item=dict(val); item["strike"]=strike; item["type"]=side; rows.append(item)
+            except Exception: pass
+    ce=sorted([x for x in rows if x.get("type")=="CE"],key=lambda x:float(x.get("oi") or 0),reverse=True)
+    pe=sorted([x for x in rows if x.get("type")=="PE"],key=lambda x:float(x.get("oi") or 0),reverse=True)
+    ce_oi=sum(float(x.get("oi") or 0) for x in ce); pe_oi=sum(float(x.get("oi") or 0) for x in pe)
+    pcr=(pe_oi/ce_oi) if ce_oi else nse_view.get("pcr")
+    return {"timestamp":time.time(),"index":C.SYMBOL,"spot":last.get("spot"),"atm":last.get("atm"),
+            "action":last.get("action","WAIT"),"optionSymbol":last.get("optionSymbol"),"ltp":last.get("ltp"),
+            "strike":last.get("strike",last.get("atm")),"entry":last.get("entry"),"sl":last.get("sl"),"target":last.get("target"),
+            "trend":nse_view.get("trend") or ("UP" if float(last.get("score") or 0)>0 else "DOWN" if float(last.get("score") or 0)<0 else "FLAT"),
+            "score":last.get("score"),"pcr":pcr,"support":nse_view.get("support"),"resistance":nse_view.get("resistance"),
+            "max_pain":nse_view.get("max_pain"),"ce_total_oi":ce_oi,"pe_total_oi":pe_oi,
+            "call_seller_pressure":ce[:5],"put_seller_pressure":pe[:5],
+            "buildup":nse_view,"reasons":last.get("reasons",[]),
+            "sources":["Angel One SmartAPI","NSE engine/MCP","Internet AI evidence"]}
 @app.get("/v1/audit/latest")
 def latest_audit(x_token:str=Header(None)):
     auth(x_token); last=eng.last if isinstance(eng.last,dict) else {}; return {"action":last.get("action","WAIT"),"reasons":last.get("reasons",[]),"timestamp":state["last_update"]}
