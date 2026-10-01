@@ -124,7 +124,7 @@ def core_health():
     with LOCK: counts={k:len(v["rows"]) for k,v in STORE.items()}
     return {"ok":True,"store_indexes":counts,"stale_sec":STALE_SEC,"mcp_auth_configured":bool(MCP_AUTH)}
 
-mcp=FastMCP("NSE Market Core")
+mcp=FastMCP("NSE Market Core", stateless_http=True, json_response=True)
 
 @mcp.tool()
 def get_chain(index:str="NIFTY")->dict:
