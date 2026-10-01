@@ -34,10 +34,17 @@ class AIValidationRequest(BaseModel):
     payload:dict = {}
 
 class AngelLoginRequest(BaseModel):
-    clientId:str
+    # The APK uses clientId/pin/totp/apiKey. clientCode is accepted as a
+    # compatibility alias for simple Railway clients.
+    clientId:Optional[str]=None
+    clientCode:Optional[str]=None
     pin:str
     totp:str
     apiKey:Optional[str]=None
+
+    @property
+    def client_code(self) -> str:
+        return (self.clientId or self.clientCode or "").strip()
 
 def market_open():
     now=dt.datetime.now(dt.timezone(dt.timedelta(hours=5,minutes=30)))
@@ -95,11 +102,14 @@ def health():
     return {"ok":True,"market_open":market_open(),"angel_connected":client.api is not None,"angel_message":state["angel_message"],"nse_mcp":"configured","last_update":state["last_update"],"error":state["error"],"nse_error":state["nse_error"],"nse_mcp_error":state["nse_mcp_error"]}
 
 @app.post("/v1/angel/login")
+@app.post("/angel/login")
 def angel_login(body:AngelLoginRequest,x_token:str=Header(None)):
     auth(x_token)
+    client_code=body.client_code
+    if not client_code: raise HTTPException(400,"Client ID is required.")
     if len(body.totp)!=6 or not body.totp.isdigit(): raise HTTPException(400,"TOTP must be the current 6-digit code.")
     try:
-        result=client.login(api_key=body.apiKey or C.API_KEY,client_code=body.clientId,pin=body.pin,totp=body.totp)
+        result=client.login(api_key=body.apiKey or C.API_KEY,client_code=client_code,pin=body.pin,totp=body.totp)
         reused=bool(result.get("data",{}).get("session_reused"))
         state["angel_message"]="Angel One session reused (6h)." if reused else "Angel One connected."
         state["error"]=None
@@ -109,6 +119,7 @@ def angel_login(body:AngelLoginRequest,x_token:str=Header(None)):
         raise HTTPException(401,"Angel login failed. Check Client ID, PIN, TOTP and API key.")
 
 @app.get("/v1/angel/status")
+@app.get("/angel/status")
 def angel_status(x_token:str=Header(None)):
     auth(x_token); return {"connected":client.api is not None,"message":state["angel_message"],"last_update":state["last_update"],"error":state["error"]}
 
