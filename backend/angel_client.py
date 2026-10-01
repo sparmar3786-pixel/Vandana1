@@ -146,6 +146,19 @@ class AngelClient:
                 row[dst]=float(message[src])
         with self.ws_lock:
             self.ws_quotes[token]=row
+        # Mirror the tick into the shared market core without touching signal formulas.
+        try:
+            item=next(((k[0],k[1]) for k,v in self.chain.items() if str(v.get("token"))==token), None)
+            if item:
+                strike,side=item
+                from market_core import bind_angel_tick
+                bind_angel_tick(self.chain_symbol,strike,side,ts=row["ts"],
+                                ltp=row.get("ltp"),oi=row.get("oi"),volume=row.get("volume"),
+                                open=row.get("open"),high=row.get("high"),low=row.get("low"),
+                                close=row.get("close"),oiChangePct=row.get("oiChangePct"),
+                                token=token)
+        except Exception:
+            pass
 
     def _ws_on_error(self, wsapp, error):
         return
