@@ -221,41 +221,53 @@ class _TerminalState extends State<Terminal> {
   }
 
   Widget dashboard() {
-    final marketOpen = terminalData?['market_open'] == true;
-    final nifty = liveIndices.where((x)=>x is Map && ((x['name']??x['symbol']??'').toString().toUpperCase().contains('NIFTY 50'))).cast<dynamic>().toList();
-    final nq = nifty.isNotEmpty ? nifty.first : <String,dynamic>{};
-    final pct = num.tryParse((nq['percentChange']??nq['netChange']??'').toString());
-    final action = signal?['action']?.toString().toUpperCase() ?? 'WAIT';
-    final up = pct != null ? pct > 0 : action.contains('CALL');
-    final down = pct != null ? pct < 0 : action.contains('PUT');
+    final marketOpen = terminalData?["market_open"] == true;
+    final e = (terminalData?["engine_state"] is Map) ? Map<String,dynamic>.from(terminalData!["engine_state"] as Map) : <String,dynamic>{};
+    const unavailable = "DATA UNAVAILABLE";
+    String value(dynamic v) => v == null || v.toString().trim().isEmpty ? unavailable : v.toString();
+    final trend = value(e["trend"]);
+    final action = value(e["signal_status"]);
+    final up = trend.toUpperCase().contains("UP");
+    final down = trend.toUpperCase().contains("DOWN");
     final color = !marketOpen ? Colors.blue : up ? Colors.green : down ? Colors.red : Colors.blue;
-    final trend = !marketOpen ? 'MARKET CLOSED' : up ? 'UP TREND' : down ? 'DOWN TREND' : 'NEUTRAL';
-    final hot = (signal?['symbol'] ?? signal?['tradingSymbol'] ?? selectedOptionSymbol).toString();
-    final spot = signal?['spot'] ?? nq['ltp'] ?? '-';
+    final status = value(e["status"]);
     return ListView(padding: const EdgeInsets.all(12), children: <Widget>[
       Card(color: color.withOpacity(.18), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14), side: BorderSide(color: color, width: 1.5)), child: Padding(padding: const EdgeInsets.all(16), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: <Widget>[
-        Row(children: <Widget>[const Icon(Icons.bolt, size: 30), const SizedBox(width: 10), const Expanded(child: Text('NSE Algo Signal', style: TextStyle(fontSize: 21, fontWeight: FontWeight.bold))), Chip(backgroundColor: color, label: Text(trend, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)))]),
-        const SizedBox(height: 8), Text('Market trend: $trend', style: TextStyle(color: color, fontWeight: FontWeight.bold)), Text('Hot: $hot  •  Spot: $spot'),
+        Row(children: <Widget>[const Icon(Icons.bolt, size: 30), const SizedBox(width: 10), const Expanded(child: Text("NSE Algo Signal", style: TextStyle(fontSize: 21, fontWeight: FontWeight.bold))), Chip(backgroundColor: color, label: Text(marketOpen ? trend : "MARKET CLOSED", style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)))]),
+        const SizedBox(height: 8),
+        Text("Engine status: $status", style: TextStyle(color: color, fontWeight: FontWeight.bold)),
+        Text("Live snapshot • no fabricated values"),
       ]))),
       const SizedBox(height: 10),
-      Card(child: ListTile(leading: Icon(Icons.local_fire_department, color: color), title: const Text('CURRENT SIGNAL • HOT SPOT'), subtitle: Text('$hot • Spot $spot'), trailing: Text(action, style: TextStyle(color: color, fontWeight: FontWeight.bold)))),
-      Card(child:Padding(padding:const EdgeInsets.all(14),child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:<Widget>[
-        const Text('CURRENT ENGINE STATE',style:TextStyle(fontSize:18,fontWeight:FontWeight.bold)),
-        row('Underlying',terminalData?['market']?['symbol'] ?? selectedOptionSymbol),
-        row('Spot / Index LTP',terminalData?['market']?['spot'] ?? '-'),
-        row('Option Symbol',signal?['optionSymbol'] ?? signal?['tradingSymbol'] ?? '-'),
-        row('Option LTP',signal?['ltp'] ?? terminalData?['market']?['ltp'] ?? '-'),
-        row('Strike',signal?['strike'] ?? terminalData?['market']?['atm'] ?? '-'),
-        row('Side / Action',signal?['type'] ?? signal?['action'] ?? 'WAIT'),
+      Card(child: Padding(padding: const EdgeInsets.all(14), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: <Widget>[
+        const Text("CURRENT ENGINE STATE", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+        const Divider(height: 20),
+        row("Symbol", value(e["symbol"])),
+        row("Index / Underlying LTP", value(e["index_ltp"])),
+        row("CE / PE", value(e["ce_pe"])),
+        row("Strike Price", value(e["strike"])),
+        row("Option LTP", value(e["option_ltp"])),
+        row("OI", value(e["oi"])),
+        row("OI Change", value(e["oi_change"])),
+        row("Volume", value(e["volume"])),
+        row("ATM", value(e["atm"])),
+        row("Trend", trend),
+        row("Signal Status", action),
       ]))),
-      if (signal != null) Card(child: Padding(padding: const EdgeInsets.all(14), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: <Widget>[
-        const Text('CURRENT SIGNAL'), const SizedBox(height: 8), row('Symbol', signal!['symbol']), row('Spot', signal!['spot']), row('Strike', (signal!['strike'] ?? '-').toString() + ' ' + (signal!['type'] ?? '').toString()), row('Entry', signal!['entry']), row('LTP', signal!['ltp']), row('Stop Loss', signal!['sl']), row('Target', signal!['target']),
+      const SizedBox(height: 10),
+      Card(child: Padding(padding: const EdgeInsets.all(14), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: <Widget>[
+        const Text("SIGNAL DETAILS", style: TextStyle(fontSize: 17, fontWeight: FontWeight.bold)),
+        row("Option Symbol", value(e["option_symbol"])),
+        row("Entry", value(e["entry"])),
+        row("Stop Loss", value(e["stop_loss"])),
+        row("Target", value(e["target"])),
       ]))),
-      const SizedBox(height: 10), infoCard('Connection', connection, connection == 'Connected' ? Colors.green : Colors.orange),
-      infoCard('Mode', 'Paper signals only • No order placement.', Colors.blue),
+      const SizedBox(height: 10),
+      infoCard("Connection", connection, connection == "Connected" ? Colors.green : Colors.orange),
+      infoCard("Mode", "Paper signals only • No order placement.", Colors.blue),
+      FilledButton.icon(onPressed: fetchTerminal, icon: const Icon(Icons.refresh), label: const Text("REFRESH LIVE ENGINE")),
     ]);
   }
-
   Future<void> fetchIndices() async {
     try {
       final r=await http.get(backendUri('/v1/angel/indices'),headers:<String,String>{'x-token':apiToken}).timeout(const Duration(seconds:8));
