@@ -11,6 +11,7 @@ CACHE="scrip_master.json"
 class AngelClient:
     def __init__(self):
         self.api=None; self.chain={}; self.strikes=[]; self.expiry=None; self.chain_symbol=C.SYMBOL; self.chain_exchange="NFO"
+        self.last_chain_cache={}; self.last_chain_cache_ts={}
     def login(self, api_key=None, client_code=None, pin=None, totp=None):
         api_key=api_key or C.API_KEY; client_code=client_code or C.CLIENT; pin=pin or C.PIN
         totp=totp or (pyotp.TOTP(C.TOTP_SECRET).now() if C.TOTP_SECRET else None)
@@ -196,36 +197,68 @@ class AngelClient:
                              "volume":q.get("tradeVolume"),"oi":q.get("opnInterest")})
         return {"data":{"fetched":rows,"unfetched":[]},"instruments":selected}
 
+    def _market_data_full_retry(self, exchange, tokens):
+        last=None
+        for attempt in range(2):
+            try:
+                result=self.api.getMarketData("FULL",{exchange:tokens})
+                if isinstance(result,dict) and result.get("status") is False:
+                    raise RuntimeError(str(result.get("message") or "Angel market-data request failed"))
+                return result
+            except Exception as e:
+                last=e
+                if attempt==0:
+                    try:
+                        self.api=None
+                        self.login()
+                    except Exception as relogin_error:
+                        last=relogin_error
+                        break
+        raise RuntimeError(str(last))
+
     def option_chain_rows(self, symbol=None, around=None, count=10):
         self.require_api()
         requested,_=self._symbol_config(symbol)
-        if not self.chain or self.chain_symbol!=requested:
-            self.build_chain(requested)
-        spot=self.spot(requested)
-        atm=around if around is not None else min(self.strikes,key=lambda s:abs(s-spot))
-        idx=min(range(len(self.strikes)),key=lambda i:abs(self.strikes[i]-atm))
-        count=max(10,min(int(count),250))
-        selected=self.strikes[max(0,idx-count):idx+count+1]
-        token_map={}
-        for strike in selected:
-            for typ in ("CE","PE"):
-                item=self.chain.get((strike,typ))
-                if item: token_map[item["token"]]=(strike,typ,item["symbol"])
-        rows=[]
-        toks=list(token_map)
-        for j in range(0,len(toks),50):
-            result=self.api.getMarketData("FULL",{self.chain_exchange:toks[j:j+50]})
-            for q in result.get("data",{}).get("fetched",[]) or []:
-                item=token_map.get(str(q.get("symbolToken")))
-                if not item: continue
-                strike,typ,sym=item
-                rows.append({"strike":strike,"type":typ,"symbol":sym,"token":str(q.get("symbolToken")),
-                             "ltp":q.get("ltp"),"open":q.get("open"),"high":q.get("high"),"low":q.get("low"),
-                             "close":q.get("close"),"oi":q.get("opnInterest"),"volume":q.get("tradeVolume"),
-                             "buyQty":q.get("totalBuyQuantity"),"sellQty":q.get("totalSellQuantity"),
-                             "netChange":q.get("netChange"),"priceChange":q.get("netChange")})
-        rows.sort(key=lambda r:(float(r["strike"]),0 if r["type"]=="CE" else 1))
-        return {"symbol":requested,"exchange":self.chain_exchange,"spot":spot,"atm":atm,"expiry":str(self.expiry),"rows":rows}
+        cache_key=f"{requested}:{int(count)}"
+        try:
+            if not self.chain or self.chain_symbol!=requested:
+                self.build_chain(requested)
+            spot=self.spot(requested)
+            atm=around if around is not None else min(self.strikes,key=lambda s:abs(s-spot))
+            idx=min(range(len(self.strikes)),key=lambda i:abs(self.strikes[i]-atm))
+            count=max(10,min(int(count),250))
+            selected=self.strikes[max(0,idx-count):idx+count+1]
+            token_map={}
+            for strike in selected:
+                for typ in ("CE","PE"):
+                    item=self.chain.get((strike,typ))
+                    if item: token_map[item["token"]]=(strike,typ,item["symbol"])
+            rows=[]
+            toks=list(token_map)
+            for j in range(0,len(toks),50):
+                result=self._market_data_full_retry(self.chain_exchange,toks[j:j+50])
+                for q in result.get("data",{}).get("fetched",[]) or []:
+                    item=token_map.get(str(q.get("symbolToken")))
+                    if not item: continue
+                    strike,typ,sym=item
+                    rows.append({"strike":strike,"type":typ,"symbol":sym,"token":str(q.get("symbolToken")),
+                                 "ltp":q.get("ltp"),"open":q.get("open"),"high":q.get("high"),"low":q.get("low"),
+                                 "close":q.get("close"),"oi":q.get("opnInterest"),"volume":q.get("tradeVolume"),
+                                 "buyQty":q.get("totalBuyQuantity"),"sellQty":q.get("totalSellQuantity"),
+                                 "netChange":q.get("netChange"),"priceChange":q.get("netChange")})
+            rows.sort(key=lambda r:(float(r["strike"]),0 if r["type"]=="CE" else 1))
+            result={"symbol":requested,"exchange":self.chain_exchange,"spot":spot,"atm":atm,"expiry":str(self.expiry),
+                    "rows":rows,"cached":False,"source":"Angel One SmartAPI"}
+            self.last_chain_cache[cache_key]=result
+            self.last_chain_cache_ts[cache_key]=time.time()
+            return result
+        except Exception as live_error:
+            cached=self.last_chain_cache.get(cache_key)
+            if cached:
+                age=int(time.time()-self.last_chain_cache_ts.get(cache_key,time.time()))
+                return {**cached,"cached":True,"cache_age_sec":max(0,age),"source":"Angel One SmartAPI cached last-good chain",
+                        "live_error":str(live_error)[:240]}
+            raise
 
     def snapshot(self):
         if self.api is None: raise RuntimeError("Angel session is not connected.")
