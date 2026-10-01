@@ -7,6 +7,12 @@ import 'package:http/http.dart' as http;
 import 'package:file_saver/file_saver.dart';
 import 'signal_alerts.dart';
 
+const String railwayBackendUrl =
+    String.fromEnvironment('RAILWAY_BACKEND_URL', defaultValue: '');
+const String flyBackendUrl = 'https://vandana1-api.fly.dev';
+const String defaultBackendUrl =
+    railwayBackendUrl != '' ? railwayBackendUrl : flyBackendUrl;
+
 void main() => runApp(const AlgoApp());
 
 class AlgoApp extends StatelessWidget {
@@ -26,10 +32,6 @@ class Terminal extends StatefulWidget {
 }
 
 class _TerminalState extends State<Terminal> {
-  static const String flyBackendUrl = 'https://vandana1-api.fly.dev';
-  // Railway public URL is intentionally supplied at build time; never invent or hard-code it.
-  static const String railwayBackendUrl = String.fromEnvironment('RAILWAY_BACKEND_URL', defaultValue: '');
-  static final String defaultBackendUrl = railwayBackendUrl.isNotEmpty ? railwayBackendUrl : flyBackendUrl;
   static const screens = <String>[
     'Dashboard','Market','Commodity','Signals','OI Lab','Watchlist','Charts',
     'Option Chain','News','Market Details','Angel API','NSE','NSE MCP','Data',
