@@ -676,8 +676,18 @@ class _AngelApiFormState extends State<AngelApiForm> {
     widget.onStatus('Connecting to Angel One through secure backend...');
 
     try {
+      final base = widget.backendUrl.trim();
+      final normalized = base.isEmpty
+          ? 'https://vandana1-api.fly.dev'
+          : (base.startsWith('http://') || base.startsWith('https://') ? base : 'https://' + base);
+      final loginUri = Uri.tryParse(normalized + '/v1/angel/login');
+      if (loginUri == null || loginUri.host.isEmpty) {
+        widget.onStatus('Invalid backend URL. Enter a valid HTTPS backend host in Settings.');
+        return;
+      }
+
       final response = await http.post(
-        Uri.parse(widget.backendUrl + '/v1/angel/login'),
+        loginUri,
         headers: <String,String>{
           'Content-Type': 'application/json',
           'x-token': widget.apiToken,
