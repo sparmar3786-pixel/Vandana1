@@ -109,6 +109,41 @@ def _state_from_text(text):
 def provider_status():
     return [{"id":p["id"],"name":p["name"],"model":p["model"],"configured":bool(os.getenv(p["env"]))} for p in PROVIDERS]
 
+def _local_fallback(payload):
+    """Deterministic offline/local validation using ONLY Build-156 payload data.
+    This is intentionally not presented as a six-provider consensus result.
+    """
+    import json
+    terminal=payload.get("terminal") if isinstance(payload,dict) else {}
+    signal=payload.get("signal") if isinstance(payload,dict) else {}
+    if not isinstance(terminal,dict): terminal={}
+    if not isinstance(signal,dict): signal={}
+    if not signal and isinstance(terminal.get("signals"),dict): signal=terminal.get("signals")
+    action=str(signal.get("action") or "WAIT").upper().replace("_"," ").strip()
+    if action not in {"CALL BUY","PUT BUY","WAIT","NO QUALIFYING TRADE"}: action="WAIT"
+    market_open=bool(terminal.get("market_open"))
+    spot=signal.get("spot", signal.get("ltp"))
+    ltp=signal.get("ltp")
+    strike=signal.get("strike")
+    entry=signal.get("entry")
+    sl=signal.get("sl")
+    target=signal.get("target")
+    reasons=[]
+    for label,value in (("spot",spot),("LTP",ltp),("strike",strike),("entry",entry),("SL",sl),("target",target)):
+        if value not in (None,""): reasons.append(label+"="+str(value))
+    oi=terminal.get("oi_lab") if isinstance(terminal.get("oi_lab"),dict) else {}
+    chain=terminal.get("option_chain")
+    if isinstance(chain,list) and chain: reasons.append("option-chain rows="+str(len(chain)))
+    if oi: reasons.append("OI evidence supplied")
+    if not reasons: reasons.append("No numeric market evidence was supplied in the Build-156 snapshot.")
+    freshness="market open/current snapshot" if market_open else "last available/off-market snapshot"
+    text=("LOCAL NSE AI FALLBACK\\nSTATE: "+action+"\\nEVIDENCE: "+"; ".join(reasons)+"\\n"
+          +"RISKS: Local fallback is not six-provider cross-verification.\\n"
+          +"MISSING_DATA: Only fields present in the supplied snapshot are used.\\n"
+          +"OVERRIDE: No external AI consensus; use WAIT when the engine payload is insufficient.\\n"
+          +"SOURCE: Build-156 terminal payload ("+freshness+").")
+    return {"id":"local-nse-ai","name":"NSE Local AI Fallback","model":"build-156-local","role":"offline evidence summarization","status":"ok_local","text":text,"final":action,"cross_verified":False,"error":"","elapsed_ms":0}
+
 def validate_all(payload):
     with concurrent.futures.ThreadPoolExecutor(max_workers=len(PROVIDERS)) as ex:
         results=list(ex.map(lambda p:_run_one(p,payload),PROVIDERS))
@@ -116,18 +151,17 @@ def validate_all(payload):
     states=[_state_from_text(r.get("text","")) for r in ok]
     states=[s for s in states if s]
     configured=sum(1 for p in PROVIDERS if os.getenv(p["env"]))
-    final="WAIT"
+    local=_local_fallback(payload)
+    final=local["final"]
     cross_verified=False
-    reason="No provider responses yet."
+    reason="Local NSE AI fallback is active using the supplied Build-156 market snapshot."
     if not configured:
-        final="NO QUALIFYING TRADE"
-        reason="No AI provider API key is configured on the server."
+        reason="Six-provider keys are not configured; local NSE AI fallback is analyzing the supplied Build-156 snapshot."
     elif not ok:
-        final="NO QUALIFYING TRADE"
-        reason="Configured AI providers returned no successful responses."
+        reason="Configured AI providers returned no successful response; local NSE AI fallback analyzed the supplied Build-156 snapshot."
     elif len(states) < 2:
-        final="WAIT"
-        reason="At least two successful AI responses are required for cross-verification."
+        final=states[0] if len(states)==1 else local["final"]
+        reason="Only one or fewer provider states were available; local NSE AI fallback remains active. Six-provider consensus is not verified."
     elif len(set(states)) == 1 and states[0] in {"CALL BUY","PUT BUY"}:
         final=states[0]
         cross_verified=True
@@ -148,4 +182,6 @@ def validate_all(payload):
         "total":len(results),
         "cross_verified":cross_verified,
         "reason":reason,
+        "local_fallback":local,
+        "mode":"six_provider_consensus" if cross_verified else "local_nse_fallback",
     }
