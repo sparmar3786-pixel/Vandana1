@@ -86,12 +86,13 @@ def nse_loop():
     while True:
         try:
             if market_open():
-                ch=nse.fetch(C.SYMBOL)
-                ingest_chain(ch,"nse")
-                features=nse_features.compute(ch,prev_chain["c"]); prev_chain["c"]=ch
-                eng.set_nse(features,ch["ts"])
-                ingest_chain(ch,"nse")
-                state["nse_error"]=None
+                ch=nse.fetch_safe(C.SYMBOL)
+                fetch_error=ch.get("fetch_error") if isinstance(ch,dict) else None
+                if not fetch_error:
+                    features=nse_features.compute(ch,prev_chain["c"]); prev_chain["c"]=ch
+                    eng.set_nse(features,ch["ts"])
+                    ingest_chain(ch,"nse")
+                state["nse_error"]=fetch_error
         except Exception as e: state["nse_error"]=str(e)
         time.sleep(C.NSE_POLL_SEC)
 
