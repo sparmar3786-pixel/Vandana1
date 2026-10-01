@@ -31,6 +31,8 @@ MIN_AI_TAKE = 4
 MIN_BACKTEST_TRADES = 100
 MIN_WIN_RATE = 0.80
 MIN_PROFIT_FACTOR = 1.50
+COUNCIL_SL_PCT = float(os.getenv("COUNCIL_SL_PCT", "0.25"))
+COUNCIL_RR = float(os.getenv("COUNCIL_RR", "2.0"))
 
 _CACHE: dict[str, tuple[float, dict]] = {}
 _CACHE_LOCK = threading.Lock()
@@ -198,7 +200,13 @@ def _candidate(s: dict, row: dict, module_name: str, side: str, stats: dict) -> 
     result = evaluate_strategy(strategy, state)
     approved, bt = _approved(stats)
 
-    # The current strategy engine requires real numeric levels. If unavailable, this remains WATCHLIST.
+    # Provisional deterministic levels are backend-configurable, never AI-generated.
+    # They are not an approval gate by themselves; backtest approval remains mandatory.
+    if approved and result["decision"] in {"CALL BUY", "PUT BUY"}:
+        entry = float(row.get("ltp") or 0)
+        risk = entry * COUNCIL_SL_PCT
+        state["sl"] = entry - risk if result["decision"] == "CALL BUY" else entry + risk
+        state["target"] = entry + risk * COUNCIL_RR if result["decision"] == "CALL BUY" else entry - risk * COUNCIL_RR
     trade = make_trade(result["decision"], state, strategy) if approved else None
     qualified_engine = bool(approved and result["decision"] == side and trade)
     return {
@@ -278,8 +286,17 @@ def _council(c: dict) -> dict:
     # Round 2 sees only verdicts/reasons from round 1, never raw market data from other agents.
     r1_public = [{"id": x["id"], "verdict": x["verdict"], "reason": x["reason"]} for x in r1]
     r2 = []
-    for p in PROVIDERS:
-        r2.append(_call(p, _round2_prompt(p, c, r1_public)))
+    by_id = {x["id"]: x for x in r1}
+    with concurrent.futures.ThreadPoolExecutor(max_workers=len(PROVIDERS)) as pool:
+        futures = [(p, pool.submit(_call, p, _round2_prompt(p, c, r1_public))) for p in PROVIDERS]
+        for p, f in futures:
+            result = f.result()
+            prior = by_id.get(p["id"], {}).get("verdict", "WAIT")
+            if prior == "BLOCK" and result["verdict"] == "TAKE":
+                result["verdict"] = "BLOCK"
+            elif prior == "WAIT" and result["verdict"] == "TAKE":
+                result["verdict"] = "WAIT"
+            r2.append(result)
 
     take = sum(x["verdict"] == "TAKE" for x in r2 if x["status"] == "ok")
     block = any(x["verdict"] == "BLOCK" for x in r2 if x["status"] == "ok")
@@ -370,6 +387,22 @@ def api_signals(index: str = "NIFTY", x_token: str | None = Header(None)):
     with _CACHE_LOCK:
         _CACHE[key] = (time.monotonic(), result)
     return {**result, "cached": False}
+
+@router.get("/api/signals/all")
+def api_signals_all(x_token: str | None = Header(None)):
+    _auth(x_token)
+    out = []
+    for idx in ("NIFTY", "BANKNIFTY", "FINNIFTY", "MIDCPNIFTY", "SENSEX", "BANKEX"):
+        out.append(_build(idx))
+    qualified = [c for r in out for c in r.get("qualified", [])]
+    watchlist = [c for r in out for c in r.get("watchlist", [])]
+    return {
+        "qualified": qualified[:MAX_IDEAS],
+        "watchlist": watchlist[:MAX_IDEAS],
+        "indices": out,
+        "max_visible_ideas": MAX_IDEAS,
+        "no_forced_quota": True,
+    }
 
 @router.get("/api/council/status")
 def council_status(x_token: str | None = Header(None)):
