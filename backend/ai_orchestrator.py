@@ -150,6 +150,13 @@ def _local_fallback(payload):
     return {"id":"local-nse-ai","name":"NSE Local AI Fallback","model":"build-156-local","role":"offline evidence summarization","status":"ok_local","text":text,"final":action,"cross_verified":False,"error":"","elapsed_ms":0}
 
 def validate_all(payload):
+    raw=json.dumps(payload,ensure_ascii=False,sort_keys=True,separators=(",",":"),default=str)
+    cache_key=hashlib.sha256(raw.encode("utf-8")).hexdigest()
+    now=time.monotonic()
+    with _ai_cache_lock:
+        cached=_ai_cache.get(cache_key)
+        if cached and now-cached["ts"] < AI_CACHE_SEC:
+            return {**cached["result"],"cached":True,"cache_age_sec":round(now-cached["ts"],1)}
     with concurrent.futures.ThreadPoolExecutor(max_workers=len(PROVIDERS)) as ex:
         results=list(ex.map(lambda p:_run_one(p,payload),PROVIDERS))
     ok=[r for r in results if r["status"]=="ok"]
