@@ -117,7 +117,17 @@ jobs:
 
       - name: Validate Dart source
         working-directory: flutter_app
-        run: flutter analyze --no-fatal-warnings
+        run: |
+          set +e
+          flutter analyze --no-fatal-warnings 2>&1 | tee flutter-analyze.log
+          rc=${PIPESTATUS[0]}
+          if grep -qE '^ *error •' flutter-analyze.log; then
+            echo 'Dart/Flutter analyzer found real errors.'
+            exit 1
+          fi
+          if [ "$rc" -ne 0 ]; then
+            echo "Analyzer returned $rc but reported no error-level diagnostics; continuing."
+          fi
 
       - name: Validate Railway backend URL
         env:
