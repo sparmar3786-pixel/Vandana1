@@ -73,6 +73,10 @@ jobs:
               p.write_text(s)
           PY
           grep -n "CoreLibraryDesugaring\|coreLibraryDesugaring\|desugar_jdk_libs" android/app/build.gradle* || true
+          test -f android/app/build.gradle.kts
+          grep -q "isCoreLibraryDesugaringEnabled = true" android/app/build.gradle.kts
+          grep -q "coreLibraryDesugaring" android/app/build.gradle.kts
+          grep -q "desugar_jdk_libs:2.1.4" android/app/build.gradle.kts
 
       - name: Enable internet access
         working-directory: flutter_app
