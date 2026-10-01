@@ -11,6 +11,7 @@ from nse_client import NSEClient
 import nse_features
 from nse_mcp import NSEMCP,result_to_csv
 from ai_model import p_up,label
+from ai_orchestrator import provider_status, validate_all
 
 app=FastAPI(title="NSE Algo Signal API"); eng=Engine(); client=AngelClient(); nse=NSEClient(); nse_mcp=NSEMCP()
 state={"error":None,"nse_error":None,"last_update":None,"angel_message":"Not connected","nse_mcp_error":None}
@@ -207,24 +208,20 @@ def nse_option_chain_csv(symbol:str="NIFTY",expiry:Optional[str]=None,x_token:st
 @app.get("/v1/ai/status")
 def ai_status(x_token:str=Header(None)):
     auth(x_token)
-    configured=[]
-    for env,name,model in [("OPENAI_API_KEY","GPT-5.6 Luna","gpt-5.6-luna"),("ANTHROPIC_API_KEY","Claude Sonnet 4.6","claude-sonnet-4-6"),("OPENAI_API_KEY","GPT-5.6 Sol","gpt-5.6-sol"),("DEEPSEEK_API_KEY","DeepSeek Chat","deepseek-chat"),("GEMINI_API_KEY","Gemini 2.5 Flash","gemini-2.5-flash"),("XAI_API_KEY","Grok 4","grok-4")]:
-        configured.append({"name":name,"model":os.getenv(model.upper().replace("-","_"),model) if False else model,"configured":bool(os.getenv(env)),"status":"configured" if os.getenv(env) else "server key required"})
-    return {"providers":configured,"configured":sum(1 for p in configured if p["configured"]),"total":len(configured),"local_fallback":True}
+    providers=provider_status()
+    return {"providers":[{**p,"status":"configured" if p["configured"] else "server key required"} for p in providers],
+            "configured":sum(1 for p in providers if p["configured"]),"total":len(providers),"local_fallback":True}
 
 @app.post("/v1/ai/validate")
 def ai_validate(body:AIValidationRequest,x_token:str=Header(None)):
     auth(x_token)
-    f=eng.nse_view if isinstance(eng.nse_view,dict) else {}
-    try: prob,source=p_up(f) if f else (0.5,"NSE-rules")
-    except Exception: prob,source=0.5,"NSE-rules"
-    state_name="CALL BUY" if prob>=0.58 else "PUT BUY" if prob<=0.42 else "WAIT"
-    if not f: state_name="NO QUALIFYING TRADE"
-    providers=[]
-    for env,name,model in [("OPENAI_API_KEY","GPT-5.6 Luna","gpt-5.6-luna"),("ANTHROPIC_API_KEY","Claude Sonnet 4.6","claude-sonnet-4-6"),("OPENAI_API_KEY","GPT-5.6 Sol","gpt-5.6-sol"),("DEEPSEEK_API_KEY","DeepSeek Chat","deepseek-chat"),("GEMINI_API_KEY","Gemini 2.5 Flash","gemini-2.5-flash"),("XAI_API_KEY","Grok 4","grok-4")]:
-        ok=bool(os.getenv(env)); providers.append({"name":name,"model":model,"configured":ok,"status":"configured" if ok else "server key required"})
-    providers.append({"name":"NSE Local AI Fallback","model":source,"configured":True,"status":"validated","state":state_name,"probability":prob,"text":f"STATE: {state_name}\\nEvidence source: {source}.\\nProbability: {prob:.3f}.\\nExternal six-provider cross-verification requires server API keys."})
-    return {"final":state_name,"cross_verified":False,"reason":"Local NSE rule/ML fallback; external six-provider cross-verification requires server API keys.","configured":sum(1 for p in providers if p["configured"]),"total":len(providers),"providers":providers}
+    payload=body.payload if isinstance(body.payload,dict) else {}
+    try:
+        return validate_all(payload)
+    except Exception as e:
+        return {"final":"WAIT","cross_verified":False,"reason":"AI orchestration failed safely; local evidence path remains active.",
+                "configured":0,"successful":0,"parsed_states":0,"total":6,"providers":[],
+                "local_fallback":{"status":"error_local","text":str(e)[:300]}}
 
 @app.get("/v1/diagnostics")
 def diagnostics(x_token:str=Header(None)):
