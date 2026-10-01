@@ -351,8 +351,40 @@ def signal(x_token:str=Header(None)): auth(x_token); return terminal_snapshot()
 def terminal_snapshot_endpoint(x_token:str=Header(None)): auth(x_token); return terminal_snapshot()
 
 def terminal_snapshot():
-    last=eng.last if isinstance(eng.last,dict) else {}; nse_view=eng.nse_view if isinstance(eng.nse_view,dict) else {}
-    return {"ts":time.time(),"market_open":market_open(),"connection":{"angel":client.api is not None,"nse":state["nse_error"] is None,"server":True,"last_update":state["last_update"],"error":state["error"],"nse_error":state["nse_error"],"angel_message":state["angel_message"]},"market":{"symbol":C.SYMBOL,"spot":last.get("spot"),"atm":last.get("strike"),"action":last.get("action","WAIT"),"ltp":last.get("ltp")},"signals":last,"oi_lab":nse_view,"option_chain":last.get("chain",last.get("opts")),"charts":{"spot":last.get("spot"),"ltp":last.get("ltp"),"timestamp":state["last_update"],"source":"Angel One SmartAPI","endpoint":"/v1/angel/candles"},"nse":nse_view,"angel_data":{"market_endpoint":"/v1/angel/market","candles_endpoint":"/v1/angel/candles","option_chain_endpoint":"/v1/angel/option-chain","oi_endpoint":"/v1/angel/oi","search_endpoint":"/v1/angel/search","portfolio_endpoint":"/v1/angel/portfolio","gainers_losers_endpoint":"/v1/angel/gainers-losers","oi_buildup_endpoint":"/v1/angel/oi-buildup","greeks_endpoint":"/v1/angel/greeks"},"nse_mcp":{"status":"official NSE Streamable HTTP MCP","endpoint":nse_mcp.url,"connected":state["nse_mcp_error"] is None,"error":state["nse_mcp_error"],"csv_endpoint":"/v1/nse/option-chain.csv"},"angel_api":{"connected":client.api is not None,"message":state["angel_message"]},"data":last,"instruments":{"source":"Angel One SmartAPI instrument master","loaded":bool(client.chain),"expiry":str(client.expiry) if client.expiry else None,"strike_count":len(client.strikes)},"watchlist":{"source":"Angel One SmartAPI","items":[]},"search":{"source":"Angel One SmartAPI","items":[]},"commodity":{"source":"Angel One SmartAPI","items":[]},"market_details":nse_view,"news":{"source":"server-side news adapter","items":[]},"settings":{"symbol":C.SYMBOL,"poll_sec":C.POLL_SEC,"nse_poll_sec":C.NSE_POLL_SEC},"more":{"paper_only":True,"orders_enabled":False},"error":state["error"],"nse_error":state["nse_error"]}
+    last=eng.last if isinstance(eng.last,dict) else {}
+    nse_view=eng.nse_view if isinstance(eng.nse_view,dict) else {}
+    live_engine=engine_state(client, eng, C.SYMBOL)
+    nse_status = "NOT CHECKED"
+    if state["nse_mcp_checked"]:
+        nse_status = "CONNECTED" if state["nse_mcp_error"] is None else "UNAVAILABLE"
+    return {"ts":time.time(),"market_open":market_open(),
+            "connection":{"angel":client.api is not None,"nse":state["nse_error"] is None,"server":True,
+                          "last_update":state["last_update"],"error":state["error"],"nse_error":state["nse_error"],
+                          "angel_message":state["angel_message"]},
+            "market":{"symbol":live_engine.get("symbol",C.SYMBOL),"spot":live_engine.get("index_ltp"),
+                      "atm":live_engine.get("atm"),"action":live_engine.get("signal_status","WAIT"),
+                      "ltp":live_engine.get("option_ltp")},
+            "engine_state":live_engine,"signals":last,"oi_lab":nse_view,
+            "option_chain":last.get("chain",last.get("opts")),
+            "charts":{"spot":live_engine.get("index_ltp"),"ltp":live_engine.get("option_ltp"),
+                      "timestamp":state["last_update"],"source":"Angel One SmartAPI","endpoint":"/v1/angel/candles"},
+            "nse":nse_view,
+            "angel_data":{"market_endpoint":"/v1/angel/market","candles_endpoint":"/v1/angel/candles",
+                          "option_chain_endpoint":"/v1/angel/option-chain","oi_endpoint":"/v1/angel/oi",
+                          "search_endpoint":"/v1/angel/search","portfolio_endpoint":"/v1/angel/portfolio",
+                          "gainers_losers_endpoint":"/v1/angel/gainers-losers","oi_buildup_endpoint":"/v1/angel/oi-buildup",
+                          "greeks_endpoint":"/v1/angel/greeks"},
+            "nse_mcp":{"status":"official NSE Streamable HTTP MCP","state":nse_status,"endpoint":nse_mcp.url,
+                       "connected":state["nse_mcp_checked"] and state["nse_mcp_error"] is None,
+                       "error":state["nse_mcp_error"],"csv_endpoint":"/v1/nse/option-chain.csv"},
+            "angel_api":{"connected":client.api is not None,"message":state["angel_message"]},"data":last,
+            "instruments":{"source":"Angel One SmartAPI instrument master","loaded":bool(client.chain),
+                           "expiry":str(client.expiry) if client.expiry else None,"strike_count":len(client.strikes)},
+            "watchlist":{"source":"Angel One SmartAPI","items":[]},"search":{"source":"Angel One SmartAPI","items":[]},
+            "commodity":{"source":"Angel One SmartAPI","items":[]},"market_details":nse_view,
+            "news":{"source":"server-side news adapter","items":[]},
+            "settings":{"symbol":C.SYMBOL,"poll_sec":C.POLL_SEC,"nse_poll_sec":C.NSE_POLL_SEC},
+            "more":{"paper_only":True,"orders_enabled":False},"error":state["error"],"nse_error":state["nse_error"]}
 
 if __name__=="__main__":
     uvicorn.run(app,host="0.0.0.0",port=8000)
