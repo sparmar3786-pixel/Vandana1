@@ -298,56 +298,27 @@ def strategy_refresh(index:str="NIFTY",x_token:str=Header(None)):
 def ai_context(index:str="NIFTY",x_token:str=Header(None)):
     auth(x_token)
     terminal=terminal_snapshot()
-    compact={}
-    try:
-        compact=market_evidence(index)
-    except Exception as e:
-        compact={"index":index,"data_ok":False,"error":str(e)}
-    mcp={}
-    try:
-        tool,result=nse_mcp.option_chain(index.upper(),None)
-        mcp={"connected":True,"tool":tool,"result":result}
-        state["nse_mcp_error"]=None
-    except Exception as e:
-        mcp={"connected":False,"endpoint":nse_mcp.url,"error":str(e)[:500]}
-        state["nse_mcp_error"]=str(e)
-    official=_nse_site_evidence({"terminal":terminal,"symbol":index})
-    return {"ts":time.time(),"three_sources":{
-        "angel_api":{"connected":client.api is not None,"data":terminal.get("market"),"option_chain":terminal.get("option_chain")},
-        "nse_mcp":mcp,
-        "nse_internet":{"connected":official.get("connected",False),"evidence":official}},
-        "market_evidence":compact,"terminal":terminal,
-        "ai_rule":"All AI answers must reconcile API + official NSE MCP + Internet evidence; missing/conflicting evidence forces WAIT."}
-
-@app.get("/v1/ai/status")
-def ai_status(x_token:str=Header(None)):
-    auth(x_token)
-    providers=provider_status()
-    return {"providers":[{**p,"status":"configured" if p["configured"] else "server key required"} for p in providers],
-            "configured":sum(1 for p in providers if p["configured"]),"total":len(providers),
-            "nse_official_site":{"url":NSE_SITE_URL,"status":"source_enabled"},
-            "local_fallback":True}
-
-@app.get("/v1/ai/context")
-def ai_context(index:str="NIFTY",x_token:str=Header(None)):
-    auth(x_token)
-    terminal=terminal_snapshot()
     try:
         mcp=nse_mcp.context(index.upper())
+        state["nse_mcp_checked"]=True
+        state["nse_mcp_error"]=None
     except Exception as e:
         mcp={"connected":False,"endpoint":nse_mcp.url,"tool_count":0,"tools":[],"data":[],"error":str(e)[:500]}
-    strategy=strategy_refresh(x_token)
+        state["nse_mcp_checked"]=True
+        state["nse_mcp_error"]=str(e)
+    official=_nse_site_evidence({"terminal":terminal,"symbol":index})
+    strategy=_strategy_refresh(index)
     market=terminal.get("market") or {}
-    nse=terminal.get("nse") or {}
     return {"terminal":terminal,"strategy":strategy,"three_sources":{
-        "angel_api":{"connected":bool((terminal.get("angel_api") or {}).get("connected")),"data":terminal.get("data")},
+        "angel_api":{"connected":bool((terminal.get("angel_api") or {}).get("connected")),"data":terminal.get("data"),"option_chain":terminal.get("option_chain")},
         "nse_mcp":mcp,
-        "nse_internet":{"connected":True,"source":"official NSE site + Internet search","url":NSE_SITE_URL}
+        "nse_internet":{"connected":official.get("connected",False),"evidence":official}
     },"market_evidence":{
         "index":index.upper(),"spot":market.get("spot"),"atm":market.get("atm"),
-        "pcr":nse.get("pcr"),"top_ce_oi":strategy.get("call_seller_pressure",[]),"top_pe_oi":strategy.get("put_seller_pressure",[]),
-        "trend":strategy.get("trend"),"support":strategy.get("support"),"resistance":strategy.get("resistance")
-    }}
+        "pcr":strategy.get("pcr"),"top_ce_oi":strategy.get("highest_ce_oi",[]),"top_pe_oi":strategy.get("highest_pe_oi",[]),
+        "trend":strategy.get("trend"),"support":strategy.get("support"),"resistance":strategy.get("resistance"),
+        "max_pain":strategy.get("max_pain")
+    },"ai_rule":"Reconcile Angel API + official NSE MCP + Internet evidence. Missing or conflicting evidence forces WAIT."}
 @app.post("/v1/ai/validate")
 def ai_validate(body:AIValidationRequest,x_token:str=Header(None)):
     auth(x_token)
@@ -365,36 +336,10 @@ def diagnostics(x_token:str=Header(None)):
     return {"angel":{"connected":client.api is not None,"message":state["angel_message"]},"nse":{"available":state["nse_error"] is None,"error":state["nse_error"]},"ai":{"configured":sum(1 for p in providers if p["configured"]),"providers":providers},"strategies":{"registered":len(ev),"evaluated":len(ev),"active":sum(1 for x in ev if isinstance(x,dict) and x.get("state")=="active"),"unavailable":sum(1 for x in ev if isinstance(x,dict) and x.get("state")=="unavailable"),"not_evaluated":0}}
 
 @app.get("/v1/strategy/refresh")
-def strategy_refresh(x_token:str=Header(None)):
+def strategy_refresh_endpoint(index:str="NIFTY",x_token:str=Header(None)):
     auth(x_token)
-    last=eng.last if isinstance(eng.last,dict) else {}
-    nse_view=eng.nse_view if isinstance(eng.nse_view,dict) else {}
-    chain=last.get("chain") or last.get("opts") or {}
-    try:
-        if client.api is not None:
-            fresh=client.snapshot()
-            chain=fresh.get("opts") or chain
-            last={**last,"spot":fresh.get("spot"),"atm":fresh.get("atm")}
-    except Exception:
-        pass
-    rows=[]
-    if isinstance(chain,dict):
-        for key,val in chain.items():
-            try: strike,side=key; item=dict(val); item["strike"]=strike; item["type"]=side; rows.append(item)
-            except Exception: pass
-    ce=sorted([x for x in rows if x.get("type")=="CE"],key=lambda x:float(x.get("oi") or 0),reverse=True)
-    pe=sorted([x for x in rows if x.get("type")=="PE"],key=lambda x:float(x.get("oi") or 0),reverse=True)
-    ce_oi=sum(float(x.get("oi") or 0) for x in ce); pe_oi=sum(float(x.get("oi") or 0) for x in pe)
-    pcr=(pe_oi/ce_oi) if ce_oi else nse_view.get("pcr")
-    return {"timestamp":time.time(),"index":C.SYMBOL,"spot":last.get("spot"),"atm":last.get("atm"),
-            "action":last.get("action","WAIT"),"optionSymbol":last.get("optionSymbol"),"ltp":last.get("ltp"),
-            "strike":last.get("strike",last.get("atm")),"entry":last.get("entry"),"sl":last.get("sl"),"target":last.get("target"),
-            "trend":nse_view.get("trend") or ("UP" if float(last.get("score") or 0)>0 else "DOWN" if float(last.get("score") or 0)<0 else "FLAT"),
-            "score":last.get("score"),"pcr":pcr,"support":nse_view.get("support"),"resistance":nse_view.get("resistance"),
-            "max_pain":nse_view.get("max_pain"),"ce_total_oi":ce_oi,"pe_total_oi":pe_oi,
-            "call_seller_pressure":ce[:5],"put_seller_pressure":pe[:5],
-            "buildup":nse_view,"reasons":last.get("reasons",[]),
-            "sources":["Angel One SmartAPI","NSE engine/MCP","Internet AI evidence"]}
+    return _strategy_refresh(index)
+
 @app.get("/v1/audit/latest")
 def latest_audit(x_token:str=Header(None)):
     auth(x_token); last=eng.last if isinstance(eng.last,dict) else {}; return {"action":last.get("action","WAIT"),"reasons":last.get("reasons",[]),"timestamp":state["last_update"]}
