@@ -722,7 +722,7 @@ class _AngelApiFormState extends State<AngelApiForm> {
           'totp': t,
           'apiKey': k,
         }),
-      ).timeout(const Duration(seconds: 25));
+      ).timeout(const Duration(seconds: 60));
 
       dynamic decoded;
       try { decoded = jsonDecode(response.body); } catch (_) { decoded = null; }
