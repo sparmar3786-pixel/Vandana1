@@ -1,5 +1,5 @@
 """Network/API gateway for NSE Algo Signal. PAPER signals only; no order placement."""
-import threading,time,datetime as dt,os
+import asyncio,threading,time,datetime as dt,os
 from typing import Optional
 from fastapi import FastAPI,Header,HTTPException,Response
 from fastapi.middleware.gzip import GZipMiddleware
@@ -13,14 +13,14 @@ import nse_features
 from nse_mcp import NSEMCP,result_to_csv
 from ai_model import p_up,label
 from ai_orchestrator import provider_status, validate_all
-from market_core import router as market_core_router, ingest_chain, put_spot, mount_mcp, install_mcp_auth
+from market_core import router as market_core_router, ingest_chain, put_spot, mount_mcp, install_mcp_auth, mcp
 from strategy_api import router as strategy_router
 from council import router as council_router
 from strategy_store import save_oi_snapshot
 
-app=FastAPI(title="NSE Algo Signal API"); app.add_middleware(GZipMiddleware,minimum_size=1024); app.include_router(strategy_router); app.include_router(council_router); eng=Engine(); client=AngelClient(); nse=NSEClient(); nse_mcp=NSEMCP()
+app=FastAPI(title="NSE Algo Signal API"); app.add_middleware(GZipMiddleware,minimum_size=1024); app.include_router(strategy_router); app.include_router(council_router); app.include_router(market_core_router); eng=Engine(); client=AngelClient(); nse=NSEClient(); nse_mcp=NSEMCP()
 state={"error":None,"nse_error":None,"last_update":None,"angel_message":"Not connected","nse_mcp_error":None}
-prev_chain={"c":None}; workers_started=False; last_oi_save=0.0
+prev_chain={"c":None}; workers_started=False; last_oi_save=0.0; mcp_task=None
 
 class AIValidationRequest(BaseModel):
     payload:dict = {}
@@ -37,12 +37,28 @@ def market_open():
 
 @app.on_event("startup")
 def start_workers():
-    global workers_started
+    global workers_started, mcp_task
     if workers_started:
         return
     workers_started = True
     threading.Thread(target=loop, daemon=True, name="angel-data-loop").start()
     threading.Thread(target=nse_loop, daemon=True, name="nse-data-loop").start()
+    try:
+        mcp_task=asyncio.create_task(_mcp_session_loop())
+    except RuntimeError:
+        mcp_task=None
+
+async def _mcp_session_loop():
+    async with mcp.session_manager.run():
+        await asyncio.Event().wait()
+
+@app.on_event("shutdown")
+def stop_workers():
+    global mcp_task
+    if mcp_task:
+        mcp_task.cancel()
+        mcp_task=None
+
 
 def _ensure_angel():
     if client.api is None:
@@ -55,6 +71,8 @@ def loop():
             _ensure_angel()
             if market_open():
                 snap=client.snapshot()
+                from market_core import ingest_angel_snapshot
+                ingest_angel_snapshot(C.SYMBOL,snap)
                 eng.update(snap); state["last_update"]=time.time(); state["error"]=None
                 if time.time()-last_oi_save >= max(60, min(180, int(C.NSE_POLL_SEC))):
                     try:
@@ -70,11 +88,13 @@ def nse_loop():
     while True:
         try:
             if market_open():
-                ch=nse.fetch(C.SYMBOL)
-                features=nse_features.compute(ch,prev_chain["c"]); prev_chain["c"]=ch
-                eng.set_nse(features,ch["ts"])
-                ingest_chain(ch,"nse")
-                state["nse_error"]=None
+                ch=nse.fetch_safe(C.SYMBOL)
+                fetch_error=ch.get("fetch_error") if isinstance(ch,dict) else None
+                if not fetch_error:
+                    features=nse_features.compute(ch,prev_chain["c"]); prev_chain["c"]=ch
+                    eng.set_nse(features,ch["ts"])
+                    ingest_chain(ch,"nse")
+                state["nse_error"]=fetch_error
         except Exception as e: state["nse_error"]=str(e)
         time.sleep(C.NSE_POLL_SEC)
 
@@ -257,6 +277,9 @@ def terminal_snapshot_endpoint(x_token:str=Header(None)): auth(x_token); return 
 def terminal_snapshot():
     last=eng.last if isinstance(eng.last,dict) else {}; nse_view=eng.nse_view if isinstance(eng.nse_view,dict) else {}
     return {"ts":time.time(),"market_open":market_open(),"connection":{"angel":client.api is not None,"nse":state["nse_error"] is None,"server":True,"last_update":state["last_update"],"error":state["error"],"nse_error":state["nse_error"],"angel_message":state["angel_message"]},"market":{"symbol":C.SYMBOL,"spot":last.get("spot"),"atm":last.get("strike"),"action":last.get("action","WAIT"),"ltp":last.get("ltp")},"signals":last,"oi_lab":nse_view,"option_chain":last.get("chain",last.get("opts")),"charts":{"spot":last.get("spot"),"ltp":last.get("ltp"),"timestamp":state["last_update"],"source":"Angel One SmartAPI","endpoint":"/v1/angel/candles"},"nse":nse_view,"angel_data":{"market_endpoint":"/v1/angel/market","candles_endpoint":"/v1/angel/candles","option_chain_endpoint":"/v1/angel/option-chain","oi_endpoint":"/v1/angel/oi","search_endpoint":"/v1/angel/search","portfolio_endpoint":"/v1/angel/portfolio","gainers_losers_endpoint":"/v1/angel/gainers-losers","oi_buildup_endpoint":"/v1/angel/oi-buildup","greeks_endpoint":"/v1/angel/greeks"},"nse_mcp":{"status":"official NSE Streamable HTTP MCP","endpoint":nse_mcp.url,"connected":state["nse_mcp_error"] is None,"error":state["nse_mcp_error"],"csv_endpoint":"/v1/nse/option-chain.csv"},"angel_api":{"connected":client.api is not None,"message":state["angel_message"]},"data":last,"instruments":{"source":"Angel One SmartAPI instrument master","loaded":bool(client.chain),"expiry":str(client.expiry) if client.expiry else None,"strike_count":len(client.strikes)},"watchlist":{"source":"Angel One SmartAPI","items":[]},"search":{"source":"Angel One SmartAPI","items":[]},"commodity":{"source":"Angel One SmartAPI","items":[]},"market_details":nse_view,"news":{"source":"server-side news adapter","items":[]},"settings":{"symbol":C.SYMBOL,"poll_sec":C.POLL_SEC,"nse_poll_sec":C.NSE_POLL_SEC},"more":{"paper_only":True,"orders_enabled":False},"error":state["error"],"nse_error":state["nse_error"]}
+
+install_mcp_auth(app)
+mount_mcp(app)
 
 if __name__=="__main__":
     uvicorn.run(app,host="0.0.0.0",port=8000)
