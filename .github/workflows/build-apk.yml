@@ -31,6 +31,9 @@ jobs:
         working-directory: flutter_app
         run: flutter create . --platforms=android --project-name algo_terminal
 
+      - name: Remove generated sample test
+        working-directory: flutter_app
+        run: rm -rf test
       - name: Configure Android desugaring
         working-directory: flutter_app
         run: |
