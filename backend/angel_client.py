@@ -262,7 +262,7 @@ class AngelClient:
     def commodity_quotes(self):
         api=self.require_api()
         master=self._master()
-        wanted=("CRUDEOIL","NATURALGAS","GOLD","SILVER","COPPER","ALUMINIUM","ZINC","LEAD")
+        wanted=("CRUDEOIL","CRUDEOILM","NATURALGAS","NATGASMINI","GOLD","GOLDM","SILVER","SILVERM","COPPER","ALUMINIUM","ZINC","LEAD","NICKEL","MENTHAOIL","COTTON")
         today=dt.date.today()
         selected=[]
         for name in wanted:
