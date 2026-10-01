@@ -213,3 +213,8 @@ def install_mcp_auth(app):
             if not expected or supplied!=expected:
                 return JSONResponse({"detail":"MCP authentication required"},status_code=401)
         return await call_next(request)
+
+
+def bind_angel_tick(index,strike,side,**data):
+    """Receive a single Angel WebSocket tick into the shared store."""
+    return put(index,strike,side,"angel_ws",**data)
