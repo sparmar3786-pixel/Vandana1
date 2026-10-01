@@ -52,6 +52,41 @@ class NSEMCP:
         result, sid = self._post({"jsonrpc":"2.0","id":2,"method":"tools/list","params":{}}, sid)
         return result.get("result", {}).get("tools", [])
 
+    def call_tool(self, tool_name, arguments=None):
+        tools = self.tools()
+        tool = next((t for t in tools if t.get("name") == tool_name), None)
+        if not tool: raise RuntimeError("NSE MCP tool not found: " + str(tool_name))
+        _, sid = self._post({"jsonrpc":"2.0","id":3,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"NSE Algo Signal","version":"1.1"}}})
+        self._post({"jsonrpc":"2.0","method":"notifications/initialized","params":{}}, sid)
+        result, _ = self._post({"jsonrpc":"2.0","id":4,"method":"tools/call","params":{"name":tool_name,"arguments":arguments or {}}}, sid)
+        return result
+
+    def context(self, symbol="NIFTY"):
+        tools = self.tools()
+        rows = []
+        for tool in tools:
+            name = str(tool.get("name",""))
+            low = name.lower()
+            if not any(x in low for x in ("index","quote","market","price","breadth","gainer","loser")):
+                continue
+            props = ((tool.get("inputSchema") or {}).get("properties") or {})
+            required = ((tool.get("inputSchema") or {}).get("required") or [])
+            args = {}
+            supported = True
+            for key in required:
+                kl = str(key).lower()
+                if kl in ("symbol","index","symbolname","underlying","name"): args[key] = symbol
+                elif kl in ("exchange","segment"): args[key] = "NSE"
+                else: supported = False; break
+            if not supported: continue
+            try:
+                result = self.call_tool(name, args)
+                rows.append({"tool":name,"data":result})
+                if len(rows) >= 3: break
+            except Exception as e:
+                rows.append({"tool":name,"error":str(e)[:300]})
+        return {"connected":True,"endpoint":self.url,"tool_count":len(tools),"tools":[t.get("name") for t in tools],"data":rows}
+
     def option_chain(self, symbol="NIFTY", expiry=None):
         tools = self.tools()
         candidates = [t for t in tools if "option" in t.get("name","").lower() and "chain" in t.get("name","").lower()]
