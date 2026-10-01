@@ -310,9 +310,22 @@ class AngelClient:
                     if item: token_map[item["token"]]=(strike,typ,item["symbol"])
             rows=[]
             toks=list(token_map)
-            for j in range(0,len(toks),50):
-                result=self._market_data_full_retry(self.chain_exchange,toks[j:j+50])
-                for q in result.get("data",{}).get("fetched",[]) or []:
+            with self.ws_lock:
+                ws_snapshot={k:v.copy() for k,v in self.ws_quotes.items() if time.time()-v.get("ts",0) < 15}
+            for token,item in token_map.items():
+                q=ws_snapshot.get(str(token))
+                if not q:
+                    continue
+                strike,typ,sym=item
+                rows.append({"strike":strike,"type":typ,"symbol":sym,"token":str(token),
+                             "ltp":q.get("ltp"),"open":q.get("open"),"high":q.get("high"),"low":q.get("low"),
+                             "close":q.get("close"),"oi":q.get("oi"),"volume":q.get("volume"),
+                             "oiChangePct":q.get("oiChangePct")})
+            if len(rows) < max(4,int(len(toks)*0.6)):
+                rows=[]
+                for j in range(0,len(toks),50):
+                    result=self._market_data_full_retry(self.chain_exchange,toks[j:j+50])
+                    for q in result.get("data",{}).get("fetched",[]) or []:
                     item=token_map.get(str(q.get("symbolToken")))
                     if not item: continue
                     strike,typ,sym=item
