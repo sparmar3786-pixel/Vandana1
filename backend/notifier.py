@@ -145,7 +145,6 @@ async def alert_loop():
         await asyncio.sleep(POLL_SEC)
 
 
-@router.get("/api/alerts")
 def _auth(x_token: Optional[str]):
     if x_token != C.API_TOKEN:
         raise HTTPException(401, "bad token")
