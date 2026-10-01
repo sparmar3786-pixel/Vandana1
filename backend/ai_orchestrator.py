@@ -8,7 +8,7 @@ import re
 import time
 import requests
 
-TIMEOUT = int(os.getenv("AI_TIMEOUT_SEC", "25"))
+TIMEOUT = int(os.getenv("AI_TIMEOUT_SEC", "15"))
 
 PROVIDERS = [
     {"id":"gpt56-luna","name":"GPT-5.6 Luna","env":"OPENAI_API_KEY","kind":"openai","model":os.getenv("OPENAI_LUNA_MODEL","gpt-5.6-luna")},
