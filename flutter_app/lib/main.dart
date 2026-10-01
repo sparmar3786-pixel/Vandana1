@@ -458,17 +458,45 @@ class _TerminalState extends State<Terminal> {
   Future<void> openSettings() async {
     final u = TextEditingController(text: backendUrl);
     final k = TextEditingController(text: apiToken);
-    await showDialog<void>(context: context, builder: (d) => AlertDialog(
-      title: const Text('Server Settings'),
-      content: Column(mainAxisSize: MainAxisSize.min, children: <Widget>[
-        TextField(controller:u, decoration: const InputDecoration(labelText:'Backend URL')),
-        TextField(controller:k, obscureText:true, decoration: const InputDecoration(labelText:'API token')),
-      ]),
-      actions: <Widget>[TextButton(onPressed: () {
-        setState(() { backendUrl = u.text.trim().replaceAll(RegExp(r'/        Navigator.pop(d); fetchTerminal();
-      }, child: const Text('Save'))],
-    ));
-    u.dispose(); k.dispose();
+    await showDialog<void>(
+      context: context,
+      builder: (d) => AlertDialog(
+        title: const Text('Server Settings'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: <Widget>[
+            TextField(
+              controller: u,
+              decoration: const InputDecoration(labelText: 'Backend URL'),
+            ),
+            TextField(
+              controller: k,
+              obscureText: true,
+              decoration: const InputDecoration(labelText: 'API token'),
+            ),
+          ],
+        ),
+        actions: <Widget>[
+          TextButton(
+            onPressed: () {
+              final nextUrl = u.text.trim().replaceAll(RegExp(r'/$'), '');
+              final nextToken = k.text.trim();
+              setState(() {
+                backendUrl = nextUrl;
+                apiToken = nextToken;
+                alertService?.baseUrl = backendUrl;
+                alertService?.apiToken = apiToken;
+              });
+              Navigator.pop(d);
+              fetchTerminal();
+            },
+            child: const Text('Save'),
+          ),
+        ],
+      ),
+    );
+    u.dispose();
+    k.dispose();
   }
 
   Widget infoCard(String title,String value,Color color) => Card(child: ListTile(
@@ -744,237 +772,3 @@ class _AngelApiFormState extends State<AngelApiForm> {
 
 
 
-class CandlePainter extends CustomPainter {
-  final List<dynamic> rows;
-  CandlePainter(this.rows);
-  @override void paint(Canvas canvas,Size size){
-    final vals=rows.where((r)=>r is List && r.length>=5).toList();
-    if(vals.isEmpty)return;
-    double minV=double.infinity,maxV=-double.infinity;
-    for(final r in vals){minV=math.min(minV,(r[3] as num).toDouble());maxV=math.max(maxV,(r[2] as num).toDouble());}
-    final range=math.max(maxV-minV,0.01); final width=size.width/vals.length;
-    final wick=Paint()..strokeWidth=1.2; final body=Paint()..strokeWidth=5;
-    for(int i=0;i<vals.length;i++){
-      final r=vals[i]; final o=(r[1] as num).toDouble(),h=(r[2] as num).toDouble(),l=(r[3] as num).toDouble(),cl=(r[4] as num).toDouble();
-      double y(double v)=>size.height-(v-minV)/range*size.height;
-      final x=i*width+width/2; final up=cl>=o; wick.color=up?Colors.green:Colors.red; body.color=wick.color;
-      canvas.drawLine(Offset(x,y(h)),Offset(x,y(l)),wick);
-      canvas.drawLine(Offset(x,y(o)),Offset(x,y(cl)),body);
-    }
-  }
-  @override bool shouldRepaint(covariant CandlePainter old)=>old.rows!=rows;
-}
-class AngelApiForm extends StatefulWidget {
-  final String backendUrl;
-  final String apiToken;
-  final String connection;
-  final String status;
-  final VoidCallback onConnected;
-  final ValueChanged<String> onStatus;
-
-  const AngelApiForm({
-    super.key,
-    required this.backendUrl,
-    required this.apiToken,
-    required this.connection,
-    required this.status,
-    required this.onConnected,
-    required this.onStatus,
-  });
-
-  @override
-  State<AngelApiForm> createState() => _AngelApiFormState();
-}
-
-class _AngelApiFormState extends State<AngelApiForm> {
-  final clientId = TextEditingController();
-  final mpin = TextEditingController();
-  final totp = TextEditingController();
-  final apiKey = TextEditingController();
-  bool busy = false;
-
-  @override
-  void dispose() {
-    clientId.dispose();
-    mpin.dispose();
-    totp.dispose();
-    apiKey.dispose();
-    super.dispose();
-  }
-
-  Future<void> login() async {
-    final c = clientId.text.trim();
-    final p = mpin.text.trim();
-    final t = totp.text.trim();
-    final k = apiKey.text.trim();
-
-    if (c.isEmpty || p.isEmpty || k.isEmpty || !RegExp(r'^\d{6}$').hasMatch(t)) {
-      widget.onStatus('Client ID, MPIN, API key and current 6-digit TOTP are required.');
-      return;
-    }
-
-    setState(() => busy = true);
-    widget.onStatus('Connecting to Angel One through Render backend...');
-
-    try {
-      final response = await http.post(
-        Uri.parse(widget.backendUrl + '/v1/angel/login'),
-        headers: <String,String>{
-          'Content-Type': 'application/json',
-          'x-token': widget.apiToken,
-        },
-        body: jsonEncode(<String,String>{
-          'clientId': c,
-          'pin': p,
-          'totp': t,
-          'apiKey': k,
-        }),
-      ).timeout(const Duration(seconds: 25));
-
-      dynamic decoded;
-      try { decoded = jsonDecode(response.body); } catch (_) { decoded = null; }
-
-      if (response.statusCode == 200 &&
-          decoded is Map &&
-          decoded['connected'] == true) {
-        widget.onStatus('CONNECTED • Angel One SmartAPI');
-        widget.onConnected();
-      } else {
-        final detail = decoded is Map ? decoded['detail']?.toString() : null;
-        widget.onStatus(detail == null || detail.isEmpty
-            ? 'Login failed. Check Client ID, MPIN, TOTP, API key and backend.'
-            : detail);
-      }
-    } catch (e) {
-      widget.onStatus('Backend connection failed: ' + e.toString());
-    } finally {
-      if (mounted) setState(() => busy = false);
-    }
-  }
-
-  InputDecoration field(String label, String hint) => InputDecoration(
-    labelText: label,
-    hintText: hint,
-    border: const OutlineInputBorder(),
-  );
-
-  @override
-  Widget build(BuildContext context) => ListView(
-    padding: const EdgeInsets.all(16),
-    children: <Widget>[
-      Row(
-        children: <Widget>[
-          const Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: <Widget>[
-                Text('Angel API', style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
-                SizedBox(height: 4),
-                Text('Secure SmartAPI connection'),
-              ],
-            ),
-          ),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
-            decoration: BoxDecoration(
-              border: Border.all(color: Theme.of(context).dividerColor),
-              borderRadius: BorderRadius.circular(24),
-            ),
-            child: const Text('LIVE DATA ONLY'),
-          ),
-        ],
-      ),
-      const SizedBox(height: 16),
-      Card(
-        child: Padding(
-          padding: const EdgeInsets.all(16),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: <Widget>[
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: const <Widget>[
-                  Text('BROKER CONNECTION', style: TextStyle(fontWeight: FontWeight.bold)),
-                  Text('API'),
-                ],
-              ),
-              const Divider(height: 24),
-              TextField(
-                controller: clientId,
-                autocorrect: false,
-                decoration: field('CLIENT ID', 'Enter Angel One Client ID'),
-              ),
-              const SizedBox(height: 12),
-              TextField(
-                controller: mpin,
-                obscureText: true,
-                keyboardType: TextInputType.number,
-                decoration: field('MPIN', 'Enter 4-digit MPIN'),
-              ),
-              const SizedBox(height: 12),
-              TextField(
-                controller: totp,
-                keyboardType: TextInputType.number,
-                maxLength: 6,
-                decoration: field('CURRENT TOTP', 'Enter current 6-digit TOTP'),
-              ),
-              const SizedBox(height: 12),
-              TextField(
-                controller: apiKey,
-                obscureText: true,
-                autocorrect: false,
-                decoration: field('SMARTAPI API KEY', 'Enter SmartAPI API key'),
-              ),
-              const SizedBox(height: 10),
-              Container(
-                width: double.infinity,
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  border: Border.all(color: Theme.of(context).dividerColor),
-                ),
-                child: Row(
-                  children: const <Widget>[
-                    Expanded(child: Text('API key is sent only to the configured HTTPS backend during secure login.')),
-                    SizedBox(width: 10),
-                    Text('MASKED', style: TextStyle(fontWeight: FontWeight.bold)),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 14),
-              SizedBox(
-                width: double.infinity,
-                child: FilledButton(
-                  onPressed: busy ? null : login,
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 13),
-                    child: Text(busy ? 'CONNECTING...' : 'SECURE LOGIN'),
-                  ),
-                ),
-              ),
-              if (widget.status.isNotEmpty) ...<Widget>[
-                const SizedBox(height: 12),
-                Text(widget.status),
-              ],
-              const SizedBox(height: 8),
-              Text(
-                'Frontend → Render backend → Angel One SmartAPI',
-                style: TextStyle(color: Theme.of(context).colorScheme.primary),
-              ),
-            ],
-          ),
-        ),
-      ),
-      const SizedBox(height: 12),
-      Card(
-        child: ListTile(
-          title: const Text('BACKEND CONNECTION'),
-          subtitle: Text(widget.backendUrl),
-          trailing: Icon(
-            widget.connection == 'Connected' ? Icons.check_circle : Icons.cloud_off,
-            color: widget.connection == 'Connected' ? Colors.green : Colors.orange,
-          ),
-        ),
-      ),
-    ],
-  );
-}
