@@ -7,7 +7,7 @@ import config as C
 from strategy_engine import evaluate_strategy, run_backtest, validate_strategy, approve_test
 from strategy_store import get_version, save_version
 from strategy_pipeline import split_train_test
-from ai_orchestrator import verify_engine_result
+from strategy_ai_verifier import verify_engine_result
 
 router=APIRouter(prefix="/v1/strategy",tags=["strategy"])
 
