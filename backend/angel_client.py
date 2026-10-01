@@ -1,7 +1,8 @@
 """Angel One SmartAPI wrapper: login, option-chain tokens, live LTP/OI snapshots."""
-import json, os, time, urllib.request, datetime as dt
+import json, os, time, urllib.request, datetime as dt, threading
 import pyotp
 from SmartApi import SmartConnect
+from SmartApi.smartWebSocketV2 import SmartWebSocketV2
 import config as C
 
 MASTER_URL="https://margincalculator.angelbroking.com/OpenAPI_File/files/OpenAPIScripMaster.json"
@@ -12,6 +13,7 @@ class AngelClient:
     def __init__(self):
         self.api=None; self.chain={}; self.strikes=[]; self.expiry=None; self.chain_symbol=C.SYMBOL; self.chain_exchange="NFO"
         self.last_chain_cache={}; self.last_chain_cache_ts={}
+        self.ws=None; self.ws_thread=None; self.ws_quotes={}; self.ws_lock=threading.Lock()
     def login(self, api_key=None, client_code=None, pin=None, totp=None):
         api_key=api_key or C.API_KEY; client_code=client_code or C.CLIENT; pin=pin or C.PIN
         totp=totp or (pyotp.TOTP(C.TOTP_SECRET).now() if C.TOTP_SECRET else None)
@@ -23,6 +25,7 @@ class AngelClient:
             self.api=None
             raise RuntimeError(f"Angel login failed: {d.get('message', d)}")
         self.build_chain()
+        self._start_stream(d)
         return d
     def _master(self):
         fresh=os.path.exists(CACHE) and time.time()-os.path.getmtime(CACHE)<43200
@@ -67,10 +70,78 @@ class AngelClient:
         raise RuntimeError(f"Index token not found for {symbol}.")
 
     def spot(self, symbol=None):
-        symbol,exchange=self._symbol_config(symbol)
+        symbol,_=self._symbol_config(symbol)
         token=self._index_token(symbol)
+        with self.ws_lock:
+            tick=self.ws_quotes.get(str(token))
+        if tick and tick.get("ltp") is not None and time.time()-tick.get("ts",0) < 15:
+            return float(tick["ltp"])
+        exchange="BSE" if symbol in ("SENSEX","BANKEX") else "NSE"
         r=self.api.getMarketData("LTP",{exchange:[token]})
         return float(r["data"]["fetched"][0]["ltp"])
+
+    def _start_stream(self, session):
+        data=session.get("data",{}) if isinstance(session,dict) else {}
+        jwt=data.get("jwtToken") or data.get("jwt_token")
+        feed=data.get("feedToken") or data.get("feed_token")
+        if not jwt or not feed or not C.API_KEY or not C.CLIENT:
+            return
+        try:
+            if self.ws:
+                self.ws.close_connection()
+            self.ws=SmartWebSocketV2(jwt,C.API_KEY,C.CLIENT,feed,max_retry_attempt=5,retry_strategy=1,retry_delay=3,retry_multiplier=2,retry_duration=5)
+            self.ws.on_open=self._ws_on_open
+            self.ws.on_data=self._ws_on_data
+            self.ws.on_error=self._ws_on_error
+            self.ws.on_close=self._ws_on_close
+            self.ws_thread=threading.Thread(target=self.ws.connect,daemon=True,name="angel-smart-ws")
+            self.ws_thread.start()
+        except Exception:
+            self.ws=None
+
+    def _ws_tokens(self):
+        out=[]
+        if self.chain:
+            keys=list(self.chain.values())
+            out.extend(str(x["token"]) for x in keys[:42] if x.get("token"))
+        try:
+            out.append(str(self._index_token(self.chain_symbol)))
+        except Exception:
+            pass
+        return list(dict.fromkeys(out))[:50]
+
+    def _ws_on_open(self, wsapp):
+        tokens=self._ws_tokens()
+        if not tokens:
+            return
+        exchange_type=3 if self.chain_exchange=="BFO" else 2
+        index_token=str(self._index_token(self.chain_symbol))
+        option_tokens=[t for t in tokens if t!=index_token]
+        groups=[]
+        if option_tokens:
+            groups.append({"exchangeType":exchange_type,"tokens":option_tokens})
+        groups.append({"exchangeType":1 if self.chain_exchange=="NFO" else 3,"tokens":[index_token]})
+        self.ws.subscribe("VNDWS001",SmartWebSocketV2.SNAP_QUOTE,groups)
+
+    def _ws_on_data(self, wsapp, message):
+        if not isinstance(message,dict):
+            return
+        token=str(message.get("token",""))
+        ltp=message.get("last_traded_price")
+        if ltp is None:
+            return
+        row={"ltp":float(ltp)/100.0,"ts":time.time()}
+        for src,dst in (("open_interest","oi"),("volume_trade_for_the_day","volume"),("open_price_of_the_day","open"),("high_price_of_the_day","high"),("low_price_of_the_day","low"),("closed_price","close"),("open_interest_change_percentage","oiChangePct")):
+            if message.get(src) is not None:
+                row[dst]=float(message[src])
+        with self.ws_lock:
+            self.ws_quotes[token]=row
+
+    def _ws_on_error(self, wsapp, error):
+        return
+
+    def _ws_on_close(self, wsapp):
+        return
 
     def require_api(self):
         if self.api is None:
