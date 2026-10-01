@@ -13,10 +13,12 @@ import nse_features
 from nse_mcp import NSEMCP,result_to_csv
 from ai_model import p_up,label
 from ai_orchestrator import provider_status, validate_all
+from strategy_api import router as strategy_router
+from strategy_store import save_oi_snapshot
 
-app=FastAPI(title="NSE Algo Signal API"); app.add_middleware(GZipMiddleware,minimum_size=1024); eng=Engine(); client=AngelClient(); nse=NSEClient(); nse_mcp=NSEMCP()
+app=FastAPI(title="NSE Algo Signal API"); app.add_middleware(GZipMiddleware,minimum_size=1024); app.include_router(strategy_router); eng=Engine(); client=AngelClient(); nse=NSEClient(); nse_mcp=NSEMCP()
 state={"error":None,"nse_error":None,"last_update":None,"angel_message":"Not connected","nse_mcp_error":None}
-prev_chain={"c":None}; workers_started=False
+prev_chain={"c":None}; workers_started=False; last_oi_save=0.0
 
 class AIValidationRequest(BaseModel):
     payload:dict = {}
@@ -45,11 +47,19 @@ def _ensure_angel():
         client.login(); state["angel_message"]="Connected using server credentials."
 
 def loop():
+    global last_oi_save
     while True:
         try:
             _ensure_angel()
             if market_open():
-                eng.update(client.snapshot()); state["last_update"]=time.time(); state["error"]=None
+                snap=client.snapshot()
+                eng.update(snap); state["last_update"]=time.time(); state["error"]=None
+                if time.time()-last_oi_save >= max(60, min(180, int(C.NSE_POLL_SEC))):
+                    try:
+                        save_oi_snapshot(C.SYMBOL, snap)
+                        last_oi_save=time.time()
+                    except Exception:
+                        pass
         except Exception as e:
             state["error"]=str(e); state["angel_message"]="Angel connection failed."; client.api=None; time.sleep(10)
         time.sleep(C.POLL_SEC)

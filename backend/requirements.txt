@@ -8,3 +8,4 @@ smartapi-python
 logzero>=1.7.0
 websocket-client
 joblib
+mcp>=2,<3
