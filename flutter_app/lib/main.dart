@@ -29,7 +29,7 @@ class _TerminalState extends State<Terminal> {
   static const String flyBackendUrl = 'https://vandana1-api.fly.dev';
   // Railway public URL is intentionally supplied at build time; never invent or hard-code it.
   static const String railwayBackendUrl = String.fromEnvironment('RAILWAY_BACKEND_URL', defaultValue: '');
-  static const String defaultBackendUrl = railwayBackendUrl.isNotEmpty ? railwayBackendUrl : flyBackendUrl;
+  static final String defaultBackendUrl = railwayBackendUrl.isNotEmpty ? railwayBackendUrl : flyBackendUrl;
   static const screens = <String>[
     'Dashboard','Market','Commodity','Signals','OI Lab','Watchlist','Charts',
     'Option Chain','News','Market Details','Angel API','NSE','NSE MCP','Data',
