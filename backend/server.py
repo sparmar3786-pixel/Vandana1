@@ -155,7 +155,21 @@ def angel_option_chain(symbol:str="NIFTY",count:int=200,x_token:str=Header(None)
     allowed={"NIFTY","BANKNIFTY","FINNIFTY","MIDCPNIFTY","MIDCAPSELECT","SENSEX","BANKEX"}
     symbol=symbol.upper().replace(" ","")
     if symbol not in allowed: raise HTTPException(400,"Unsupported index")
-    try: return client.option_chain_rows(symbol=symbol,count=max(10,min(count,250)))
+    try:
+        result=client.option_chain_rows(symbol=symbol,count=max(10,min(count,250)))
+        # Angel's Option Greeks endpoint is currently NSE-only. Enrich NSE rows when live expiry data is available.
+        if symbol in {"NIFTY","BANKNIFTY","FINNIFTY","MIDCPNIFTY","MIDCAPSELECT"} and result.get("expiry"):
+            try:
+                gd=client.option_greeks(symbol, str(result["expiry"]).upper())
+                greeks=gd.get("data",[]) if isinstance(gd,dict) else []
+                gm={(float(g.get("strikePrice")),str(g.get("optionType")).upper()):g for g in greeks if isinstance(g,dict) and g.get("strikePrice") is not None}
+                for row in result.get("rows",[]):
+                    g=gm.get((float(row.get("strike")),str(row.get("type")).upper()))
+                    if g:
+                        row.update({"delta":g.get("delta"),"gamma":g.get("gamma"),"theta":g.get("theta"),"vega":g.get("vega"),"iv":g.get("impliedVolatility")})
+            except Exception:
+                pass
+        return result
     except Exception as e: raise HTTPException(502,str(e))
 
 @app.get("/v1/angel/oi")
