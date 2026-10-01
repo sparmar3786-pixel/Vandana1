@@ -13,6 +13,7 @@ import threading
 
 TIMEOUT = int(os.getenv("AI_TIMEOUT_SEC", "15"))
 AI_CACHE_SEC = int(os.getenv("AI_CACHE_SEC", "45"))
+NSE_SITE_URL = os.getenv("NSE_SITE_URL", "https://www.nseindia.com/option-chain")
 _ai_cache = {}
 _ai_cache_lock = threading.Lock()
 
@@ -39,6 +40,31 @@ Use ONLY the supplied market payload. Do not invent news, prices, OI, Greeks or 
 Do not claim hidden institutional orders. Do not promise returns or a win rate.
 The engine's final decision remains CALL BUY / PUT BUY / WAIT / NO QUALIFYING TRADE.
 Return concise evidence, contradictions, missing-data warnings and a recommendation state."""
+
+def _nse_site_evidence(payload):
+    """Read-only official NSE page metadata used as external evidence for AI.
+    Numeric market values continue to come from the server-side NSE/Angel adapters;
+    this fetch only confirms the current official NSE page and timestamp text.
+    """
+    symbol="NIFTY"
+    if isinstance(payload,dict):
+        terminal=payload.get("terminal") or {}
+        market=terminal.get("market") if isinstance(terminal,dict) else {}
+        symbol=str((market or {}).get("symbol") or payload.get("symbol") or "NIFTY").upper()
+    url=NSE_SITE_URL
+    try:
+        r=requests.get(url,headers={"User-Agent":"Mozilla/5.0","Accept":"text/html,application/xhtml+xml"},timeout=8)
+        r.raise_for_status()
+        html=r.text
+        m=re.search(r"Underlying Index[^<]{0,120}?(NIFTY[^<]{0,80})",html,re.I)
+        asof=re.search(r"As on[^<]{0,120}",html,re.I)
+        return {"connected":True,"url":url,"symbol":symbol,"http_status":r.status_code,
+                "page_timestamp":(asof.group(0).strip() if asof else ""),
+                "page_hint":(m.group(1).strip() if m else ""),
+                "note":"Official NSE page metadata only; option values come from server-side market adapters."}
+    except Exception as e:
+        return {"connected":False,"url":url,"symbol":symbol,"error":str(e)[:200],
+                "note":"NSE web metadata unavailable; server-side NSE adapter remains the primary source."}
 
 def _prompt(provider, payload):
     role = ROLE_PROMPTS[provider["id"]]
@@ -151,6 +177,9 @@ def _local_fallback(payload):
     return {"id":"local-nse-ai","name":"NSE Local AI Fallback","model":"build-156-local","role":"offline evidence summarization","status":"ok_local","text":text,"final":action,"cross_verified":False,"error":"","elapsed_ms":0}
 
 def validate_all(payload):
+    payload=dict(payload or {})
+    payload["nse_official_site"]=_nse_site_evidence(payload)
+    payload.setdefault("ai_sources",{})["nse_official_site"]=NSE_SITE_URL
     raw=json.dumps(payload,ensure_ascii=False,sort_keys=True,separators=(",",":"),default=str)
     cache_key=hashlib.sha256(raw.encode("utf-8")).hexdigest()
     now=time.monotonic()
@@ -197,6 +226,7 @@ def validate_all(payload):
         "reason":reason,
         "local_fallback":local,
         "mode":"six_provider_consensus" if cross_verified else "local_nse_fallback",
+        "sources":{"ai_api":"server-side provider API keys","nse_official_site":payload.get("nse_official_site"),"nse_mcp":"https://mcp.nseindia.in/cmmkt/mcp"},
         "cached":False,
     }
     with _ai_cache_lock:
