@@ -18,10 +18,17 @@ from strategy_api import router as strategy_router
 from council import router as council_router
 from notifier import router as alert_router, alert_loop
 from strategy_store import save_oi_snapshot
+from strategy_mcp_server import mount_strategy_mcp
 
-app=FastAPI(title="NSE Algo Signal API"); app.add_middleware(GZipMiddleware,minimum_size=1024); app.include_router(strategy_router); app.include_router(council_router); app.include_router(alert_router); eng=Engine(); client=AngelClient(); nse=NSEClient(); nse_mcp=NSEMCP()
+app=FastAPI(title="NSE Algo Signal API"); app.add_middleware(GZipMiddleware,minimum_size=1024); app.include_router(strategy_router); app.include_router(market_core_router); app.include_router(council_router); app.include_router(alert_router); eng=Engine(); client=AngelClient(); nse=NSEClient(); nse_mcp=NSEMCP()
 state={"error":None,"nse_error":None,"last_update":None,"angel_message":"Not connected","nse_mcp_error":None}
 prev_chain={"c":None}; workers_started=False; last_oi_save=0.0
+
+# Two read-only MCP servers live in this same Railway/Fly process.
+# /mcp serves the shared market snapshot; /mcp-strategy serves strategy evidence/backtests.
+mount_mcp(app)
+mount_strategy_mcp(app)
+install_mcp_auth(app)
 
 class AIValidationRequest(BaseModel):
     payload:dict = {}
@@ -216,6 +223,16 @@ def angel_greeks(name:str="NIFTY",expiry:str="",x_token:str=Header(None)):
     if not expiry: raise HTTPException(400,"Expiry is required")
     try: return client.option_greeks(name,expiry)
     except Exception as e: raise HTTPException(502,str(e))
+
+@app.get("/v1/mcp/status")
+def mcp_status(x_token:str=Header(None)):
+    auth(x_token)
+    return {
+        "market_mcp":{"mounted":True,"endpoint":"/mcp","auth":"x-mcp-token or Bearer"},
+        "strategy_mcp":{"mounted":True,"endpoint":"/mcp-strategy","auth":"x-mcp-token or Bearer"},
+        "official_nse_mcp":{"configured":True,"endpoint":nse_mcp.url},
+        "paper_only":True,"orders_enabled":False,
+    }
 
 @app.get("/v1/nse/mcp/tools")
 def nse_mcp_tools(x_token:str=Header(None)):
