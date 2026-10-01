@@ -185,7 +185,7 @@ def validate_all(payload):
     else:
         final="WAIT"
         reason="AI responses are not fully aligned; conflicting or WAIT evidence forces WAIT."
-    return {
+    result={
         "final":final,
         "providers":results,
         "configured":configured,
@@ -196,4 +196,8 @@ def validate_all(payload):
         "reason":reason,
         "local_fallback":local,
         "mode":"six_provider_consensus" if cross_verified else "local_nse_fallback",
+        "cached":False,
     }
+    with _ai_cache_lock:
+        _ai_cache[cache_key]={"ts":time.monotonic(),"result":result}
+    return result
