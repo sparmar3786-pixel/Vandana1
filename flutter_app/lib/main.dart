@@ -380,26 +380,25 @@ class _TerminalState extends State<Terminal> {
     if(liveIndices.isEmpty) infoCard('Watchlist','Waiting for index feed.',Colors.orange),
   ]);
 
-  Widget chartsPage() => ListView(padding:const EdgeInsets.all(10),children:<Widget>[
-    Row(children:<Widget>[const Expanded(child:Text('Charts • Indian Indices',style:TextStyle(fontSize:24,fontWeight:FontWeight.bold))),IconButton(onPressed:openFullscreenChart,icon:const Icon(Icons.fullscreen))]),
-    _exchangeTabs(), const SizedBox(height:8),
-    SizedBox(height:46,child:ListView(scrollDirection:Axis.horizontal,children:liveIndices.where((q)=>chartFilterExchange=='ALL'||q['exchange']==chartFilterExchange).map((q)=>Padding(padding:const EdgeInsets.only(right:6),child:ChoiceChip(label:Text((q['name']??q['symbol']??'-').toString()),selected:selectedChartToken==(q['token']??'').toString(),onSelected:(_){setState(()=>selectedChartToken=(q['token']??'').toString());selectedChartName=(q['name']??q['symbol']??'-').toString();selectedChartExchange=(q['exchange']??'NSE').toString();fetchCandles();}))).toList())),
-    const SizedBox(height:8), infoCard('Selected',selectedChartName+' • '+selectedChartExchange+' • '+selectedChartToken,Colors.blue),
-    DropdownButton<String>(value:selectedInterval,items:const[DropdownMenuItem(value:'ONE_MINUTE',child:Text('1 Minute')),DropdownMenuItem(value:'THREE_MINUTE',child:Text('3 Minute')),DropdownMenuItem(value:'FIVE_MINUTE',child:Text('5 Minute')),DropdownMenuItem(value:'TEN_MINUTE',child:Text('10 Minute')),DropdownMenuItem(value:'FIFTEEN_MINUTE',child:Text('15 Minute')),DropdownMenuItem(value:'THIRTY_MINUTE',child:Text('30 Minute')),DropdownMenuItem(value:'ONE_HOUR',child:Text('1 Hour')),DropdownMenuItem(value:'ONE_DAY',child:Text('1 Day'))],onChanged:(v){if(v!=null){setState(()=>selectedInterval=v);fetchCandles();}}),
-    Card(child:SizedBox(height:MediaQuery.of(context).size.height>700?420:320,child:liveCandles.isEmpty?const Center(child:Text('Waiting for live candles…')):CustomPaint(painter:CandlePainter(liveCandles)))),
-    FilledButton.icon(onPressed:fetchCandles,icon:const Icon(Icons.refresh),label:Text(angelDataBusy?'LOADING...':'REFRESH LIVE CHART')),
-    const SizedBox(height:8),const Text('Indicators',style:TextStyle(fontWeight:FontWeight.bold)),
-    Wrap(spacing:6,children:const[Chip(label:Text('EMA 8')),Chip(label:Text('EMA 13')),Chip(label:Text('VWAP')),Chip(label:Text('RSI')),Chip(label:Text('MACD')),Chip(label:Text('OI'))]),
+  Widget chartsPage() => ListView(padding:const EdgeInsets.all(16),children:<Widget>[
+    const Text('Charts',style:TextStyle(fontSize:24,fontWeight:FontWeight.bold)),
+    const SizedBox(height:8),
+    infoCard('Chart source','Angel One SmartAPI Historical API',Colors.blue),
+    DropdownButton<String>(value:selectedInterval,items:const[
+      DropdownMenuItem(value:'ONE_MINUTE',child:Text('1 Minute')),
+      DropdownMenuItem(value:'THREE_MINUTE',child:Text('3 Minute')),
+      DropdownMenuItem(value:'FIVE_MINUTE',child:Text('5 Minute')),
+      DropdownMenuItem(value:'TEN_MINUTE',child:Text('10 Minute')),
+      DropdownMenuItem(value:'FIFTEEN_MINUTE',child:Text('15 Minute')),
+      DropdownMenuItem(value:'THIRTY_MINUTE',child:Text('30 Minute')),
+      DropdownMenuItem(value:'ONE_HOUR',child:Text('1 Hour')),
+      DropdownMenuItem(value:'ONE_DAY',child:Text('1 Day')),
+    ],onChanged:(v){if(v!=null){setState(()=>selectedInterval=v);fetchCandles();}}),
+    SizedBox(height:260,child:liveCandles.isEmpty?const Center(child:Text('Press refresh to load Angel candles.')):CustomPaint(painter:CandlePainter(liveCandles))),
+    FilledButton.icon(onPressed:fetchCandles,icon:const Icon(Icons.refresh),label:Text(angelDataBusy?'LOADING...':'REFRESH ANGEL CHART')),
+    const SizedBox(height:8),
+    const Text('Default index token: NIFTY 50 • 99926000'),
   ]);
-
-  Widget _exchangeTabs()=>SegmentedButton<String>(segments:const[ButtonSegment(value:'ALL',label:Text('ALL INDIA')),ButtonSegment(value:'NSE',label:Text('NSE')),ButtonSegment(value:'BSE',label:Text('BSE'))],selected:<String>{chartFilterExchange},onSelectionChanged:(v){setState(()=>chartFilterExchange=v.first);});
-
-  Future<void> openFullscreenChart() async {
-    await SystemChrome.setPreferredOrientations(<DeviceOrientation>[DeviceOrientation.landscapeLeft,DeviceOrientation.landscapeRight]);
-    if(!mounted)return;
-    await Navigator.push(context,MaterialPageRoute(builder:(_)=>Scaffold(appBar:AppBar(title:Text(selectedChartName+' • '+selectedInterval),actions:<Widget>[IconButton(onPressed:()=>Navigator.pop(context),icon:const Icon(Icons.close))]),body:Row(children:<Widget>[Expanded(child:Padding(padding:const EdgeInsets.all(8),child:liveCandles.isEmpty?const Center(child:Text('Waiting for live candles…')):CustomPaint(painter:CandlePainter(liveCandles)))),SizedBox(width:190,child:ListView(padding:const EdgeInsets.all(8),children:const[Text('INDICATORS',style:TextStyle(fontWeight:FontWeight.bold)),Chip(label:Text('EMA 8')),Chip(label:Text('EMA 13')),Chip(label:Text('VWAP')),Chip(label:Text('RSI')),Chip(label:Text('MACD')),Chip(label:Text('OI'))]))]))));
-    await SystemChrome.setPreferredOrientations(<DeviceOrientation>[DeviceOrientation.portraitUp,DeviceOrientation.portraitDown]);
-  }
 
   Widget optionChain() => ListView(padding:const EdgeInsets.all(8),children:<Widget>[
     const Text('Option Chain • Indian Indices',style:TextStyle(fontSize:24,fontWeight:FontWeight.bold)), const SizedBox(height:6),
@@ -459,15 +458,50 @@ class _TerminalState extends State<Terminal> {
   ]);
 
   Widget signals() {
-    final action = signal?['action']?.toString() ?? 'WAIT';
+    final action = (signal?['action']?.toString() ?? 'WAIT').replaceAll('_',' ');
+    final underlying = (signal?['underlying'] ?? signal?['index'] ?? signal?['indexName'] ?? signal?['symbol'] ?? selectedOptionSymbol).toString();
+    final optionSymbol = (signal?['optionSymbol'] ?? signal?['tradingSymbol'] ?? signal?['tradingsymbol'] ?? signal?['symbol'] ?? '-').toString();
+    final ltp = signal?['ltp'] ?? signal?['optionLtp'] ?? signal?['option_ltp'] ?? '-';
+    final strike = signal?['strike'] ?? '-';
+    final entry = signal?['entry'] ?? '-';
+    final sl = signal?['sl'] ?? signal?['stopLoss'] ?? signal?['stop_loss'] ?? '-';
+    final target = signal?['target'] ?? '-';
+    final spot = signal?['spot'] ?? '-';
     final raw = signal?['reasons'];
-    final reasons = raw is List ? raw.map((e) => e.toString()).join('\n') : 'No live signal reasons received.';
+    final reasons = raw is List ? raw.map((e) => e.toString()).join('\n') : (raw?.toString() ?? 'No qualifying live evidence yet.');
+    final wait = action == 'WAIT' || action == 'NO QUALIFYING TRADE';
     return ListView(padding: const EdgeInsets.all(16), children: <Widget>[
       const Text('Signals', style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
+      const SizedBox(height: 8),
+      Text('Angel One live engine • clear instrument fields • paper only', style: TextStyle(color: Colors.grey.shade700)),
       const SizedBox(height: 12),
-      infoCard(action.replaceAll('_',' '), reasons, Colors.blue),
-      const SizedBox(height: 12),
-      infoCard('Engine','Paper-signal engine. Live values appear only when the backend supplies them.',Colors.orange),
+      Card(
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: <Widget>[
+            Row(children: <Widget>[
+              Icon(wait ? Icons.pause_circle_outline : Icons.bolt, color: wait ? Colors.orange : Colors.green, size: 30),
+              const SizedBox(width: 10),
+              Expanded(child: Text(action, style: TextStyle(fontSize: 25, fontWeight: FontWeight.bold, color: wait ? Colors.orange : Colors.green))),
+            ]),
+            const Divider(height: 22),
+            row('Underlying / Index', underlying),
+            row('Option Symbol', optionSymbol),
+            row('Spot', spot),
+            row('LTP', ltp),
+            row('Strike', strike),
+            row('Entry', entry),
+            row('Stop Loss', sl),
+            row('Target', target),
+          ]),
+        ),
+      ),
+      const SizedBox(height: 10),
+      infoCard('ENGINE READOUT', reasons, wait ? Colors.orange : Colors.green),
+      const SizedBox(height: 10),
+      infoCard('Policy','CALL BUY / PUT BUY only when qualifying evidence exists. WAIT means no qualifying trade is being forced.',Colors.blue),
+      const SizedBox(height: 10),
+      FilledButton.icon(onPressed:fetchTerminal,icon:const Icon(Icons.refresh),label:const Text('REFRESH LIVE SIGNAL')),
     ]);
   }
 
