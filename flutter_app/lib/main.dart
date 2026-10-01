@@ -457,6 +457,13 @@ class _TerminalState extends State<Terminal> {
     infoCard('OI / breadth','Angel OI APIs are available through the backend.',Colors.green),
   ]);
 
+  Map<String,dynamic>? strategyRefresh;
+  Future<void> refreshStrategy() async {
+    try {
+      final r=await http.get(backendUri('/v1/strategy/refresh'),headers:<String,String>{'x-token':apiToken}).timeout(const Duration(seconds:12));
+      if(r.statusCode==200){final d=jsonDecode(r.body);if(mounted)setState(()=>strategyRefresh=d is Map<String,dynamic>?d:null);}
+    } catch (_) {}
+  }
   Widget signals() {
     final action = (signal?['action']?.toString() ?? 'WAIT').replaceAll('_',' ');
     final underlying = (signal?['underlying'] ?? signal?['index'] ?? signal?['indexName'] ?? signal?['symbol'] ?? selectedOptionSymbol).toString();
@@ -501,7 +508,14 @@ class _TerminalState extends State<Terminal> {
       const SizedBox(height: 10),
       infoCard('Policy','CALL BUY / PUT BUY only when qualifying evidence exists. WAIT means no qualifying trade is being forced.',Colors.blue),
       const SizedBox(height: 10),
-      FilledButton.icon(onPressed:fetchTerminal,icon:const Icon(Icons.refresh),label:const Text('REFRESH LIVE SIGNAL')),
+      FilledButton.icon(onPressed:() async { await fetchTerminal(); await refreshStrategy(); },icon:const Icon(Icons.refresh),label:const Text('REFRESH STRATEGY • LIVE EVIDENCE')),
+      if(strategyRefresh!=null) Card(child:Padding(padding:const EdgeInsets.all(14),child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:<Widget>[
+        const Text('STRATEGY ENGINE DETAIL',style:TextStyle(fontSize:18,fontWeight:FontWeight.bold)),
+        row('Trend',strategyRefresh!['trend']), row('PCR',strategyRefresh!['pcr']), row('Support',strategyRefresh!['support']), row('Resistance',strategyRefresh!['resistance']), row('Max Pain',strategyRefresh!['max_pain']),
+        row('Total CE OI',strategyRefresh!['ce_total_oi']), row('Total PE OI',strategyRefresh!['pe_total_oi']),
+        row('Call seller pressure',strategyRefresh!['call_seller_pressure']), row('Put seller pressure',strategyRefresh!['put_seller_pressure']),
+        const SizedBox(height:6), Text('Sources: Angel One API • NSE MCP/engine • Internet evidence',style:TextStyle(fontSize:12,color:Colors.grey)),
+      ]))),
     ]);
   }
 
