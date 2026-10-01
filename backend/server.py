@@ -13,7 +13,7 @@ import nse_features
 from nse_mcp import NSEMCP,result_to_csv
 from ai_model import p_up,label
 from ai_orchestrator import provider_status, validate_all, NSE_SITE_URL, _nse_site_evidence
-from market_core import router as market_core_router, ingest_chain, put_spot, mount_mcp, install_mcp_auth
+from market_core import router as market_core_router, ingest_chain, put_spot, evidence as market_evidence, mount_mcp, install_mcp_auth
 from strategy_api import router as strategy_router
 from council import router as council_router
 from notifier import router as alert_router, alert_loop
@@ -284,6 +284,70 @@ def nse_option_chain_csv(symbol:str="NIFTY",expiry:Optional[str]=None,x_token:st
     except Exception as e:
         state["nse_mcp_error"]=str(e)
         raise HTTPException(502,str(e))
+
+def _strategy_refresh(index: str = "NIFTY"):
+    symbol = str(index or C.SYMBOL).upper().replace(" ", "")
+    live = None
+    try:
+        if client.api is not None:
+            live = client.snapshot() if symbol == str(C.SYMBOL).upper() else None
+            if live is None:
+                chain = client.option_chain_rows(symbol=symbol, count=15)
+                live = {"symbol": chain.get("symbol", symbol), "spot": chain.get("spot"), "atm": chain.get("atm"),
+                        "expiry": chain.get("expiry"), "opts": {(float(r["strike"]), str(r["type"])): {
+                            "ltp": float(r.get("ltp") or 0), "oi": float(r.get("oi") or 0), "vol": float(r.get("volume") or 0)}
+                            for r in chain.get("rows", []) if r.get("strike") is not None and r.get("type")}}
+    except Exception as e:
+        live = None
+    if not live:
+        last = eng.last if isinstance(eng.last, dict) else {}
+        return {"ok":False,"index":symbol,"error":"Live Angel option-chain snapshot unavailable","engine":last,
+                "nse":eng.nse_view or {}, "source_status":{"angel":client.api is not None,"nse_mcp":state["nse_mcp_error"] is None}}
+    opts=live.get("opts",{}) or {}
+    ce=sorted([{"strike":k[0],"ltp":v.get("ltp"),"oi":v.get("oi"),"volume":v.get("vol")} for k,v in opts.items() if k[1]=="CE"],
+              key=lambda x: float(x.get("oi") or 0), reverse=True)
+    pe=sorted([{"strike":k[0],"ltp":v.get("ltp"),"oi":v.get("oi"),"volume":v.get("vol")} for k,v in opts.items() if k[1]=="PE"],
+              key=lambda x: float(x.get("oi") or 0), reverse=True)
+    nse=eng.nse_view or {}
+    return {"ok":True,"index":live.get("symbol",symbol),"spot":live.get("spot"),"atm":live.get("atm"),
+            "expiry":live.get("expiry"),"trend":nse.get("trend","UNAVAILABLE"),"p_up":nse.get("p_up"),
+            "pcr":nse.get("pcr"),"support":nse.get("support"),"resistance":nse.get("resistance"),
+            "max_pain":nse.get("max_pain"),"score":(eng.last or {}).get("score"),
+            "call_oi_zones":ce[:5],"put_oi_zones":pe[:5],
+            "potential_call_seller_zone":ce[0] if ce else None,
+            "potential_put_seller_zone":pe[0] if pe else None,
+            "engine_signal":eng.last,"source_status":{"angel":client.api is not None,"nse_adapter":state["nse_error"] is None,
+            "nse_mcp":state["nse_mcp_error"] is None}}
+
+@app.get("/v1/strategy/refresh")
+def strategy_refresh(index:str="NIFTY",x_token:str=Header(None)):
+    auth(x_token)
+    return _strategy_refresh(index)
+
+@app.get("/v1/ai/context")
+def ai_context(index:str="NIFTY",x_token:str=Header(None)):
+    auth(x_token)
+    terminal=terminal_snapshot()
+    compact={}
+    try:
+        compact=market_evidence(index)
+    except Exception as e:
+        compact={"index":index,"data_ok":False,"error":str(e)}
+    mcp={}
+    try:
+        tool,result=nse_mcp.option_chain(index.upper(),None)
+        mcp={"connected":True,"tool":tool,"result":result}
+        state["nse_mcp_error"]=None
+    except Exception as e:
+        mcp={"connected":False,"endpoint":nse_mcp.url,"error":str(e)[:500]}
+        state["nse_mcp_error"]=str(e)
+    official=_nse_site_evidence({"terminal":terminal,"symbol":index})
+    return {"ts":time.time(),"three_sources":{
+        "angel_api":{"connected":client.api is not None,"data":terminal.get("market"),"option_chain":terminal.get("option_chain")},
+        "nse_mcp":mcp,
+        "nse_internet":{"connected":official.get("connected",False),"evidence":official}},
+        "market_evidence":compact,"terminal":terminal,
+        "ai_rule":"All AI answers must reconcile API + official NSE MCP + Internet evidence; missing/conflicting evidence forces WAIT."}
 
 @app.get("/v1/ai/status")
 def ai_status(x_token:str=Header(None)):
