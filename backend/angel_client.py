@@ -13,20 +13,30 @@ class AngelClient:
     def __init__(self):
         self.api=None; self.chain={}; self.strikes=[]; self.expiry=None; self.chain_symbol=C.SYMBOL; self.chain_exchange="NFO"
         self.last_chain_cache={}; self.last_chain_cache_ts={}
-        self.ws=None; self.ws_thread=None; self.ws_quotes={}; self.ws_lock=threading.Lock()
-    def login(self, api_key=None, client_code=None, pin=None, totp=None):
-        api_key=api_key or C.API_KEY; client_code=client_code or C.CLIENT; pin=pin or C.PIN
-        totp=totp or (pyotp.TOTP(C.TOTP_SECRET).now() if C.TOTP_SECRET else None)
-        if not api_key or not client_code or not pin or not totp:
-            raise RuntimeError("Angel credentials are not configured.")
-        self.api=SmartConnect(api_key=api_key)
-        d=self.api.generateSession(client_code,pin,totp)
-        if not d.get("status"):
-            self.api=None
-            raise RuntimeError(f"Angel login failed: {d.get('message', d)}")
-        self.build_chain()
-        self._start_stream(d)
-        return d
+        self.ws=None; self.ws_thread=None; self.ws_quotes={}; self.ws_lock=threading.Lock(); self.login_lock=threading.Lock(); self.session_started=0.0; self.session_ttl=6*60*60
+    def login(self, api_key=None, client_code=None, pin=None, totp=None, force=False):
+        # Reuse one successful Angel session for 6 hours; avoid repeated TOTP/session calls.
+        now=time.time()
+        if not force and self.api is not None and now-self.session_started < self.session_ttl:
+            return {"status": True, "message": "Existing Angel session reused.", "data": {"session_reused": True}}
+        with self.login_lock:
+            now=time.time()
+            if not force and self.api is not None and now-self.session_started < self.session_ttl:
+                return {"status": True, "message": "Existing Angel session reused.", "data": {"session_reused": True}}
+            api_key=api_key or C.API_KEY; client_code=client_code or C.CLIENT; pin=pin or C.PIN
+            totp=totp or (pyotp.TOTP(C.TOTP_SECRET).now() if C.TOTP_SECRET else None)
+            if not api_key or not client_code or not pin or not totp:
+                raise RuntimeError("Angel credentials are not configured.")
+            self.api=SmartConnect(api_key=api_key)
+            d=self.api.generateSession(client_code,pin,totp)
+            if not d.get("status"):
+                self.api=None; self.session_started=0.0
+                raise RuntimeError(f"Angel login failed: {d.get('message', d)}")
+            self.session_started=time.time()
+            self.build_chain()
+            self._start_stream(d)
+            return d
+
     def _master(self):
         fresh=os.path.exists(CACHE) and time.time()-os.path.getmtime(CACHE)<43200
         if not fresh: urllib.request.urlretrieve(MASTER_URL,CACHE)
