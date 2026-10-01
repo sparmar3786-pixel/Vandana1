@@ -693,7 +693,7 @@ class _AngelApiFormState extends State<AngelApiForm> {
     try {
       final base = widget.backendUrl.trim();
       final normalized = base.isEmpty
-          ? (railwayBackendUrl.isNotEmpty ? railwayBackendUrl : 'https://vandana1-api.fly.dev')
+          ? 'https://vandana1-api.fly.dev'
           : (base.startsWith('http://') || base.startsWith('https://') ? base : 'https://' + base);
       final normalizedUri = Uri.tryParse(normalized);
       if (normalizedUri == null || normalizedUri.host.isEmpty || normalizedUri.scheme != 'https') {
