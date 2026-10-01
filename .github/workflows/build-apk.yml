@@ -73,6 +73,15 @@ jobs:
               p.write_text(s)
           PY
           grep -n "CoreLibraryDesugaring\|coreLibraryDesugaring\|desugar_jdk_libs" android/app/build.gradle* || true
+          # Puter.js runs inside webview_flutter. webview_flutter_android 4.10.x requires Android API 24+.
+          python - <<'PY'
+          from pathlib import Path
+          p = Path("android/app/build.gradle.kts")
+          s = p.read_text()
+          s = s.replace("minSdk = flutter.minSdkVersion", "minSdk = 24")
+          p.write_text(s)
+          PY
+          grep -q "minSdk = 24" android/app/build.gradle.kts
           test -f android/app/build.gradle.kts
           grep -q "isCoreLibraryDesugaringEnabled = true" android/app/build.gradle.kts
           grep -q "coreLibraryDesugaring" android/app/build.gradle.kts
