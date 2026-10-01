@@ -401,12 +401,12 @@ class AngelClient:
         for token,k in tok2key.items():
             q=ws_snapshot.get(str(token))
             if q:
-                opts[k]={"ltp":float(q.get("ltp",0)),"oi":float(q.get("oi",0)),"vol":float(q.get("volume",0))}
+                opts[k]={"ltp":float(q.get("ltp",0)),"oi":float(q.get("oi",0)),"vol":float(q.get("volume",0)),"symbol":self.chain[k].get("symbol"),"token":self.chain[k].get("token")}
         if len(opts) < max(4,int(len(toks)*0.6)):
             opts={}
             for j in range(0,len(toks),50):
                 r=self._market_data_full_retry(self.chain_exchange,toks[j:j+50])
                 for q in r["data"]["fetched"]:
                     k=tok2key.get(q["symbolToken"])
-                    if k: opts[k]={"ltp":float(q["ltp"]),"oi":float(q.get("opnInterest",0)),"vol":float(q.get("tradeVolume",0))}
+                    if k: opts[k]={"ltp":float(q["ltp"]),"oi":float(q.get("opnInterest",0)),"vol":float(q.get("tradeVolume",0)),"symbol":self.chain[k].get("symbol"),"token":self.chain[k].get("token")}
         return {"ts":time.time(),"spot":spot,"atm":atm,"opts":opts}
