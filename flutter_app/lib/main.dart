@@ -480,6 +480,9 @@ class _TerminalState extends State<Terminal> {
           infoCard('AI orchestration','Six-provider evidence verification. Engine remains the final decision owner.',Colors.blue),
           ...ps.map((p)=>Card(child:ListTile(leading:Icon(p['configured']==true?Icons.check_circle:Icons.cloud_off,color:p['configured']==true?Colors.green:Colors.orange),title:Text((p['provider']??p['name']??'-').toString()),subtitle:Text((p['status']??'server key required').toString())))),
           infoCard('Configured',(d['configured']??0).toString()+' / '+(d['total']??6).toString(),Colors.green),
+          infoCard('AI API','Server-side AI provider API. Add the provider key only in Railway Variables; never store it in the APK.',(d['configured']??0)>0?Colors.green:Colors.orange),
+          infoCard('Official NSE source',((d['nse_official_site'] is Map)?(d['nse_official_site']['url']??'https://www.nseindia.com/option-chain'):'https://www.nseindia.com/option-chain').toString(),Colors.blue),
+          infoCard('AI data policy','AI receives the supplied Angel/NSE market snapshot plus official NSE-site evidence. No invented prices/news.',Colors.blue),
           infoCard('API keys','Read from the secure backend environment only. Never stored in APK.',Colors.orange),
         ]);
       }catch(_){return infoCard('AI status','Unable to read /v1/ai/status from backend.',Colors.orange);}
