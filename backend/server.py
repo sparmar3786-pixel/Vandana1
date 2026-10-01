@@ -12,7 +12,7 @@ from nse_client import NSEClient
 import nse_features
 from nse_mcp import NSEMCP,result_to_csv
 from ai_model import p_up,label
-from ai_orchestrator import provider_status, validate_all
+from ai_orchestrator import provider_status, validate_all, NSE_SITE_URL, _nse_site_evidence
 from market_core import router as market_core_router, ingest_chain, put_spot, mount_mcp, install_mcp_auth
 from strategy_api import router as strategy_router
 from council import router as council_router
@@ -280,7 +280,9 @@ def ai_status(x_token:str=Header(None)):
     auth(x_token)
     providers=provider_status()
     return {"providers":[{**p,"status":"configured" if p["configured"] else "server key required"} for p in providers],
-            "configured":sum(1 for p in providers if p["configured"]),"total":len(providers),"local_fallback":True}
+            "configured":sum(1 for p in providers if p["configured"]),"total":len(providers),
+            "nse_official_site":{"url":NSE_SITE_URL,"status":"source_enabled"},
+            "local_fallback":True}
 
 @app.post("/v1/ai/validate")
 def ai_validate(body:AIValidationRequest,x_token:str=Header(None)):
