@@ -254,9 +254,11 @@ def nse_mcp_tools(x_token:str=Header(None)):
     auth(x_token)
     try:
         tools=nse_mcp.tools()
+        state["nse_mcp_checked"]=True
         state["nse_mcp_error"]=None
         return {"connected":True,"endpoint":nse_mcp.url,"tools":[{"name":t.get("name"),"description":t.get("description")} for t in tools]}
     except Exception as e:
+        state["nse_mcp_checked"]=True
         state["nse_mcp_error"]=str(e)
         raise HTTPException(502,"NSE MCP unavailable")
 
@@ -265,9 +267,11 @@ def nse_mcp_context(symbol:str="NIFTY",x_token:str=Header(None)):
     auth(x_token)
     try:
         data=nse_mcp.context(symbol.upper())
+        state["nse_mcp_checked"]=True
         state["nse_mcp_error"]=None
         return data
     except Exception as e:
+        state["nse_mcp_checked"]=True
         state["nse_mcp_error"]=str(e)
         return {"connected":False,"endpoint":nse_mcp.url,"tool_count":0,"tools":[],"data":[],"error":str(e)[:500]}
 @app.get("/v1/nse/option-chain.csv")
