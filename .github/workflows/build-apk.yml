@@ -105,7 +105,7 @@ jobs:
 
       - name: Build installable APK
         working-directory: flutter_app
-        run: flutter build apk --debug
+        run: flutter build apk --debug --dart-define=RAILWAY_BACKEND_URL="${{ vars.RAILWAY_BACKEND_URL }}"
 
       - name: Verify APK
         run: |
