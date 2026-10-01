@@ -19,9 +19,10 @@ from council import router as council_router
 from notifier import router as alert_router, alert_loop
 from strategy_store import save_oi_snapshot
 from strategy_mcp_server import mount_strategy_mcp
+from engine_contract import engine_state, strategy_state
 
 app=FastAPI(title="NSE Algo Signal API"); app.add_middleware(GZipMiddleware,minimum_size=1024); app.include_router(strategy_router); app.include_router(market_core_router); app.include_router(council_router); app.include_router(alert_router); eng=Engine(); client=AngelClient(); nse=NSEClient(); nse_mcp=NSEMCP()
-state={"error":None,"nse_error":None,"last_update":None,"angel_message":"Not connected","nse_mcp_error":None}
+state={"error":None,"nse_error":None,"last_update":None,"angel_message":"Not connected","nse_mcp_error":None,"nse_mcp_checked":False}
 prev_chain={"c":None}; workers_started=False; last_oi_save=0.0
 
 # Two read-only MCP servers live in this same Railway/Fly process.
@@ -286,41 +287,7 @@ def nse_option_chain_csv(symbol:str="NIFTY",expiry:Optional[str]=None,x_token:st
         raise HTTPException(502,str(e))
 
 def _strategy_refresh(index: str = "NIFTY"):
-    symbol = str(index or C.SYMBOL).upper().replace(" ", "")
-    live = None
-    try:
-        if client.api is not None:
-            live = client.snapshot() if symbol == str(C.SYMBOL).upper() else None
-            if live is None:
-                chain = client.option_chain_rows(symbol=symbol, count=15)
-                live = {"symbol": chain.get("symbol", symbol), "spot": chain.get("spot"), "atm": chain.get("atm"),
-                        "expiry": chain.get("expiry"), "opts": {(float(r["strike"]), str(r["type"])): {
-                            "ltp": float(r.get("ltp") or 0), "oi": float(r.get("oi") or 0), "vol": float(r.get("volume") or 0)}
-                            for r in chain.get("rows", []) if r.get("strike") is not None and r.get("type")}}
-    except Exception as e:
-        live = None
-    if not live:
-        last = eng.last if isinstance(eng.last, dict) else {}
-        return {"ok":False,"index":symbol,"error":"Live Angel option-chain snapshot unavailable","engine":last,
-                "nse":eng.nse_view or {}, "source_status":{"angel":client.api is not None,"nse_mcp":state["nse_mcp_error"] is None}}
-    opts=live.get("opts",{}) or {}
-    ce=sorted([{"strike":k[0],"ltp":v.get("ltp"),"oi":v.get("oi"),"volume":v.get("vol")} for k,v in opts.items() if k[1]=="CE"],
-              key=lambda x: float(x.get("oi") or 0), reverse=True)
-    pe=sorted([{"strike":k[0],"ltp":v.get("ltp"),"oi":v.get("oi"),"volume":v.get("vol")} for k,v in opts.items() if k[1]=="PE"],
-              key=lambda x: float(x.get("oi") or 0), reverse=True)
-    nse=eng.nse_view or {}
-    return {"ok":True,"index":live.get("symbol",symbol),"spot":live.get("spot"),"atm":live.get("atm"),
-            "expiry":live.get("expiry"),"trend":nse.get("trend","UNAVAILABLE"),"p_up":nse.get("p_up"),
-            "pcr":nse.get("pcr"),"support":nse.get("support"),"resistance":nse.get("resistance"),
-            "max_pain":nse.get("max_pain"),"score":(eng.last or {}).get("score"),
-            "call_oi_zones":ce[:5],"put_oi_zones":pe[:5],
-            "ce_total_oi":sum(float(x.get("oi") or 0) for x in ce),"pe_total_oi":sum(float(x.get("oi") or 0) for x in pe),
-            "call_seller_pressure":("High OI concentration at " + str(ce[0].get("strike")) if ce else "Unavailable"),
-            "put_seller_pressure":("High OI concentration at " + str(pe[0].get("strike")) if pe else "Unavailable"),
-            "potential_call_seller_zone":ce[0] if ce else None,
-            "potential_put_seller_zone":pe[0] if pe else None,
-            "engine_signal":eng.last,"source_status":{"angel":client.api is not None,"nse_adapter":state["nse_error"] is None,
-            "nse_mcp":state["nse_mcp_error"] is None}}
+    return strategy_state(client, eng, index)
 
 @app.get("/v1/strategy/refresh")
 def strategy_refresh(index:str="NIFTY",x_token:str=Header(None)):
