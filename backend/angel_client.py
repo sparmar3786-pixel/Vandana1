@@ -409,4 +409,4 @@ class AngelClient:
                 for q in r["data"]["fetched"]:
                     k=tok2key.get(q["symbolToken"])
                     if k: opts[k]={"ltp":float(q["ltp"]),"oi":float(q.get("opnInterest",0)),"vol":float(q.get("tradeVolume",0)),"symbol":self.chain[k].get("symbol"),"token":self.chain[k].get("token")}
-        return {"ts":time.time(),"spot":spot,"atm":atm,"opts":opts}
+        return {"ts":time.time(),"symbol":self.chain_symbol or C.SYMBOL,"spot":spot,"atm":atm,"opts":opts,"expiry":str(self.expiry) if self.expiry else None}
