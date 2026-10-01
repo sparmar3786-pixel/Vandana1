@@ -326,14 +326,14 @@ class AngelClient:
                 for j in range(0,len(toks),50):
                     result=self._market_data_full_retry(self.chain_exchange,toks[j:j+50])
                     for q in result.get("data",{}).get("fetched",[]) or []:
-                    item=token_map.get(str(q.get("symbolToken")))
-                    if not item: continue
-                    strike,typ,sym=item
-                    rows.append({"strike":strike,"type":typ,"symbol":sym,"token":str(q.get("symbolToken")),
-                                 "ltp":q.get("ltp"),"open":q.get("open"),"high":q.get("high"),"low":q.get("low"),
-                                 "close":q.get("close"),"oi":q.get("opnInterest"),"volume":q.get("tradeVolume"),
-                                 "buyQty":q.get("totalBuyQuantity"),"sellQty":q.get("totalSellQuantity"),
-                                 "netChange":q.get("netChange"),"priceChange":q.get("netChange")})
+                        item=token_map.get(str(q.get("symbolToken")))
+                        if not item: continue
+                        strike,typ,sym=item
+                        rows.append({"strike":strike,"type":typ,"symbol":sym,"token":str(q.get("symbolToken")),
+                                     "ltp":q.get("ltp"),"open":q.get("open"),"high":q.get("high"),"low":q.get("low"),
+                                     "close":q.get("close"),"oi":q.get("opnInterest"),"volume":q.get("tradeVolume"),
+                                     "buyQty":q.get("totalBuyQuantity"),"sellQty":q.get("totalSellQuantity"),
+                                     "netChange":q.get("netChange"),"priceChange":q.get("netChange")})
             rows.sort(key=lambda r:(float(r["strike"]),0 if r["type"]=="CE" else 1))
             result={"symbol":requested,"exchange":self.chain_exchange,"spot":spot,"atm":atm,"expiry":str(self.expiry),
                     "rows":rows,"cached":False,"source":"Angel One SmartAPI"}
@@ -356,9 +356,17 @@ class AngelClient:
             for t in ("CE","PE"):
                 if (s,t) in self.chain: tok2key[self.chain[(s,t)]["token"]]=(s,t)
         opts={}; toks=list(tok2key)
-        for j in range(0,len(toks),50):
-            r=self.api.getMarketData("FULL",{"NFO":toks[j:j+50]})
-            for q in r["data"]["fetched"]:
-                k=tok2key.get(q["symbolToken"])
-                if k: opts[k]={"ltp":float(q["ltp"]),"oi":float(q.get("opnInterest",0)),"vol":float(q.get("tradeVolume",0))}
+        with self.ws_lock:
+            ws_snapshot={k:v.copy() for k,v in self.ws_quotes.items() if time.time()-v.get("ts",0) < 15}
+        for token,k in tok2key.items():
+            q=ws_snapshot.get(str(token))
+            if q:
+                opts[k]={"ltp":float(q.get("ltp",0)),"oi":float(q.get("oi",0)),"vol":float(q.get("volume",0))}
+        if len(opts) < max(4,int(len(toks)*0.6)):
+            opts={}
+            for j in range(0,len(toks),50):
+                r=self._market_data_full_retry(self.chain_exchange,toks[j:j+50])
+                for q in r["data"]["fetched"]:
+                    k=tok2key.get(q["symbolToken"])
+                    if k: opts[k]={"ltp":float(q["ltp"]),"oi":float(q.get("opnInterest",0)),"vol":float(q.get("tradeVolume",0))}
         return {"ts":time.time(),"spot":spot,"atm":atm,"opts":opts}
