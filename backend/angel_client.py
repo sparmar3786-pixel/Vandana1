@@ -144,6 +144,8 @@ class AngelClient:
         for src,dst in (("open_interest","oi"),("volume_trade_for_the_day","volume"),("open_price_of_the_day","open"),("high_price_of_the_day","high"),("low_price_of_the_day","low"),("closed_price","close"),("open_interest_change_percentage","oiChangePct")):
             if message.get(src) is not None:
                 row[dst]=float(message[src])
+        if row.get("close") is not None:
+            row["chg"] = row["ltp"] - row["close"]
         with self.ws_lock:
             self.ws_quotes[token]=row
         # Mirror the tick into the shared market core without touching signal formulas.
@@ -155,7 +157,7 @@ class AngelClient:
                 bind_angel_tick(self.chain_symbol,strike,side,ts=row["ts"],
                                 ltp=row.get("ltp"),oi=row.get("oi"),volume=row.get("volume"),
                                 open=row.get("open"),high=row.get("high"),low=row.get("low"),
-                                close=row.get("close"),oiChangePct=row.get("oiChangePct"),
+                                close=row.get("close"),chg=row.get("chg"),oiChangePct=row.get("oiChangePct"),
                                 token=token)
         except Exception:
             pass
