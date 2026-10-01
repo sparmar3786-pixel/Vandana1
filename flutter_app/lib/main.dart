@@ -9,9 +9,7 @@ import 'signal_alerts.dart';
 
 const String railwayBackendUrl =
     String.fromEnvironment('RAILWAY_BACKEND_URL', defaultValue: '');
-const String flyBackendUrl = 'https://vandana1-api.fly.dev';
-const String defaultBackendUrl =
-    railwayBackendUrl != '' ? railwayBackendUrl : flyBackendUrl;
+const String defaultBackendUrl = railwayBackendUrl;
 
 void main() => runApp(const AlgoApp());
 
@@ -535,10 +533,9 @@ class _TerminalState extends State<Terminal> {
 
   String backendProvider() {
     final host = Uri.tryParse(cleanUrl(backendUrl))?.host.toLowerCase() ?? '';
-    if (host.contains('railway.app')) return 'Railway';
-    if (host.endsWith('.fly.dev') || host.contains('fly.dev')) return 'Fly.io';
-    if (host.contains('onrender.com')) return 'Render (removed)';
-    return 'Custom';
+    if (host == 'railway.app' || host.endsWith('.railway.app')) return 'Railway';
+    if (host.isEmpty) return 'Railway URL not configured';
+    return 'Invalid backend';
   }
 
   String cleanUrl(String s) {
@@ -555,9 +552,16 @@ class _TerminalState extends State<Terminal> {
 
   Uri backendUri(String path) {
     final base = cleanUrl(backendUrl);
+    if (base.isEmpty) {
+      throw const FormatException(
+        'Railway backend URL is not configured. Build the APK with RAILWAY_BACKEND_URL.',
+      );
+    }
     final uri = Uri.tryParse(base + path);
-    if (uri == null || uri.host.isEmpty || (uri.scheme != 'http' && uri.scheme != 'https')) {
-      throw const FormatException('Invalid backend URL. Please enter a valid HTTPS backend host.');
+    final host = uri?.host.toLowerCase() ?? '';
+    final isRailwayHost = host == 'railway.app' || host.endsWith('.railway.app');
+    if (uri == null || uri.host.isEmpty || uri.scheme != 'https' || !isRailwayHost) {
+      throw const FormatException('Only the configured HTTPS Railway backend is allowed.');
     }
     return uri;
   }
@@ -694,16 +698,18 @@ class _AngelApiFormState extends State<AngelApiForm> {
 
     try {
       final base = widget.backendUrl.trim();
-      final normalized = base.isEmpty
-          ? 'https://vandana1-api.fly.dev'
-          : (base.startsWith('http://') || base.startsWith('https://') ? base : 'https://' + base);
-      final normalizedUri = Uri.tryParse(normalized);
-      if (normalizedUri == null || normalizedUri.host.isEmpty || normalizedUri.scheme != 'https') {
-        widget.onStatus('Invalid backend URL. Enter a valid HTTPS Railway/Fly.io backend host in Settings.');
+      if (base.isEmpty) {
+        widget.onStatus('Railway backend URL is not configured in this APK. Set GitHub variable RAILWAY_BACKEND_URL and rebuild.');
         return;
       }
-      if (normalizedUri.host.contains('onrender.com')) {
-        widget.onStatus('Render backend is removed. Set the Railway backend URL in Settings.');
+      final normalized = base.startsWith('http://') || base.startsWith('https://')
+          ? base
+          : 'https://' + base;
+      final normalizedUri = Uri.tryParse(normalized);
+      final host = normalizedUri?.host.toLowerCase() ?? '';
+      final isRailwayHost = host == 'railway.app' || host.endsWith('.railway.app');
+      if (normalizedUri == null || normalizedUri.host.isEmpty || normalizedUri.scheme != 'https' || !isRailwayHost) {
+        widget.onStatus('Invalid backend URL. This APK accepts only the configured HTTPS Railway backend.');
         return;
       }
       final loginUri = normalizedUri.replace(path: '/v1/angel/login');
