@@ -16,6 +16,9 @@ class NSEMCP:
         headers = {
             "Content-Type": "application/json",
             "Accept": "application/json, text/event-stream",
+            "User-Agent": "NSE-Algo-Signal/1.0",
+            "Origin": "https://www.nseindia.com",
+            "Referer": "https://www.nseindia.com/",
         }
         if session_id:
             headers["Mcp-Session-Id"] = session_id
@@ -69,6 +72,55 @@ class NSEMCP:
             raise RuntimeError("NSE MCP connected but returned no tools.")
         return tools
 
+    def call_tool(self, tool_name, arguments=None):
+        sid, version = self._session()
+        result, _ = self._post({
+            "jsonrpc":"2.0","id":int(__import__("time").time()*1000) % 1000000000,
+            "method":"tools/call",
+            "params":{"name":tool_name,"arguments":arguments or {}}
+        }, sid, version)
+        return result
+
+    def _tool_arguments(self, tool, symbol):
+        props = (tool.get("inputSchema") or {}).get("properties", {})
+        required = (tool.get("inputSchema") or {}).get("required", []) or []
+        args = {}
+        for name in props:
+            key = str(name).lower()
+            if key in {"symbol","index","indexsymbol","symbolname","underlying","underlyingsymbol","name"}:
+                args[name] = symbol
+            elif key in {"exchange","exchange_code"}:
+                args[name] = "NSE"
+            elif key in {"segment","segment_code"}:
+                args[name] = "CM"
+        if any(req not in args and req in required for req in required):
+            return None
+        return args
+
+    def context(self, symbol="NIFTY"):
+        tools = self.tools()
+        data = []
+        errors = []
+        keywords = ("live", "index", "quote", "price", "breadth", "gainer", "loser", "fresh")
+        candidates = [t for t in tools if any(k in str(t.get("name","")).lower() for k in keywords)]
+        for tool in candidates[:4]:
+            args = self._tool_arguments(tool, symbol.upper())
+            if args is None:
+                continue
+            try:
+                result = self.call_tool(tool.get("name"), args)
+                data.append({"tool":tool.get("name"),"arguments":args,"result":result})
+            except Exception as e:
+                errors.append({"tool":tool.get("name"),"error":str(e)[:300]})
+        return {
+            "connected": True,
+            "endpoint": self.url,
+            "tool_count": len(tools),
+            "tools": [{"name":t.get("name"),"description":t.get("description")} for t in tools],
+            "data": data,
+            "tool_errors": errors,
+            "option_chain_tool_available": any("option" in str(t.get("name","")).lower() and "chain" in str(t.get("name","")).lower() for t in tools),
+        }
     def option_chain(self, symbol="NIFTY", expiry=None):
         tools = self.tools()
         candidates = [t for t in tools if "option" in t.get("name","").lower() and "chain" in t.get("name","").lower()]
