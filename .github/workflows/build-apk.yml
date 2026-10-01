@@ -103,6 +103,24 @@ jobs:
         working-directory: flutter_app
         run: dart analyze --no-fatal-warnings || true
 
+      - name: Validate Railway backend URL
+        env:
+          RAILWAY_BACKEND_URL: ${{ vars.RAILWAY_BACKEND_URL }}
+        run: |
+          python - <<'PY'
+          import os
+          from urllib.parse import urlparse
+
+          raw = os.environ.get("RAILWAY_BACKEND_URL", "").strip()
+          if not raw:
+              raise SystemExit("RAILWAY_BACKEND_URL GitHub Actions variable is missing.")
+          if not raw.startswith("https://"):
+              raise SystemExit("RAILWAY_BACKEND_URL must use HTTPS.")
+          host = urlparse(raw).hostname or ""
+          if host != "railway.app" and not host.endswith(".railway.app"):
+              raise SystemExit(f"RAILWAY_BACKEND_URL must point to Railway (*.railway.app), got: {host}")
+          print("Railway backend URL validated:", host)
+          PY
       - name: Build installable APK
         working-directory: flutter_app
         run: flutter build apk --debug --dart-define=RAILWAY_BACKEND_URL="${{ vars.RAILWAY_BACKEND_URL }}"
