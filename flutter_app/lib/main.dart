@@ -455,6 +455,14 @@ class _TerminalState extends State<Terminal> {
     infoCard('Data source', title == 'NSE MCP' ? 'NSE MCP integration is configured by the backend.' : 'Corresponding API/data adapter is handled by the backend.', Colors.blue),
   ]);
 
+  String cleanUrl(String s) {
+    s = s.trim();
+    while (s.endsWith('/')) {
+      s = s.substring(0, s.length - 1);
+    }
+    return s;
+  }
+
   Future<void> openSettings() async {
     final u = TextEditingController(text: backendUrl);
     final k = TextEditingController(text: apiToken);
@@ -479,14 +487,12 @@ class _TerminalState extends State<Terminal> {
         actions: <Widget>[
           TextButton(
             onPressed: () {
-              final nextUrl = u.text.trim().replaceAll(RegExp(r'/$'), '');
-              final nextToken = k.text.trim();
               setState(() {
-                backendUrl = nextUrl;
-                apiToken = nextToken;
-                alertService?.baseUrl = backendUrl;
-                alertService?.apiToken = apiToken;
+                backendUrl = cleanUrl(u.text);
+                apiToken = k.text.trim();
               });
+              alertService?.baseUrl = backendUrl;
+              alertService?.apiToken = apiToken;
               Navigator.pop(d);
               fetchTerminal();
             },
@@ -748,27 +754,3 @@ class _AngelApiFormState extends State<AngelApiForm> {
     ],
   );
 }
-), ''); apiToken = k.text.trim(); });
-        alertService?.baseUrl = backendUrl;
-        alertService?.apiToken = apiToken;
-        Navigator.pop(d); fetchTerminal();
-      }, child: const Text('Save'))],
-    ));
-    u.dispose(); k.dispose();
-  }
-
-  Widget infoCard(String title,String value,Color color) => Card(child: ListTile(
-    leading: Icon(Icons.circle,color:color,size:13), title: Text(title), subtitle: Text(value),
-  ));
-
-
-  Widget row(String label,dynamic value) => Padding(
-    padding: const EdgeInsets.symmetric(vertical:4),
-    child: Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: <Widget>[
-      Text(label), Flexible(child:Text((value ?? '-').toString(), textAlign:TextAlign.right)),
-    ]),
-  );
-}
-
-
-
