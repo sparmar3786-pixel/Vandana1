@@ -26,6 +26,7 @@ class Terminal extends StatefulWidget {
 }
 
 class _TerminalState extends State<Terminal> {
+  static const String defaultBackendUrl = 'https://vandana1-api.fly.dev';
   static const screens = <String>[
     'Dashboard','Market','Commodity','Signals','OI Lab','Watchlist','Charts',
     'Option Chain','News','Market Details','Angel API','NSE','NSE MCP','Data',
@@ -38,7 +39,7 @@ class _TerminalState extends State<Terminal> {
     Icons.hub, Icons.storage, Icons.psychology, Icons.tune, Icons.more_horiz
   ];
   int selected = 0;
-  String backendUrl = '';
+  String backendUrl = defaultBackendUrl;
   String apiToken = 'change-me';
   String connection = 'Connecting...';
   bool darkMode = true;
@@ -89,7 +90,7 @@ class _TerminalState extends State<Terminal> {
   Future<void> fetchTerminal() async {
     try {
       final response = await http.get(
-        Uri.parse(backendUrl + '/v1/terminal'),
+        backendUri('/v1/terminal'),
         headers: <String,String>{'x-token': apiToken},
       ).timeout(const Duration(seconds: 5));
       if (!mounted) return;
@@ -242,21 +243,21 @@ class _TerminalState extends State<Terminal> {
 
   Future<void> fetchIndices() async {
     try {
-      final r=await http.get(Uri.parse(backendUrl+'/v1/angel/indices'),headers:<String,String>{'x-token':apiToken}).timeout(const Duration(seconds:8));
+      final r=await http.get(backendUri('/v1/angel/indices'),headers:<String,String>{'x-token':apiToken}).timeout(const Duration(seconds:8));
       if(r.statusCode==200){final d=jsonDecode(r.body);final rows=d is Map&&d['data'] is List?d['data']:<dynamic>[];if(mounted)setState(()=>liveIndices=rows is List?rows:<dynamic>[]);}
     } catch (_) {}
   }
 
   Future<void> fetchCommodities() async {
     try {
-      final r=await http.get(Uri.parse(backendUrl+'/v1/angel/commodities'),headers:<String,String>{'x-token':apiToken}).timeout(const Duration(seconds:10));
+      final r=await http.get(backendUri('/v1/angel/commodities'),headers:<String,String>{'x-token':apiToken}).timeout(const Duration(seconds:10));
       if(r.statusCode==200){final d=jsonDecode(r.body);final rows=d is Map&&d['data'] is Map&&d['data']['fetched'] is List?d['data']['fetched']:<dynamic>[];if(mounted)setState(()=>liveCommodities=rows is List?rows:<dynamic>[]);}
     } catch (_) {}
   }
 
   Future<void> fetchAngelMarket() async {
     try {
-      final r=await http.get(Uri.parse(backendUrl+'/v1/angel/market'),headers:<String,String>{'x-token':apiToken}).timeout(const Duration(seconds:8));
+      final r=await http.get(backendUri('/v1/angel/market'),headers:<String,String>{'x-token':apiToken}).timeout(const Duration(seconds:8));
       if(r.statusCode==200){
         final d=jsonDecode(r.body);
         final rows=d is Map && d['data'] is Map ? (d['data']['fetched'] ?? <dynamic>[]) : <dynamic>[];
@@ -283,7 +284,7 @@ class _TerminalState extends State<Terminal> {
   Future<void> fetchOptionRows() async {
     setState(()=>angelDataBusy=true);
     try {
-      final r=await http.get(Uri.parse(backendUrl+'/v1/angel/option-chain?symbol='+selectedOptionSymbol+'&count=10'),headers:<String,String>{'x-token':apiToken}).timeout(const Duration(seconds:15));
+      final r=await http.get(backendUri('/v1/angel/option-chain?symbol='+selectedOptionSymbol+'&count=10'),headers:<String,String>{'x-token':apiToken}).timeout(const Duration(seconds:15));
       if(r.statusCode==200){
         final d=jsonDecode(r.body);
         final rows=d is Map && d['rows'] is List ? d['rows'] : <dynamic>[];
@@ -295,7 +296,7 @@ class _TerminalState extends State<Terminal> {
   Future<void> fetchOIBuild() async {
     setState(()=>angelDataBusy=true);
     try {
-      final r=await http.get(Uri.parse(backendUrl+'/v1/angel/oi-buildup?datatype=Long%20Built%20Up&expirytype=NEAR'),headers:<String,String>{'x-token':apiToken}).timeout(const Duration(seconds:12));
+      final r=await http.get(backendUri('/v1/angel/oi-buildup?datatype=Long%20Built%20Up&expirytype=NEAR'),headers:<String,String>{'x-token':apiToken}).timeout(const Duration(seconds:12));
       if(r.statusCode==200){
         final d=jsonDecode(r.body);
         final rows=d is Map && d['data'] is List ? d['data'] : <dynamic>[];
@@ -467,7 +468,7 @@ class _TerminalState extends State<Terminal> {
   }
 
   Widget aiModelsPage() => FutureBuilder<http.Response>(
-    future:http.get(Uri.parse(backendUrl+'/v1/ai/status'),headers:<String,String>{'x-token':apiToken}).timeout(const Duration(seconds:8)),
+    future:http.get(backendUri('/v1/ai/status'),headers:<String,String>{'x-token':apiToken}).timeout(const Duration(seconds:8)),
     builder:(context,snapshot){
       if(!snapshot.hasData)return const Center(child:CircularProgressIndicator());
       try{final d=jsonDecode(snapshot.data!.body);final ps=d is Map&&d['providers'] is List?d['providers']:<dynamic>[];
@@ -525,10 +526,23 @@ class _TerminalState extends State<Terminal> {
 
   String cleanUrl(String s) {
     s = s.trim();
+    if (s.isEmpty) return defaultBackendUrl;
+    if (!s.startsWith('http://') && !s.startsWith('https://')) {
+      s = 'https://' + s;
+    }
     while (s.endsWith('/')) {
       s = s.substring(0, s.length - 1);
     }
     return s;
+  }
+
+  Uri backendUri(String path) {
+    final base = cleanUrl(backendUrl);
+    final uri = Uri.tryParse(base + path);
+    if (uri == null || uri.host.isEmpty || (uri.scheme != 'http' && uri.scheme != 'https')) {
+      throw const FormatException('Invalid backend URL. Please enter a valid HTTPS backend host.');
+    }
+    return uri;
   }
 
   Future<void> openSettings() async {
