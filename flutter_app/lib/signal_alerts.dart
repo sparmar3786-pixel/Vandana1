@@ -28,13 +28,12 @@ class SignalAlertService {
   bool _busy = false;
   bool _stopped = false;
   String baseUrl;
-  String? apiToken;
+  String apiToken;
   SignalAlert? latest;
   final List<SignalAlert> history = [];
   void Function(SignalAlert alert)? onAlert;
 
-  // Accept the optional API token used by the APK alert poller.
-  SignalAlertService(this.baseUrl, [this.apiToken]);
+  SignalAlertService(this.baseUrl, this.apiToken);
 
   Future<void> start() async {
     const android = AndroidInitializationSettings('@mipmap/ic_launcher');
@@ -56,10 +55,8 @@ class SignalAlertService {
       final r = await http.get(
         uri,
         headers: {
-          if (apiToken != null && apiToken!.isNotEmpty)
-            'Authorization': 'Bearer $apiToken',
-          if (apiToken != null && apiToken!.isNotEmpty)
-            'x-token': apiToken!,
+          if (apiToken.isNotEmpty) 'Authorization': 'Bearer $apiToken',
+          if (apiToken.isNotEmpty) 'x-token': apiToken,
         },
       ).timeout(const Duration(seconds: 8));
       if (r.statusCode != 200) return;
