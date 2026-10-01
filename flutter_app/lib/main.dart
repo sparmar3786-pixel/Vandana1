@@ -43,7 +43,7 @@ class _TerminalState extends State<Terminal> {
   ];
   int selected = 0;
   String backendUrl = defaultBackendUrl;
-  String apiToken = 'change-me';
+  String apiToken = '';
   String connection = 'Connecting...';
   bool darkMode = true;
   List<dynamic> liveIndices = <dynamic>[];
