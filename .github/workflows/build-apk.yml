@@ -132,7 +132,17 @@ jobs:
           PY
       - name: Build installable APK
         working-directory: flutter_app
-        run: flutter build apk --debug --dart-define=RAILWAY_BACKEND_URL="${{ vars.RAILWAY_BACKEND_URL || 'https://nse-algo-backend-production.up.railway.app' }}"
+        run: |
+          set -o pipefail
+          flutter build apk --debug --dart-define=RAILWAY_BACKEND_URL="${{ vars.RAILWAY_BACKEND_URL || 'https://nse-algo-backend-production.up.railway.app' }}" 2>&1 | tee flutter-build.log
+
+      - name: Upload Flutter build log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: flutter-build-log
+          path: flutter_app/flutter-build.log
+          if-no-files-found: warn
 
       - name: Verify APK
         run: |
