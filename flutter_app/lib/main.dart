@@ -40,7 +40,7 @@ class _TerminalState extends State<Terminal> {
     Icons.dashboard, Icons.show_chart, Icons.precision_manufacturing,
     Icons.notifications_active, Icons.analytics, Icons.star, Icons.candlestick_chart,
     Icons.table_chart, Icons.article, Icons.info_outline, Icons.key, Icons.language,
-    Icons.hub, Icons.storage, Icons.psychology, Icons.tune, Icons.more_horiz
+    Icons.hub, Icons.storage, Icons.rule, Icons.psychology, Icons.tune, Icons.more_horiz
   ];
   int selected = 0;
   String backendUrl = defaultBackendUrl;
@@ -69,6 +69,8 @@ class _TerminalState extends State<Terminal> {
   Timer? timer;
   Timer? marketTimer;
   bool chartBusy = false;
+  Map<String,dynamic> strategyData=<String,dynamic>{};
+  bool strategyBusy=false;
   SignalAlertService? alertService;
   SignalAlert? latestAlert;
 
@@ -86,7 +88,7 @@ class _TerminalState extends State<Terminal> {
       });
     };
     alertService!.start();
-    timer = Timer.periodic(const Duration(seconds: 5), (_) { fetchTerminal(); if (selected == 6) fetchCandles(); });
+    timer = Timer.periodic(const Duration(seconds: 5), (_) { fetchTerminal(); if (selected == 6) fetchCandles(); if (selected == 14) fetchStrategy(); });
     marketTimer = Timer.periodic(const Duration(seconds: 10), (_) { fetchIndices(); fetchCommodities(); });
   }
   @override void dispose() { timer?.cancel(); marketTimer?.cancel(); alertService?.stop(); super.dispose(); }
@@ -212,9 +214,10 @@ class _TerminalState extends State<Terminal> {
     if (selected == 9) return marketDetailsPage();
     if (selected == 10) return angelApi();
     if (selected == 12) return nseMcp();
-    if (selected == 14) return aiModelsPage();
-    if (selected == 15) return settingsPage();
-    if (selected == 16) return morePage();
+    if (selected == 14) return strategiesPage();
+    if (selected == 15) return aiModelsPage();
+    if (selected == 16) return settingsPage();
+    if (selected == 17) return morePage();
     return dataPage(screens[selected]);
   }
 
@@ -525,6 +528,42 @@ class _TerminalState extends State<Terminal> {
         row('Call seller pressure',strategyRefresh!['call_seller_pressure']), row('Put seller pressure',strategyRefresh!['put_seller_pressure']),
         const SizedBox(height:6), Text('Sources: Angel One API • NSE MCP/engine • Internet evidence',style:TextStyle(fontSize:12,color:Colors.grey)),
       ]))),
+    ]);
+  }
+
+  Future<void> fetchStrategy() async {
+    if(strategyBusy)return;
+    strategyBusy=true;
+    try{
+      final r=await http.get(backendUri('/v1/strategy/refresh?index='+selectedOptionSymbol),headers:<String,String>{'x-token':apiToken}).timeout(const Duration(seconds:10));
+      if(r.statusCode==200){final d=jsonDecode(r.body);if(d is Map<String,dynamic> && mounted)setState(()=>strategyData=d);}
+    }catch(_){}finally{strategyBusy=false;}
+  }
+
+  Widget strategiesPage(){
+    final d=strategyData; final ok=d['ok']==true; final ce=d['potential_call_seller_zone']; final pe=d['potential_put_seller_zone'];
+    final trend=(d['trend']??'WAIT').toString();
+    final color=trend.toUpperCase().contains('UP')?Colors.green:trend.toUpperCase().contains('DOWN')?Colors.red:Colors.blue;
+    String zone(dynamic x)=>x is Map?'Strike '+(x['strike']??'-').toString()+' • OI '+(x['oi']??'-').toString()+' • LTP '+(x['ltp']??'-').toString():'-';
+    return ListView(padding:const EdgeInsets.all(14),children:<Widget>[
+      const Text('Strategy Engine',style:TextStyle(fontSize:25,fontWeight:FontWeight.bold)),
+      const SizedBox(height:6),
+      Text('Live evidence: Angel API + NSE features + option OI. Paper-only.',style:TextStyle(color:Colors.grey)),
+      const SizedBox(height:12),
+      infoCard('INDEX / LTP', (d['index']??selectedOptionSymbol).toString()+' • LTP '+(d['spot']??'-').toString()+' • ATM '+(d['atm']??'-').toString(),Colors.blue),
+      infoCard('TREND', trend+' • p_up '+(d['p_up']??'-').toString()+' • PCR '+(d['pcr']??'-').toString(),color),
+      Row(children:<Widget>[Expanded(child:infoCard('SUPPORT',(d['support']??'-').toString(),Colors.green)),const SizedBox(width:8),Expanded(child:infoCard('RESISTANCE',(d['resistance']??'-').toString(),Colors.red))]),
+      infoCard('CALL OI CONCENTRATION / POTENTIAL WRITER ZONE',zone(ce),Colors.orange),
+      infoCard('PUT OI CONCENTRATION / POTENTIAL WRITER ZONE',zone(pe),Colors.orange),
+      if(ok) ...<Widget>[
+        const Text('TOP CALL OI STRIKES',style:TextStyle(fontSize:16,fontWeight:FontWeight.bold)),
+        ...((d['call_oi_zones'] as List? ?? const[]).map((x)=>Card(child:ListTile(title:Text('CE '+(x['strike']??'-').toString()),subtitle:Text('OI '+(x['oi']??'-').toString()+' • LTP '+(x['ltp']??'-').toString()))))),
+        const SizedBox(height:6),const Text('TOP PUT OI STRIKES',style:TextStyle(fontSize:16,fontWeight:FontWeight.bold)),
+        ...((d['put_oi_zones'] as List? ?? const[]).map((x)=>Card(child:ListTile(title:Text('PE '+(x['strike']??'-').toString()),subtitle:Text('OI '+(x['oi']??'-').toString()+' • LTP '+(x['ltp']??'-').toString()))))),
+      ],
+      if(!ok) infoCard('ENGINE','Live Angel option-chain snapshot unavailable. No fabricated strategy data is shown.',Colors.orange),
+      infoCard('CURRENT ENGINE SIGNAL',(d['engine_signal']??<String,dynamic>{})['action']?.toString()??'WAIT',Colors.blue),
+      FilledButton.icon(onPressed:fetchStrategy,icon:const Icon(Icons.refresh),label:Text(strategyBusy?'REFRESHING...':'REFRESH STRATEGY')),
     ]);
   }
 
