@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
 import 'package:file_saver/file_saver.dart';
 import 'signal_alerts.dart';
+import 'puter_ai_page.dart';
 
 const String railwayBackendUrl =
     String.fromEnvironment('RAILWAY_BACKEND_URL', defaultValue: '');
@@ -470,23 +471,13 @@ class _TerminalState extends State<Terminal> {
     ]);
   }
 
-  Widget aiModelsPage() => FutureBuilder<http.Response>(
-    future:http.get(backendUri('/v1/ai/status'),headers:<String,String>{'x-token':apiToken}).timeout(const Duration(seconds:8)),
-    builder:(context,snapshot){
-      if(!snapshot.hasData)return const Center(child:CircularProgressIndicator());
-      try{final d=jsonDecode(snapshot.data!.body);final ps=d is Map&&d['providers'] is List?d['providers']:<dynamic>[];
-        return ListView(padding:const EdgeInsets.all(12),children:<Widget>[
-          const Text('AI Models',style:TextStyle(fontSize:24,fontWeight:FontWeight.bold)),const SizedBox(height:8),
-          infoCard('AI orchestration','Six-provider evidence verification. Engine remains the final decision owner.',Colors.blue),
-          ...ps.map((p)=>Card(child:ListTile(leading:Icon(p['configured']==true?Icons.check_circle:Icons.cloud_off,color:p['configured']==true?Colors.green:Colors.orange),title:Text((p['provider']??p['name']??'-').toString()),subtitle:Text((p['status']??'server key required').toString())))),
-          infoCard('Configured',(d['configured']??0).toString()+' / '+(d['total']??6).toString(),Colors.green),
-          infoCard('AI API','Server-side AI provider API. Add the provider key only in Railway Variables; never store it in the APK.',(d['configured']??0)>0?Colors.green:Colors.orange),
-          infoCard('Official NSE source',((d['nse_official_site'] is Map)?(d['nse_official_site']['url']??'https://www.nseindia.com/option-chain'):'https://www.nseindia.com/option-chain').toString(),Colors.blue),
-          infoCard('AI data policy','AI receives the supplied Angel/NSE market snapshot plus official NSE-site evidence. No invented prices/news.',Colors.blue),
-          infoCard('API keys','Read from the secure backend environment only. Never stored in APK.',Colors.orange),
-        ]);
-      }catch(_){return infoCard('AI status','Unable to read /v1/ai/status from backend.',Colors.orange);}
-    });  Widget nseMcp() => ListView(padding: const EdgeInsets.all(16), children: <Widget>[
+  Widget aiModelsPage() => PuterAiPage(
+    backendUrl: backendUrl,
+    apiToken: apiToken,
+    initialSnapshot: terminalData,
+  );
+
+  Widget nseMcp() => ListView(padding: const EdgeInsets.all(16), children: <Widget>[
     const Text('NSE MCP', style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
     const SizedBox(height: 12),
     infoCard('Official endpoint','https://mcp.nseindia.in/cmmkt/mcp',Colors.blue),
