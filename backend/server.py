@@ -13,6 +13,7 @@ import nse_features
 from nse_mcp import NSEMCP,result_to_csv
 from ai_model import p_up,label
 from ai_orchestrator import provider_status, validate_all
+from market_core import router as market_core_router, ingest_chain, put_spot, mount_mcp, install_mcp_auth
 from strategy_api import router as strategy_router
 from strategy_store import save_oi_snapshot
 
@@ -68,8 +69,11 @@ def nse_loop():
     while True:
         try:
             if market_open():
-                ch=nse.fetch(C.SYMBOL); features=nse_features.compute(ch,prev_chain["c"]); prev_chain["c"]=ch
-                eng.set_nse(features,ch["ts"]); state["nse_error"]=None
+                ch=nse.fetch(C.SYMBOL)
+                features=nse_features.compute(ch,prev_chain["c"]); prev_chain["c"]=ch
+                eng.set_nse(features,ch["ts"])
+                ingest_chain(ch,"nse")
+                state["nse_error"]=None
         except Exception as e: state["nse_error"]=str(e)
         time.sleep(C.NSE_POLL_SEC)
 
