@@ -361,6 +361,26 @@ def ai_status(x_token:str=Header(None)):
             "nse_official_site":{"url":NSE_SITE_URL,"status":"source_enabled"},
             "local_fallback":True}
 
+@app.get("/v1/ai/context")
+def ai_context(index:str="NIFTY",x_token:str=Header(None)):
+    auth(x_token)
+    terminal=terminal_snapshot()
+    try:
+        mcp=nse_mcp.context(index.upper())
+    except Exception as e:
+        mcp={"connected":False,"endpoint":nse_mcp.url,"tool_count":0,"tools":[],"data":[],"error":str(e)[:500]}
+    strategy=strategy_refresh(x_token)
+    market=terminal.get("market") or {}
+    nse=terminal.get("nse") or {}
+    return {"terminal":terminal,"strategy":strategy,"three_sources":{
+        "angel_api":{"connected":bool((terminal.get("angel_api") or {}).get("connected")),"data":terminal.get("data")},
+        "nse_mcp":mcp,
+        "nse_internet":{"connected":True,"source":"official NSE site + Internet search","url":NSE_SITE_URL}
+    },"market_evidence":{
+        "index":index.upper(),"spot":market.get("spot"),"atm":market.get("atm"),
+        "pcr":nse.get("pcr"),"top_ce_oi":strategy.get("call_seller_pressure",[]),"top_pe_oi":strategy.get("put_seller_pressure",[]),
+        "trend":strategy.get("trend"),"support":strategy.get("support"),"resistance":strategy.get("resistance")
+    }}
 @app.post("/v1/ai/validate")
 def ai_validate(body:AIValidationRequest,x_token:str=Header(None)):
     auth(x_token)
