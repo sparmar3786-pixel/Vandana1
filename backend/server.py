@@ -48,7 +48,7 @@ def start_workers():
 
 def _ensure_angel():
     if client.api is None:
-        client.login(); state["angel_message"]="Connected using server credentials."
+        client.login(); state["angel_message"]="Connected using server credentials (6h session reuse)."
 
 def loop():
     global last_oi_save
@@ -93,10 +93,12 @@ def angel_login(body:AngelLoginRequest,x_token:str=Header(None)):
     if len(body.totp)!=6 or not body.totp.isdigit(): raise HTTPException(400,"TOTP must be the current 6-digit code.")
     try:
         result=client.login(api_key=body.apiKey or C.API_KEY,client_code=body.clientId,pin=body.pin,totp=body.totp)
-        state["angel_message"]="Angel One connected."; state["error"]=None
-        return {"ok":True,"connected":True,"message":"Angel One connected.","profile":result.get("data",{}).get("clientcode")}
+        reused=bool(result.get("data",{}).get("session_reused"))
+        state["angel_message"]="Angel One session reused (6h)." if reused else "Angel One connected."
+        state["error"]=None
+        return {"ok":True,"connected":True,"session_reused":reused,"message":"Existing Angel session reused." if reused else "Angel One connected.","profile":result.get("data",{}).get("clientcode")}
     except Exception:
-        client.api=None; state["angel_message"]="Angel connection failed."; state["error"]="Angel login failed"
+        client.api=None; client.session_started=0.0; state["angel_message"]="Angel connection failed."; state["error"]="Angel login failed"
         raise HTTPException(401,"Angel login failed. Check Client ID, PIN, TOTP and API key.")
 
 @app.get("/v1/angel/status")
