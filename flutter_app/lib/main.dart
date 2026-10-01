@@ -4,6 +4,7 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:file_saver/file_saver.dart';
+import 'signal_alerts.dart';
 
 void main() => runApp(const AlgoApp());
 
@@ -54,13 +55,24 @@ class _TerminalState extends State<Terminal> {
   bool angelDataBusy = false;
   Map<String,dynamic>? terminalData;
   Timer? timer;
+  SignalAlertService? alertService;
+  SignalAlert? latestAlert;
 
   @override void initState() {
     super.initState();
     fetchTerminal();
+    alertService = SignalAlertService(backendUrl, apiToken);
+    alertService!.onAlert = (a) {
+      if (!mounted) return;
+      setState(() => latestAlert = a);
+      Future.delayed(const Duration(seconds: 8), () {
+        if (mounted && latestAlert?.seq == a.seq) setState(() => latestAlert = null);
+      });
+    };
+    alertService!.start();
     timer = Timer.periodic(const Duration(seconds: 5), (_) => fetchTerminal());
   }
-  @override void dispose() { timer?.cancel(); super.dispose(); }
+  @override void dispose() { timer?.cancel(); alertService?.stop(); super.dispose(); }
 
   Future<void> fetchTerminal() async {
     try {
@@ -138,7 +150,32 @@ class _TerminalState extends State<Terminal> {
         ],
       )),
     ),
-    body: buildScreen(),
+    body: Stack(
+      children: <Widget>[
+        buildScreen(),
+        if (latestAlert != null)
+          Positioned(
+            top: 8, left: 8, right: 8,
+            child: Material(
+              elevation: 8,
+              borderRadius: BorderRadius.circular(12),
+              color: latestAlert!.kind == 'ENTRY' ? Colors.green.shade700 : Colors.red.shade700,
+              child: InkWell(
+                borderRadius: BorderRadius.circular(12),
+                onTap: () => setState(() => latestAlert = null),
+                child: Padding(
+                  padding: const EdgeInsets.all(13),
+                  child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: <Widget>[
+                    Text(latestAlert!.title, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16)),
+                    const SizedBox(height: 3),
+                    Text(latestAlert!.body, style: const TextStyle(color: Colors.white, fontSize: 13)),
+                  ]),
+                ),
+              ),
+            ),
+          ),
+      ],
+    ),
   );
 
   Widget buildScreen() {
