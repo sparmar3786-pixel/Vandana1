@@ -22,14 +22,22 @@ class NSEMCP:
         r.raise_for_status()
         sid = r.headers.get("mcp-session-id") or session_id
         text = r.text.strip()
-        if text.startswith("data:"):
-            for line in text.splitlines():
-                if line.startswith("data:"):
+        # Streamable HTTP may return SSE frames with event:/data: prefixes.
+        for line in text.splitlines():
+            line = line.strip()
+            if line.startswith("data:"):
+                raw = line[5:].strip()
+                if raw:
                     try:
-                        return json.loads(line[5:].strip()), sid
+                        return json.loads(raw), sid
                     except Exception:
                         continue
-        return (r.json() if text else {}), sid
+        if text:
+            try:
+                return r.json(), sid
+            except Exception:
+                return {"raw": text[:12000]}, sid
+        return {}, sid
 
     def tools(self):
         init, sid = self._post({
