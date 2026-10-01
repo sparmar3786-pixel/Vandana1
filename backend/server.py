@@ -1,5 +1,5 @@
 """Network/API gateway for NSE Algo Signal. PAPER signals only; no order placement."""
-import threading,time,datetime as dt,os
+import asyncio,threading,time,datetime as dt,os
 from typing import Optional
 from fastapi import FastAPI,Header,HTTPException,Response
 from fastapi.middleware.gzip import GZipMiddleware
@@ -16,9 +16,10 @@ from ai_orchestrator import provider_status, validate_all
 from market_core import router as market_core_router, ingest_chain, put_spot, mount_mcp, install_mcp_auth
 from strategy_api import router as strategy_router
 from council import router as council_router
+from notifier import router as alert_router, alert_loop
 from strategy_store import save_oi_snapshot
 
-app=FastAPI(title="NSE Algo Signal API"); app.add_middleware(GZipMiddleware,minimum_size=1024); app.include_router(strategy_router); app.include_router(council_router); eng=Engine(); client=AngelClient(); nse=NSEClient(); nse_mcp=NSEMCP()
+app=FastAPI(title="NSE Algo Signal API"); app.add_middleware(GZipMiddleware,minimum_size=1024); app.include_router(strategy_router); app.include_router(council_router); app.include_router(alert_router); eng=Engine(); client=AngelClient(); nse=NSEClient(); nse_mcp=NSEMCP()
 state={"error":None,"nse_error":None,"last_update":None,"angel_message":"Not connected","nse_mcp_error":None}
 prev_chain={"c":None}; workers_started=False; last_oi_save=0.0
 
@@ -43,6 +44,7 @@ def start_workers():
     workers_started = True
     threading.Thread(target=loop, daemon=True, name="angel-data-loop").start()
     threading.Thread(target=nse_loop, daemon=True, name="nse-data-loop").start()
+    asyncio.create_task(alert_loop(), name="qualified-alert-loop")
 
 def _ensure_angel():
     if client.api is None:
