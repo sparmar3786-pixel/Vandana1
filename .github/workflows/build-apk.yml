@@ -114,7 +114,7 @@ jobs:
 
       - name: Validate Dart source
         working-directory: flutter_app
-        run: flutter analyze --no-fatal-warnings --no-fatal-infos
+        run: flutter analyze --no-fatal-warnings
 
       - name: Validate Railway backend URL
         env:
