@@ -552,32 +552,49 @@ class _TerminalState extends State<Terminal> {
   }
 
   Widget strategiesPage(){
-    final d=strategyData; final ok=d['ok']==true; final ce=d['potential_call_seller_zone']; final pe=d['potential_put_seller_zone'];
-    final trend=(d['trend']??'WAIT').toString();
-    final color=trend.toUpperCase().contains('UP')?Colors.green:trend.toUpperCase().contains('DOWN')?Colors.red:Colors.blue;
-    String zone(dynamic x)=>x is Map?'Strike '+(x['strike']??'-').toString()+' • OI '+(x['oi']??'-').toString()+' • LTP '+(x['ltp']??'-').toString():'-';
+    final d=strategyData;
+    final ok=d["available"]==true;
+    final trend=(d["trend"]??"DATA UNAVAILABLE").toString();
+    final color=trend.toUpperCase().contains("UP")?Colors.green:trend.toUpperCase().contains("DOWN")?Colors.red:Colors.blue;
+    String n(dynamic x)=>x==null||x.toString().isEmpty?"DATA UNAVAILABLE":x.toString();
+    String zone(dynamic x)=>x is Map ? "Strike "+n(x["strike"])+" • OI "+n(x["oi"])+" • LTP "+n(x["ltp"])+" • OI Δ "+n(x["oi_change"])+" • Premium Δ "+n(x["premium_change"]) : "DATA UNAVAILABLE";
+    final ce=(d["highest_ce_oi"] as List?) ?? const [];
+    final pe=(d["highest_pe_oi"] as List?) ?? const [];
+    final cwp=(d["call_writer_pressure"] as List?) ?? const [];
+    final pwp=(d["put_writer_pressure"] as List?) ?? const [];
+    final bc=(d["buildup_counts"] is Map) ? Map<String,dynamic>.from(d["buildup_counts"] as Map) : <String,dynamic>{};
+    final changes=(d["what_is_changing"] as List?) ?? const [];
     return ListView(padding:const EdgeInsets.all(14),children:<Widget>[
-      const Text('Strategy Engine',style:TextStyle(fontSize:25,fontWeight:FontWeight.bold)),
+      const Text("Strategy Engine",style:TextStyle(fontSize:25,fontWeight:FontWeight.bold)),
       const SizedBox(height:6),
-      Text('Live evidence: Angel API + NSE features + option OI. Paper-only.',style:TextStyle(color:Colors.grey)),
+      Text("One live snapshot • Angel API + NSE evidence + Internet AI",style:TextStyle(color:Colors.grey)),
       const SizedBox(height:12),
-      infoCard('INDEX / LTP', (d['index']??selectedOptionSymbol).toString()+' • LTP '+(d['spot']??'-').toString()+' • ATM '+(d['atm']??'-').toString(),Colors.blue),
-      infoCard('TREND', trend+' • p_up '+(d['p_up']??'-').toString()+' • PCR '+(d['pcr']??'-').toString(),color),
-      Row(children:<Widget>[Expanded(child:infoCard('SUPPORT',(d['support']??'-').toString(),Colors.green)),const SizedBox(width:8),Expanded(child:infoCard('RESISTANCE',(d['resistance']??'-').toString(),Colors.red))]),
-      infoCard('CALL OI CONCENTRATION / POTENTIAL WRITER ZONE',zone(ce),Colors.orange),
-      infoCard('PUT OI CONCENTRATION / POTENTIAL WRITER ZONE',zone(pe),Colors.orange),
-      if(ok) ...<Widget>[
-        const Text('TOP CALL OI STRIKES',style:TextStyle(fontSize:16,fontWeight:FontWeight.bold)),
-        ...((d['call_oi_zones'] as List? ?? const[]).map((x)=>Card(child:ListTile(title:Text('CE '+(x['strike']??'-').toString()),subtitle:Text('OI '+(x['oi']??'-').toString()+' • LTP '+(x['ltp']??'-').toString()))))),
-        const SizedBox(height:6),const Text('TOP PUT OI STRIKES',style:TextStyle(fontSize:16,fontWeight:FontWeight.bold)),
-        ...((d['put_oi_zones'] as List? ?? const[]).map((x)=>Card(child:ListTile(title:Text('PE '+(x['strike']??'-').toString()),subtitle:Text('OI '+(x['oi']??'-').toString()+' • LTP '+(x['ltp']??'-').toString()))))),
-      ],
-      if(!ok) infoCard('ENGINE','Live Angel option-chain snapshot unavailable. No fabricated strategy data is shown.',Colors.orange),
-      infoCard('CURRENT ENGINE SIGNAL',(d['engine_signal']??<String,dynamic>{})['action']?.toString()??'WAIT',Colors.blue),
-      FilledButton.icon(onPressed:fetchStrategy,icon:const Icon(Icons.refresh),label:Text(strategyBusy?'REFRESHING...':'REFRESH STRATEGY')),
+      infoCard("INDEX / LTP",n(d["index"])+" • LTP "+n(d["spot"])+" • ATM "+n(d["atm"]),Colors.blue),
+      infoCard("TREND",trend+" • PCR "+n(d["pcr"]),color),
+      Row(children:<Widget>[Expanded(child:infoCard("SUPPORT",n(d["support"]),Colors.green)),const SizedBox(width:8),Expanded(child:infoCard("RESISTANCE",n(d["resistance"]),Colors.red))]),
+      infoCard("MAX PAIN",n(d["max_pain"]),Colors.blue),
+      infoCard("CALL SELLER / WRITER PRESSURE",n(d["call_seller_pressure"]),Colors.orange),
+      infoCard("PUT SELLER / WRITER PRESSURE",n(d["put_seller_pressure"]),Colors.orange),
+      const SizedBox(height:6),
+      const Text("HIGHEST CALL OI",style:TextStyle(fontSize:16,fontWeight:FontWeight.bold)),
+      ...ce.map((x)=>Card(child:ListTile(title:Text("CE "+n(x["strike"])),subtitle:Text("OI "+n(x["oi"])+" • LTP "+n(x["ltp"]))))),
+      const Text("HIGHEST PUT OI",style:TextStyle(fontSize:16,fontWeight:FontWeight.bold)),
+      ...pe.map((x)=>Card(child:ListTile(title:Text("PE "+n(x["strike"])),subtitle:Text("OI "+n(x["oi"])+" • LTP "+n(x["ltp"]))))),
+      const SizedBox(height:6),
+      Card(child:Padding(padding:const EdgeInsets.all(12),child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:<Widget>[
+        const Text("OI / PREMIUM CLASSIFICATION",style:TextStyle(fontSize:16,fontWeight:FontWeight.bold)),
+        row("Long buildup",n(bc["LONG_BUILDUP"])), row("Short buildup",n(bc["SHORT_BUILDUP"])),
+        row("Short covering",n(bc["SHORT_COVERING"])), row("Long unwinding",n(bc["LONG_UNWINDING"])),
+      ]))),
+      if(cwp.isNotEmpty) ...<Widget>[const Text("CALL WRITER EVIDENCE",style:TextStyle(fontSize:16,fontWeight:FontWeight.bold)),...cwp.map((x)=>Card(child:ListTile(title:Text("CE "+n(x["strike"])),subtitle:Text("OI Δ "+n(x["oi_change"])+" • Premium Δ "+n(x["premium_change"]))))))],
+      if(pwp.isNotEmpty) ...<Widget>[const Text("PUT WRITER EVIDENCE",style:TextStyle(fontSize:16,fontWeight:FontWeight.bold)),...pwp.map((x)=>Card(child:ListTile(title:Text("PE "+n(x["strike"])),subtitle:Text("OI Δ "+n(x["oi_change"])+" • Premium Δ "+n(x["premium_change"]))))))],
+      const Text("WHAT IS CHANGING",style:TextStyle(fontSize:16,fontWeight:FontWeight.bold)),
+      ...changes.take(12).map((x)=>Card(child:ListTile(title:Text(n(x["type"])+" "+n(x["strike"])+" • "+n(x["classification"])),subtitle:Text("Premium Δ "+n(x["premium_change"])+" • OI Δ "+n(x["oi_change"]))))),
+      if(!ok) infoCard("ENGINE","Live option snapshot unavailable. No fabricated strategy data is shown.",Colors.orange),
+      infoCard("CURRENT ENGINE SIGNAL",n((d["current_engine_state"] is Map ? (d["current_engine_state"] as Map)["signal_status"] : d["action"])),Colors.blue),
+      FilledButton.icon(onPressed:fetchStrategy,icon:const Icon(Icons.refresh),label:Text(strategyBusy?"REFRESHING...":"REFRESH STRATEGY • LIVE")),
     ]);
   }
-
   Widget aiModelsPage() => PuterAiPage(
     backendUrl: backendUrl,
     apiToken: apiToken,
