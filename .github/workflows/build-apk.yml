@@ -108,9 +108,13 @@ jobs:
         working-directory: flutter_app
         run: flutter pub get
 
+      - name: Validate backend Python source
+        working-directory: backend
+        run: python -m py_compile *.py
+
       - name: Validate Dart source
         working-directory: flutter_app
-        run: dart analyze --no-fatal-warnings || true
+        run: dart analyze --no-fatal-warnings --no-fatal-infos
 
       - name: Validate Railway backend URL
         env:
