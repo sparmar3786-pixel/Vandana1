@@ -599,6 +599,7 @@ class _TerminalState extends State<Terminal> {
     backendUrl: backendUrl,
     apiToken: apiToken,
     initialSnapshot: terminalData,
+    symbol: selectedOptionSymbol,
   );
 
   Widget nseMcp() => ListView(padding: const EdgeInsets.all(16), children: <Widget>[
