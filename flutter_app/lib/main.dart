@@ -66,6 +66,7 @@ class _TerminalState extends State<Terminal> {
   String aiLastRun = '';
   String aiFinal = 'WAIT';
   String aiError = '';
+  String aiLocalText = '';
   Map<String,dynamic> diagnostics = <String,dynamic>{};
   Map<String,dynamic> latestAudit = <String,dynamic>{};
   bool diagnosticsBusy = false;
@@ -988,6 +989,8 @@ class _TerminalState extends State<Terminal> {
           aiFinal=(d['final']??'WAIT').toString();
           aiCrossVerified=d['cross_verified']==true;
           aiReason=(d['reason']??'').toString();
+          final local=d['local_fallback'];
+          aiLocalText=local is Map ? (local['text']??'').toString() : '';
           aiLastRun=DateTime.now().toLocal().toString().substring(0,19);
           if(incoming.isNotEmpty){
             final byId=<String,Map<String,dynamic>>{
@@ -1090,15 +1093,23 @@ class _TerminalState extends State<Terminal> {
             )),
             if(aiError.isNotEmpty) Padding(padding:const EdgeInsets.only(top:8),child:Text(aiError,style:const TextStyle(color:Colors.red,fontSize:11))),
           ]))),
+          if(aiLocalText.isNotEmpty) ...[
+            const SizedBox(height:10),
+            Card(child:Padding(padding:const EdgeInsets.all(14),child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
+              const Text('LOCAL NSE AI',style:TextStyle(fontWeight:FontWeight.bold,letterSpacing:.7)),
+              const SizedBox(height:6),
+              Text(aiLocalText,style:const TextStyle(fontSize:11,height:1.35)),
+            ]))),
+          ],
           const SizedBox(height:10),
           Column(children:_aiProviderCards()),
           const SizedBox(height:6),
           infoCard(
-            configured==0?'AI server keys required':'AI server ready',
+            configured==0?'LOCAL NSE AI ACTIVE':'AI server ready',
             configured==0
-              ? 'Set provider API keys on the Render backend. The APK never stores them.'
+              ? 'AI remains usable without external provider keys. Build-156 terminal/last-available data is analyzed locally; six-provider consensus is optional and stays server-side.'
               : 'Tap RUN 6-AI VALIDATION. No market-card double-tap or hidden activation step is required.',
-            configured==0?Colors.orange:Colors.green,
+            configured==0?Colors.green:Colors.green,
           ),
           const SizedBox(height:6),
           infoCard('Crash protection','Network calls are timeout-guarded, terminal polling is single-flight, malformed JSON is handled safely, and AI failures show an error instead of crashing the APK.',Colors.blue),
