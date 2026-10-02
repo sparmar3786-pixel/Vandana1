@@ -8,6 +8,7 @@ import 'package:webview_flutter/webview_flutter.dart';
 import 'signal_alerts.dart';
 import 'puter_ai_page.dart';
 import 'signals_screen.dart';
+import 'dashboard_screen.dart';
 
 const String railwayBackendUrl =
     String.fromEnvironment('RAILWAY_BACKEND_URL', defaultValue: '');
@@ -224,7 +225,7 @@ class _TerminalState extends State<Terminal> {
   );
 
   Widget buildScreen() {
-    if (selected == 0) return MarketTerminalScreen(backendUrl: backendUrl, apiToken: apiToken);
+    if (selected == 0) return DashboardScreen(backendUrl: backendUrl, apiToken: apiToken);
     if (selected == 1) return marketPage();
     if (selected == 2) return commodityPage();
     if (selected == 3) return SignalsScreen(backendUrl: backendUrl, apiToken: apiToken);
