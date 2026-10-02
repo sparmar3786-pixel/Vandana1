@@ -7,7 +7,6 @@ import 'package:file_saver/file_saver.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 import 'signal_alerts.dart';
 import 'puter_ai_page.dart';
-import 'dashboard_screen.dart';
 
 const String railwayBackendUrl =
     String.fromEnvironment('RAILWAY_BACKEND_URL', defaultValue: '');
@@ -36,7 +35,7 @@ class _TerminalState extends State<Terminal> {
   // while screens 19-30 provide the complete design-system views from the supplied
   // 30 Screen Layout reference. No order-placement UI is added.
   static const screens = <String>[
-    'Dashboard','Market','Commodity','Signals','OI Lab','Watchlist','Charts',
+    'Market Terminal','Market','Commodity','Signals','OI Lab','Watchlist','Charts',
     'Option Chain','News','Market Details','Angel API','NSE','NSE MCP','Data',
     'Strategies','AI Models','Settings','More',
     'Splash / Launch','Login / Authentication','Market Overview','OI Heatmap',
@@ -44,7 +43,7 @@ class _TerminalState extends State<Terminal> {
     'Trade Plans (S+)','Backtest','Strategy Registry','AI 6-Layer Panel'
   ];
   static const icons = <IconData>[
-    Icons.dashboard, Icons.show_chart, Icons.precision_manufacturing,
+    Icons.show_chart, Icons.show_chart, Icons.precision_manufacturing,
     Icons.notifications_active, Icons.analytics, Icons.star, Icons.candlestick_chart,
     Icons.table_chart, Icons.article, Icons.info_outline, Icons.key, Icons.language,
     Icons.hub, Icons.storage, Icons.rule, Icons.psychology, Icons.tune, Icons.more_horiz,
@@ -224,7 +223,7 @@ class _TerminalState extends State<Terminal> {
   );
 
   Widget buildScreen() {
-    if (selected == 0) return DashboardScreen(backendUrl: backendUrl, apiToken: apiToken);
+    if (selected == 0) return MarketTerminalScreen(backendUrl: backendUrl, apiToken: apiToken);
     if (selected == 1) return marketPage();
     if (selected == 2) return commodityPage();
     if (selected == 3) return signals();
