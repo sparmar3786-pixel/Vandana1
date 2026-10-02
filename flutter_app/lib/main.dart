@@ -224,7 +224,7 @@ class _TerminalState extends State<Terminal> {
   );
 
   Widget buildScreen() {
-    if (selected == 0) return const DashboardScreen();
+    if (selected == 0) return DashboardScreen(backendUrl: backendUrl, apiToken: apiToken);
     if (selected == 1) return marketPage();
     if (selected == 2) return commodityPage();
     if (selected == 3) return signals();
