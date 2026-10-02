@@ -1,7 +1,7 @@
 """Network/API gateway for NSE Algo Signal. PAPER signals only; no order placement."""
 import asyncio,threading,time,datetime as dt,os
 from typing import Optional
-from fastapi import FastAPI,Header,HTTPException,Response
+from fastapi import FastAPI,Header,HTTPException,Response,WebSocket,WebSocketDisconnect
 from fastapi.middleware.gzip import GZipMiddleware
 from pydantic import BaseModel
 import uvicorn
@@ -98,17 +98,26 @@ def nse_loop():
         except Exception as e: state["nse_error"]=str(e)
         time.sleep(C.NSE_POLL_SEC)
 
-def auth(x_token:str):
-    if x_token!=C.API_TOKEN: raise HTTPException(401,"bad token")
+def auth(x_token: str = None, x_app_key: str = None):
+    expected = (C.API_TOKEN or "").strip()
+    provided = (x_token or x_app_key or "").strip()
+    if expected and provided != expected:
+        raise HTTPException(
+            401,
+            detail={
+                "code": "APP_TOKEN_REJECTED",
+                "message": "Terminal app token rejected. This is not the Angel One SmartAPI key."
+            },
+        )
 
 @app.get("/health")
 def health():
-    return {"ok":True,"market_open":market_open(),"angel_connected":client.api is not None,"angel_message":state["angel_message"],"nse_mcp":"configured","last_update":state["last_update"],"error":state["error"],"nse_error":state["nse_error"],"nse_mcp_error":state["nse_mcp_error"]}
+    return {"ok":True,"auth_mode":"optional" if not C.API_TOKEN else "required","market_open":market_open(),"angel_connected":client.api is not None,"angel_message":state["angel_message"],"nse_mcp":"configured","last_update":state["last_update"],"error":state["error"],"nse_error":state["nse_error"],"nse_mcp_error":state["nse_mcp_error"]}
 
 @app.post("/v1/angel/login")
 @app.post("/angel/login")
-def angel_login(body:AngelLoginRequest,x_token:str=Header(None)):
-    auth(x_token)
+def angel_login(body:AngelLoginRequest,x_token:str=Header(None),x_app_key:str=Header(None)):
+    auth(x_token,x_app_key)
     client_code=body.client_code
     if not client_code: raise HTTPException(400,"Client ID is required.")
     if len(body.totp)!=6 or not body.totp.isdigit(): raise HTTPException(400,"TOTP must be the current 6-digit code.")
@@ -118,14 +127,44 @@ def angel_login(body:AngelLoginRequest,x_token:str=Header(None)):
         state["angel_message"]="Angel One session reused (6h)." if reused else "Angel One connected."
         state["error"]=None
         return {"ok":True,"connected":True,"session_reused":reused,"message":"Existing Angel session reused." if reused else "Angel One connected.","profile":result.get("data",{}).get("clientcode")}
-    except Exception:
-        client.api=None; client.session_started=0.0; state["angel_message"]="Angel connection failed."; state["error"]="Angel login failed"
-        raise HTTPException(401,"Angel login failed. Check Client ID, PIN, TOTP and API key.")
+    except Exception as ex:
+        client.api=None
+        client.session_started=0.0
+        state["angel_message"]="Angel connection failed."
+        safe = str(ex).replace(body.apiKey or "", "[REDACTED]").replace(body.pin, "[REDACTED]").replace(body.totp, "[REDACTED]")
+        state["error"]=safe[:300]
+        raise HTTPException(
+            401,
+            detail={
+                "code": "ANGEL_LOGIN_REJECTED",
+                "message": safe[:300] or "Angel login failed. Check Client ID, PIN, TOTP and SmartAPI key."
+            },
+        )
 
 @app.get("/v1/angel/status")
 @app.get("/angel/status")
-def angel_status(x_token:str=Header(None)):
-    auth(x_token); return {"connected":client.api is not None,"message":state["angel_message"],"last_update":state["last_update"],"error":state["error"]}
+def angel_status(x_token:str=Header(None),x_app_key:str=Header(None)):
+    auth(x_token,x_app_key); return {"connected":client.api is not None,"message":state["angel_message"],"last_update":state["last_update"],"error":state["error"]}
+@app.websocket("/v1/ws")
+async def native_market_websocket(websocket: WebSocket):
+    token = (websocket.query_params.get("token") or "").strip()
+    expected = (C.API_TOKEN or "").strip()
+    if expected and token != expected:
+        await websocket.close(code=1008, reason="APP_TOKEN_REJECTED")
+        return
+    await websocket.accept()
+    try:
+        while True:
+            await websocket.send_json(terminal_snapshot())
+            await asyncio.sleep(1.0)
+    except WebSocketDisconnect:
+        return
+    except Exception:
+        try:
+            await websocket.close(code=1011)
+        except Exception:
+            pass
+
 
 
 def angel_required():
