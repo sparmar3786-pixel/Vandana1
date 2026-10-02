@@ -38,7 +38,7 @@ class AngelClient:
                 self.api=None; self.session_started=0.0
                 raise RuntimeError(f"Angel login failed: {d.get('message', d)}")
             try:
-                profile = self.api.getProfile(d.get("data", {}).get("jwtToken") or d.get("data", {}).get("jwt_token"))
+                profile = self.api.getProfile(d.get("data", {}).get("refreshToken") or d.get("data", {}).get("refresh_token"))
                 if isinstance(profile, dict) and profile.get("status") is False:
                     raise RuntimeError(
                         f"SmartAPI data authentication rejected: {profile.get('errorcode','UNKNOWN')} {profile.get('message','')}"
