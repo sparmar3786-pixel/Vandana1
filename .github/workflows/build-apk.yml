@@ -39,8 +39,8 @@ jobs:
 
           manifest = Path("android/app/src/main/AndroidManifest.xml")
           s = manifest.read_text()
-          s = s.replace('android:label="parmar_trading"', 'android:label="Parmar Trading"')
-          s = s.replace('android:label="algo_terminal"', 'android:label="Parmar Trading"')
+          import re
+          s = re.sub(r'android:label="[^"]+"', 'android:label="Parmar Trading"', s, count=1)
           if 'android:label=' not in s:
               s = s.replace('<application ', '<application android:label="Parmar Trading" ', 1)
           if 'android:icon=' in s:
