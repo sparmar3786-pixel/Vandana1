@@ -1,5 +1,5 @@
-name: algo_terminal
-description: Signal terminal for Angel One OI algo
+name: parmar_trading
+description: Parmar Trading signal terminal for Angel One OI algo
 publish_to: none
 version: 1.0.0+1
 environment:
