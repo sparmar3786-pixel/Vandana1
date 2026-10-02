@@ -10,10 +10,12 @@ from angel_data_layer import Normalizer, validate, FeatureStore, model_input
 class FakeAngel:
     def candles(self, exchange, token, interval, days):
         rows = []
+        # Keep the fixture inside NSE cash-market hours across two sessions.
+        # 120 bars leaves enough fully-warmed indicator rows for a 60-bar AI window.
         base = pd.Timestamp("2026-09-28 09:15", tz="Asia/Kolkata")
         price = 25000.0
-        for i in range(90):
-            t = base + pd.Timedelta(minutes=5 * i)
+        for i in range(120):
+            t = base + pd.Timedelta(days=i // 75, minutes=5 * (i % 75))
             close = price + (i % 7 - 3) * 2.0
             rows.append([t.isoformat(), str(price), str(max(price, close) + 1), str(min(price, close) - 1), str(close), "100"])
             price = close
