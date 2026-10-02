@@ -14,12 +14,12 @@ button{background:transparent;color:var(--tx);border:1px solid var(--gr);border-
 button.on{background:var(--ac);color:#fff;border-color:var(--ac)}
 button:focus-visible{outline:2px solid var(--ac)}
 .sep{width:1px;height:18px;background:var(--gr);flex:none;margin:0 3px}
-#sym{font-weight:700;font-size:14px;margin-right:4px}
+#sym{font:700 13px system-ui;background:var(--bg);color:var(--tx);border:1px solid var(--gr);border-radius:6px;padding:6px 8px;flex:none;max-width:170px}
 #px{font-weight:600;font-variant-numeric:tabular-nums;margin-right:6px}
 #w{flex:1;min-height:0;position:relative}
 canvas{position:absolute;inset:0;width:100%;height:100%;touch-action:none;cursor:crosshair}
 </style></head><body>
-<div class="bar"><span id="sym">NIFTY 50</span><span id="px"></span>
+<div class="bar"><select id="sym" aria-label="Index"></select><span id="px"></span>
 <button data-tf="1">5m</button><button data-tf="3">15m</button><button data-tf="12">1H</button><button data-tf="75">1D</button><span class="sep"></span>
 <button data-ty="c">Candle</button><button data-ty="l">Line</button><button data-ty="a">Area</button><span class="sep"></span>
 <button id="th">Theme</button><button id="rst">Latest</button></div>
@@ -33,7 +33,13 @@ const S={tf:1,ty:'c',ind:{sma:1,ema:1,bb:0,vol:1,rsi:1,macd:0},tool:'',sel:-1,st
 const FIB=[0,.236,.382,.5,.618,.786,1],MO=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 let base=[],d=[],I={};
 /* ---------- data ---------- */
-(function(){let p=22500;const t0=Date.UTC(2025,0,6,3,45)/1000;for(let i=0;i<8000;i++){const dy=Math.floor(i/75),o=p,c=o*(1+(R()-.5)*.003+Math.sin(i/400)*.00009);base.push({t:t0+(dy+2*Math.floor(dy/5))*86400+(i%75)*300,o,h:Math.max(o,c)*(1+R()*.0012),l:Math.min(o,c)*(1-R()*.0012),c,v:1e4+R()*9e4*(1+Math.abs(c/o-1)*300)});p=c}})();
+const IDX={"Benchmark":[["NIFTY 50",25000,1],["NIFTY BANK",55000,1.2],["SENSEX",82000,1],["FINNIFTY",26500,1.1],["MIDCPNIFTY",13000,1.3],["INDIA VIX",14,5]],
+"Broad market":[["NIFTY NEXT 50",68000,1.2],["NIFTY 100",26000,1],["NIFTY 200",14000,1],["NIFTY 500",23000,1],["NIFTY MIDCAP 100",59000,1.3],["NIFTY SMALLCAP 100",18000,1.5]],
+"Sectoral":[["NIFTY IT",36000,1.2],["NIFTY AUTO",26000,1.2],["NIFTY PHARMA",22000,1.1],["NIFTY FMCG",55000,.9],["NIFTY METAL",10000,1.5],["NIFTY REALTY",950,1.6],["NIFTY ENERGY",36000,1.3],["NIFTY PSU BANK",7000,1.5],["NIFTY PVT BANK",27000,1.1],["NIFTY FIN SERVICE",27000,1.1],["NIFTY MEDIA",1800,1.5],["NIFTY INFRA",9500,1.2]],
+"BSE":[["BSE MIDCAP",45000,1.3],["BSE SMALLCAP",52000,1.5],["BSE BANKEX",63000,1.2]]};
+const IM={};Object.values(IDX).flat().forEach(a=>IM[a[0]]=a);let SYM='NIFTY 50';
+function mk(sym,p,vf){let a=0;for(const ch of sym)a=(a*31+ch.charCodeAt(0))>>>0;const r=()=>{a=a+0x6D2B79F5|0;let t=Math.imul(a^a>>>15,1|a);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296},b=[],t0=Date.UTC(2025,0,6,3,45)/1000;for(let i=0;i<8000;i++){const dy=Math.floor(i/75),o=p,c=o*(1+((r()-.5)*.003+Math.sin(i/400)*.00009)*vf);b.push({t:t0+(dy+2*Math.floor(dy/5))*86400+(i%75)*300,o,h:Math.max(o,c)*(1+r()*.0012*vf),l:Math.min(o,c)*(1-r()*.0012*vf),c,v:1e4+r()*9e4*(1+Math.abs(c/o-1)*300)});p=c}return b}
+function load(s){SYM=s;const m=IM[s];base=mk(s,m[1],m[2]);try{const x=JSON.parse(localStorage.getItem('pc_dr_'+s)||'[]');S.dr=Array.isArray(x)?x:[]}catch(_){S.dr=[]}S.sel=-1;rs();S.start=d.length-L.r/S.bw+4;clampV();dirty=1}
 function rs(){const f=S.tf,r=[];for(let j=0;j<base.length;j+=f){const g=base.slice(j,j+f);let h=-1e12,l=1e12,v=0;for(const x of g){if(x.h>h)h=x.h;if(x.l<l)l=x.l;v+=x.v}r.push({t:g[0].t,o:g[0].o,h,l,c:g[g.length-1].c,v})}d=r;comp()}
 /* ---------- indicators ---------- */
 function ema(a,n){const k=2/(n+1),r=[];let e=a[0];for(let i=0;i<a.length;i++){e=i?a[i]*k+e*(1-k):a[0];r.push(e)}return r}
@@ -126,7 +132,7 @@ $('#rst').onclick=()=>{S.start=d.length-L.r/S.bw*.9;clampV();dirty=1};
 $('#th').onclick=()=>{const r=document.documentElement,dk=getComputedStyle(r).getPropertyValue('--bg').trim()=='#0e1420';r.dataset.theme=dk?'light':'dark';theme()};
 function theme(){const s=getComputedStyle(document.documentElement),g=k=>s.getPropertyValue(k).trim();col={bg:g('--bg'),gr:g('--gr'),mu:g('--mu'),up:g('--up'),dn:g('--dn'),ac:g('--ac')};dirty=1}
 matchMedia('(prefers-color-scheme:dark)').addEventListener('change',theme);
-function save(){try{localStorage.setItem('pc_dr',JSON.stringify(S.dr))}catch(_){}}
+function save(){try{localStorage.setItem('pc_dr_'+SYM,JSON.stringify(S.dr))}catch(_){}}
 function size(){const r=$('#w').getBoundingClientRect();dpr=devicePixelRatio||1;W=r.width;H=r.height;cv.width=W*dpr;cv.height=H*dpr;dirty=1}
 new ResizeObserver(size).observe($('#w'));
 /* ---------- live tick ---------- */
@@ -134,21 +140,27 @@ setInterval(()=>{if(liveMode)return;const q=base[base.length-1],n0=d.length,edge
 if(R()<.02){const o=q.c;base.push({t:q.t+300,o,h:o,l:o,c:o,v:0})}const b=base[base.length-1];b.c*=1+(R()-.5)*.0007;b.h=Math.max(b.h,b.c);b.l=Math.min(b.l,b.c);b.v+=R()*4e3;
 rs();if(edge&&d.length>n0)S.start+=d.length-n0;dirty=1},700);
 /* ---------- boot ---------- */
-try{const s=JSON.parse(localStorage.getItem('pc_dr')||'[]');if(Array.isArray(s))S.dr=s}catch(_){}
-theme();rs();sync();size();lay();S.start=d.length-L.r/S.bw+4;
+theme();sync();size();lay();
+{const sl=$('#sym');for(const g in IDX){const og=document.createElement('optgroup');og.label=g;IDX[g].forEach(a=>{const o=document.createElement('option');o.value=o.textContent=a[0];og.appendChild(o)});sl.appendChild(og)}sl.onchange=()=>load(sl.value)}
+load('NIFTY 50');
 (function loop(){if(dirty&&W)draw();requestAnimationFrame(loop)})();
 
 /* ---------- Vandana live-data bridge ---------- */
 let liveMode=false;
-window.setChartSymbol=function(name){if(name){$('#sym').textContent=String(name)}};
+window.setChartSymbol=function(name){
+  if(!name)return;
+  const sl=$('#sym');
+  if([...sl.options].some(o=>o.value===String(name)))sl.value=String(name);
+  SYM=String(name);
+};
 window.setChartData=function(rows){
-  if(!Array.isArray(rows)) return;
+  if(!Array.isArray(rows))return;
   const out=[];
   for(const r of rows){
     let t,o,h,l,c,v;
     if(Array.isArray(r)){t=r[0];o=r[1];h=r[2];l=r[3];c=r[4];v=r[5]??0;}
     else if(r&&typeof r==='object'){t=r.timestamp??r.time??r.t;o=r.open??r.o;h=r.high??r.h;l=r.low??r.l;c=r.close??r.c;v=r.volume??r.v??0;}
-    if(typeof t==='string') t=Date.parse(t)/1000;
+    if(typeof t==='string')t=Date.parse(t)/1000;
     t=Number(t);if(t>1e12)t/=1000;
     o=Number(o);h=Number(h);l=Number(l);c=Number(c);v=Number(v)||0;
     if(Number.isFinite(t)&&[o,h,l,c].every(Number.isFinite))out.push({t,o,h,l,c,v});
