@@ -20,6 +20,7 @@ from notifier import router as alert_router, alert_loop
 from strategy_store import save_oi_snapshot
 from strategy_mcp_server import mount_strategy_mcp
 from engine_contract import engine_state, strategy_state
+from angel_data_layer import build_ai_read
 
 app=FastAPI(title="NSE Algo Signal API"); app.add_middleware(GZipMiddleware,minimum_size=1024); app.include_router(strategy_router); app.include_router(market_core_router); app.include_router(council_router); app.include_router(alert_router); eng=Engine(); client=AngelClient(); nse=NSEClient(); nse_mcp=NSEMCP()
 state={"error":None,"nse_error":None,"last_update":None,"angel_message":"Not connected","nse_mcp_error":None,"nse_mcp_checked":False}
@@ -351,8 +352,16 @@ def ai_context(index:str="NIFTY",x_token:str=Header(None)):
         state["nse_mcp_error"]=str(e)
     official=_nse_site_evidence({"terminal":terminal,"symbol":index})
     strategy=_strategy_refresh(index)
+    data_layer=None
+    if client.api is not None:
+        try:
+            data_layer=build_ai_read(client, index.upper(), "FIVE_MINUTE", 5)
+        except Exception as exc:
+            data_layer={"available":False,"error":str(exc)[:300],"source":"Angel One SmartAPI -> AI Read data layer"}
+    else:
+        data_layer={"available":False,"reason":"Angel One is not connected. Connect from Angel API screen first.","source":"Angel One SmartAPI -> AI Read data layer"}
     market=terminal.get("market") or {}
-    return {"terminal":terminal,"strategy":strategy,"three_sources":{
+    return {"terminal":terminal,"strategy":strategy,"data_layer":data_layer,"three_sources":{
         "angel_api":{"connected":bool((terminal.get("angel_api") or {}).get("connected")),"data":terminal.get("data"),"option_chain":terminal.get("option_chain")},
         "nse_mcp":mcp,
         "nse_internet":{"connected":official.get("connected",False),"evidence":official}
