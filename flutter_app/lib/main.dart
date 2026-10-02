@@ -19,7 +19,7 @@ class AlgoApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) => MaterialApp(
     debugShowCheckedModeBanner: false,
-    title: 'NSE Algo Signal',
+    title: 'Parmar Trading',
     theme: ThemeData.dark(useMaterial3: true),
     home: const Terminal(),
   );
@@ -180,7 +180,7 @@ class _TerminalState extends State<Terminal> {
           const DrawerHeader(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: <Widget>[
             Icon(Icons.candlestick_chart, size: 42),
             SizedBox(height: 10),
-            Text('NSE Algo Signal', style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
+            Text('Parmar Trading', style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
             SizedBox(height: 4),
             Text('30-screen NSE AI terminal'),
           ])),
@@ -877,7 +877,7 @@ class _TerminalState extends State<Terminal> {
       content.add(section('LAUNCH PANEL', Column(children: <Widget>[
         const Icon(Icons.candlestick_chart, size: 56),
         const SizedBox(height: 8),
-        const Text('NSE-AI-TERMINAL', style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
+        const Text('PARMAR TRADING', style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
         const SizedBox(height: 4),
         const Text('Smart Analysis  •  Disciplined Execution  •  AI Powered'),
         const SizedBox(height: 14),
