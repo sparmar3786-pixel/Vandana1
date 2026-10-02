@@ -201,6 +201,11 @@ jobs:
         working-directory: flutter_app
         run: flutter pub get
 
+      - name: Install backend test dependencies
+        working-directory: backend
+        run: |
+          python -m pip install --disable-pip-version-check --no-input "numpy" "pandas"
+
       - name: Validate backend Python source
         working-directory: backend
         run: python -m py_compile *.py
