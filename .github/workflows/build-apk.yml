@@ -205,6 +205,10 @@ jobs:
         working-directory: backend
         run: python -m py_compile *.py
 
+      - name: Run backend data-layer regression tests
+        working-directory: backend
+        run: python -m unittest discover -s . -p 'test_*.py' -v
+
       - name: Validate Dart source
         working-directory: flutter_app
         run: |
