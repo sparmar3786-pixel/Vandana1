@@ -320,9 +320,14 @@ class _TerminalState extends State<Terminal> {
     if (!proChartReady) return;
     try {
       final payload = jsonEncode(liveCandles);
-      await proChartController.runJavaScript('window.setChartData($payload);');
+      await proChartController.runJavaScript('window.setChartData(' + payload + ');');
       await proChartController.runJavaScript(
-        'window.setChartSymbol(
+        'window.setChartSymbol(' + jsonEncode(selectedChartName) + ');',
+      );
+    } catch (_) {}
+  }
+
+  Future<void> fetchCandles() async {
     if(chartBusy)return;
     chartBusy=true;
     if(mounted)setState(()=>angelDataBusy=true);
@@ -332,9 +337,15 @@ class _TerminalState extends State<Terminal> {
       if(r.statusCode==200){
         final d=jsonDecode(r.body);
         final rows=d is Map && d['data'] is List ? d['data'] : <dynamic>[];
-        if(mounted) { setState(()=>liveCandles=rows is List ? rows : <dynamic>[]); await pushProChartData(); }
+        if(mounted) {
+          setState(()=>liveCandles=rows is List ? rows : <dynamic>[]);
+          await pushProChartData();
+        }
       }
-    } catch (_) {} finally { chartBusy=false; if(mounted) setState(()=>angelDataBusy=false); }
+    } catch (_) {} finally {
+      chartBusy=false;
+      if(mounted) setState(()=>angelDataBusy=false);
+    }
   }
 
   Future<void> fetchOptionRows() async {
