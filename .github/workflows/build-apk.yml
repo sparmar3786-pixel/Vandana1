@@ -1,7 +1,7 @@
 name: Build Parmar Trading APK
 on:
   push:
-    branches: [main]
+    branches: [main, feature/add-market-terminal-dashboard]
   workflow_dispatch:
 
 permissions:
