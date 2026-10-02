@@ -81,7 +81,7 @@ async function refresh(){
 let wsStarted=false;
 function connectWS(){
   if(wsStarted)return; wsStarted=true;
-  for(const u of wsUrls()){try{const ws=new WebSocket(u);ws.onopen=()=>{S.live=true;S.error=null;render()};ws.onmessage=e=>{try{applySnapshot(JSON.parse(e.data))}catch(_){}};ws.onerror=()=>{};ws.onclose=()=>{if(S.live){S.live=false;render()}setTimeout(connectWS,4000)};return}catch(_){}}
+  for(const u of wsUrls()){try{const ws=new WebSocket(u);ws.onopen=()=>{S.live=true;S.error=null;render()};ws.onmessage=e=>{try{applySnapshot(JSON.parse(e.data))}catch(_){}};ws.onerror=()=>{};ws.onclose=()=>{wsStarted=false;if(S.live){S.live=false;render()}setTimeout(connectWS,4000)};return}catch(_){}}
 }
 function view(){const t=S.tab,f=S.f[t];let a=(t==='m'?IDX:COM).filter(x=>t==='m'?(f==='all'||x.ex===f):(f==='all'||(f==='fut'?x.t==='FUT':true)));if(t==='m'&&S.sort)a=[...a].sort((p,q)=>(pct(q)-pct(p))*(S.sort===1?1:-1));return a}
 function paint(x,el,fl){if(!el)return;const up=Number(x.ltp)>=Number(x.pc),L=el.querySelector('.lt'),H=el.querySelector('.ch'),sp=el.querySelector('.sp'),r=el.querySelector('.rg i');L.textContent=fmt(x.ltp,x.d);if(fl){L.classList.remove('fu','fd');void L.offsetWidth;L.classList.add(fl)}H.textContent=(up?'▲':'▼')+' '+Math.abs(pct(x)).toFixed(2)+'%';H.classList.toggle('u',up);H.classList.toggle('d',!up);el.querySelector('.cp').textContent=(up?'+':'−')+fmt(Math.abs(Number(x.ltp)-Number(x.pc)),x.d);sp.classList.toggle('u',up);if(sp.firstChild)sp.firstChild.setAttribute('points',spark(x.s||[x.pc,x.ltp],56,24));if(r&&x.hi>x.lo)r.style.left=((x.ltp-x.lo)/(x.hi-x.lo)*100)+'%'}
