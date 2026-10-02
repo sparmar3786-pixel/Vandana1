@@ -167,7 +167,7 @@ class _TerminalState extends State<Terminal> {
   @override Widget build(BuildContext context) => Theme(
     data: ThemeData(useMaterial3: true, brightness: darkMode ? Brightness.dark : Brightness.light),
     child: Scaffold(
-    appBar: AppBar(
+    appBar: selected == 0 ? null : AppBar(
       title: Text(screens[selected]),
       actions: <Widget>[
         IconButton(onPressed: fetchTerminal, icon: const Icon(Icons.refresh)),
