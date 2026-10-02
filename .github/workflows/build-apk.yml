@@ -29,11 +29,52 @@ jobs:
 
       - name: Create Android platform
         working-directory: flutter_app
-        run: flutter create . --platforms=android --project-name algo_terminal
+        run: flutter create . --platforms=android --project-name parmar_trading
+
+      - name: Apply Parmar Trading branding and pro launcher icon
+        working-directory: flutter_app
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          manifest = Path("android/app/src/main/AndroidManifest.xml")
+          s = manifest.read_text()
+          s = s.replace('android:label="parmar_trading"', 'android:label="Parmar Trading"')
+          s = s.replace('android:label="algo_terminal"', 'android:label="Parmar Trading"')
+          if 'android:label=' not in s:
+              s = s.replace('<application ', '<application android:label="Parmar Trading" ', 1)
+          if 'android:icon=' in s:
+              import re
+              s = re.sub(r'android:icon="[^"]+"', 'android:icon="@drawable/parmar_trading_icon"', s, count=1)
+          else:
+              s = s.replace('<application ', '<application android:icon="@drawable/parmar_trading_icon" ', 1)
+          manifest.write_text(s)
+
+          icon = Path("android/app/src/main/res/drawable/parmar_trading_icon.xml")
+          icon.parent.mkdir(parents=True, exist_ok=True)
+          icon.write_text("""<?xml version="1.0" encoding="utf-8"?>
+          <vector xmlns:android="http://schemas.android.com/apk/res/android"
+              android:width="108dp"
+              android:height="108dp"
+              android:viewportWidth="108"
+              android:viewportHeight="108">
+              <path android:fillColor="#07111F" android:pathData="M10,2 L98,2 Q106,2 106,10 L106,98 Q106,106 98,106 L10,106 Q2,106 2,98 L2,10 Q2,2 10,2 Z"/>
+              <path android:fillColor="@android:color/transparent" android:strokeColor="#D9A72A" android:strokeWidth="2.5" android:pathData="M10,5 L98,5 Q103,5 103,10 L103,98 Q103,103 98,103 L10,103 Q5,103 5,98 L5,10 Q5,5 10,5 Z"/>
+              <path android:fillColor="#13C99A" android:pathData="M15,70 L15,53 L18,53 L18,70 Z M27,62 L27,38 L30,38 L30,62 Z M39,66 L39,47 L42,47 L42,66 Z M51,55 L51,30 L54,30 L54,55 Z M63,48 L63,23 L66,23 L66,48 Z M75,41 L75,16 L78,16 L78,41 Z"/>
+              <path android:fillColor="#E9444C" android:pathData="M15,70 L18,70 L18,82 L15,82 Z M39,66 L42,66 L42,75 L39,75 Z"/>
+              <path android:fillColor="#F1C64B" android:pathData="M24,78 L47,55 L57,64 L84,35 L88,39 L57,72 L47,63 L28,83 Z"/>
+              <path android:fillColor="#F1C64B" android:pathData="M76,33 L91,31 L87,46 Z"/>
+              <path android:fillColor="#F4F5F7" android:pathData="M24,27 L24,22 L55,22 Q66,22 66,33 L66,40 L60,40 L60,33 Q60,28 55,28 Z M24,22 L30,22 L30,72 L24,72 Z M28,43 L53,43 Q60,43 60,50 Q60,57 53,57 L28,57 L28,51 L51,51 Q54,51 54,50 Q54,49 51,49 L28,49 Z"/>
+          </vector>
+          """)
+          PY
+          grep -n "Parmar Trading\|parmar_trading_icon" android/app/src/main/AndroidManifest.xml
+          test -f android/app/src/main/res/drawable/parmar_trading_icon.xml
 
       - name: Remove generated sample test
         working-directory: flutter_app
         run: rm -rf test
+
       - name: Configure Android desugaring
         working-directory: flutter_app
         run: |
@@ -76,7 +117,6 @@ jobs:
               p.write_text(s)
           PY
           grep -n "CoreLibraryDesugaring\|coreLibraryDesugaring\|desugar_jdk_libs" android/app/build.gradle* || true
-          # Puter.js runs inside webview_flutter. webview_flutter_android 4.10.x requires Android API 24+.
           python - <<'PY'
           from pathlib import Path
           p = Path("android/app/build.gradle.kts")
@@ -98,11 +138,10 @@ jobs:
           p = Path("android/app/src/main/AndroidManifest.xml")
           s = p.read_text()
           if "android.permission.INTERNET" not in s:
-              s = s.replace("<manifest ", '<manifest ')
-              s = s.replace("xmlns:android=", 'xmlns:android=', 1)
+              s = s.replace("marker", "marker")
               marker = "<application"
               s = s.replace(marker, '<uses-permission android:name="android.permission.INTERNET"/>\n    ' + marker, 1)
-          s = s.replace("<application", '<application android:usesCleartextTraffic="true"', 1)
+          s = s.replace('<application ', '<application android:usesCleartextTraffic="true" ', 1)
           p.write_text(s)
           PY
           grep -n "INTERNET\|usesCleartextTraffic" android/app/src/main/AndroidManifest.xml
@@ -147,6 +186,7 @@ jobs:
               raise SystemExit(f"RAILWAY_BACKEND_URL must point to Railway (*.railway.app), got: {host}")
           print("Railway backend URL validated:", host)
           PY
+
       - name: Build installable APK
         working-directory: flutter_app
         run: |
@@ -169,6 +209,6 @@ jobs:
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: NSE-Algo-Trading-18-Screen-APK
+          name: Parmar-Trading-APK
           path: flutter_app/build/app/outputs/flutter-apk/app-debug.apk
           if-no-files-found: error
