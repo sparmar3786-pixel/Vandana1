@@ -32,8 +32,8 @@ button:focus-visible{outline:2px solid var(--ac);outline-offset:2px}.src{margin:
 <div id="sh" class="sheet" hidden></div>
 <script>
 const $=s=>document.querySelector(s),app=$('#app');
-const API=(window.DASH_API_BASE||localStorage.getItem('dash_api_base')||'').replace(/\/$/,'');
-const TOKEN=window.DASH_TOKEN||localStorage.getItem('dash_token')||'';
+let API=(window.DASH_API_BASE||localStorage.getItem('dash_api_base')||'').replace(/\/$/,'');
+let TOKEN=window.DASH_TOKEN||localStorage.getItem('dash_token')||'';
 const apiHeaders=()=>TOKEN?{'X-Dash-Token':TOKEN,'X-App-Key':TOKEN}: {};
 const urls=p=>[API+p,(API?API:'')+'/api'+p,(API?API:'')+'/v1'+p];
 async function getJson(path){
@@ -74,10 +74,13 @@ function applySnapshot(snap){
 }
 async function refresh(){
   try{const snap=await getJson('/api/snapshot');applySnapshot(snap);return}catch(_){}
+  try{const snap=await getJson('/api/overview');applySnapshot(snap);return}catch(_){}
   try{const snap=await getJson('/terminal');applySnapshot(snap);return}catch(_){}
   S.error='Backend snapshot unavailable — showing local preview data.';S.live=false;render();
 }
+let wsStarted=false;
 function connectWS(){
+  if(wsStarted)return; wsStarted=true;
   for(const u of wsUrls()){try{const ws=new WebSocket(u);ws.onopen=()=>{S.live=true;S.error=null;render()};ws.onmessage=e=>{try{applySnapshot(JSON.parse(e.data))}catch(_){}};ws.onerror=()=>{};ws.onclose=()=>{if(S.live){S.live=false;render()}setTimeout(connectWS,4000)};return}catch(_){}}
 }
 function view(){const t=S.tab,f=S.f[t];let a=(t==='m'?IDX:COM).filter(x=>t==='m'?(f==='all'||x.ex===f):(f==='all'||(f==='fut'?x.t==='FUT':true)));if(t==='m'&&S.sort)a=[...a].sort((p,q)=>(pct(q)-pct(p))*(S.sort===1?1:-1));return a}
@@ -89,7 +92,10 @@ function sheet(){const x=S.sel,sh=$('#sh');if(!x){sh.hidden=true;return}sh.hidde
 app.addEventListener('click',e=>{const c=e.target.closest('.chip'),r=e.target.closest('.row');if(c){if(c.dataset.sort!==undefined)S.sort=(S.sort+1)%3;else S.f[S.tab]=c.dataset.f;render()}else if(r){S.sel=([...IDX,...COM]).find(x=>String(x.id)===String(r.dataset.id));sheet()}});
 $('#sh').addEventListener('click',e=>{if(e.target.id==='sh'||e.target.closest('[data-x]')){S.sel=null;sheet()}});addEventListener('keydown',e=>{if(e.key==='Escape'&&S.sel){S.sel=null;sheet()}});
 $('.nav').addEventListener('click',e=>{const b=e.target.closest('button');if(b){S.tab=b.dataset.t;S.sel=null;sheet();render();scrollTo(0,0)}});$('#th').onclick=()=>{const d=document.documentElement,cur=d.dataset.theme||(matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light');d.dataset.theme=cur==='dark'?'light':'dark'};$('#rf').onclick=refresh;
-render();refresh();connectWS();setInterval(()=>{const k=$('#clk');if(k)k.textContent=new Date().toLocaleTimeString('en-IN',{hour12:false})},1000);
+window.bootstrapDashboard=()=>{API=(window.DASH_API_BASE||localStorage.getItem('dash_api_base')||'').replace(/\/$/,'');TOKEN=window.DASH_TOKEN||localStorage.getItem('dash_token')||'';refresh();connectWS();};
+render();
+if(API) window.bootstrapDashboard();
+setInterval(()=>{const k=$('#clk');if(k)k.textContent=new Date().toLocaleTimeString('en-IN',{hour12:false})},1000);
 </script>
 </body>
 </html>
