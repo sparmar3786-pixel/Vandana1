@@ -36,8 +36,8 @@ class IntegratedBuildContractTests(unittest.TestCase):
             '@app.websocket("/v1/ws")',
         ):
             self.assertIn(endpoint, src)
-        self.assertIn('"orders_enabled":False', src)
-        self.assertIn('"paper_only":True', src)
+        self.assertRegex(src, r'"orders_enabled"\s*:\s*False')
+        self.assertRegex(src, r'"paper_only"\s*:\s*True')
 
     def test_market_terminal_is_first_screen(self):
         src = read("flutter_app/lib/main.dart")
