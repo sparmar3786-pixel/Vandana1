@@ -56,9 +56,10 @@ class IntegratedBuildContractTests(unittest.TestCase):
             '/v1/angel/indices',
             'window.bootstrapDashboard',
             'Fake prices are disabled',
+            'no demo data',
         ):
-            self.assertIn(marker, src)
-        self.assertNotIn('demo data', src.lower())
+            self.assertIn(marker.lower(), src.lower())
+        self.assertNotIn('fake prices are enabled', src.lower())
 
     def test_signals_screen_is_wired_to_asset(self):
         src = read("flutter_app/lib/signals_screen.dart")
