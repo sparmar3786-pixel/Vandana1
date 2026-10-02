@@ -10,3 +10,4 @@ python-dotenv
 joblib
 mcp==1.28.0
 pandas
+anthropic
