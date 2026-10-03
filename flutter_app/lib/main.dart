@@ -100,6 +100,12 @@ class _TerminalState extends State<Terminal> {
     fetchTerminal();
     fetchIndices();
     fetchCommodities();
+    alertService = SignalAlertService(backendUrl, apiToken);
+    alertService!.onAlert = (a) {
+      if (!mounted) return;
+      setState(() => latestAlert = a);
+    };
+    alertService!.start();
     timer = Timer.periodic(const Duration(seconds: 5), (_) { fetchTerminal(); if (selected == 5) fetchCandles(); if (selected == 13) fetchStrategy(); });
     marketTimer = Timer.periodic(const Duration(seconds: 10), (_) {
       fetchIndices();
@@ -108,7 +114,7 @@ class _TerminalState extends State<Terminal> {
       if (selected == 6) fetchOptionRows();
     });
   }
-  @override void dispose() { timer?.cancel(); marketTimer?.cancel(); super.dispose(); }
+  @override void dispose() { timer?.cancel(); marketTimer?.cancel(); alertService?.stop(); super.dispose(); }
 
   Future<void> fetchTerminal() async {
     try {
