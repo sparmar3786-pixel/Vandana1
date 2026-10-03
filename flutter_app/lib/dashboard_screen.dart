@@ -241,9 +241,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
       ]),
       const SizedBox(height:10),
       Row(children:[
-        Expanded(flex:(ceRatio*1000).round().clamp(1,999),child:Container(height:7,decoration:BoxDecoration(color:const Color(0xFF32D583),borderRadius:BorderRadius.circular(7)))),
+        Expanded(flex:((ceRatio*1000).round().clamp(1,999)).toInt(),child:Container(height:7,decoration:BoxDecoration(color:const Color(0xFF32D583),borderRadius:BorderRadius.circular(7)))),
         const SizedBox(width:3),
-        Expanded(flex:(peRatio*1000).round().clamp(1,999),child:Container(height:7,decoration:BoxDecoration(color:const Color(0xFFFF6B6B),borderRadius:BorderRadius.circular(7)))),
+        Expanded(flex:((peRatio*1000).round().clamp(1,999)).toInt(),child:Container(height:7,decoration:BoxDecoration(color:const Color(0xFFFF6B6B),borderRadius:BorderRadius.circular(7)))),
       ]),
       const SizedBox(height:10),
       Row(children:[
