@@ -7,335 +7,408 @@ class DashboardScreen extends StatefulWidget {
   final String backendUrl;
   final String apiToken;
   final ValueChanged<int>? onNavigate;
-  const DashboardScreen({super.key, this.backendUrl = '', this.apiToken = '', this.onNavigate});
-  @override State<DashboardScreen> createState() => _DashboardScreenState();
+
+  const DashboardScreen({
+    super.key,
+    this.backendUrl = '',
+    this.apiToken = '',
+    this.onNavigate,
+  });
+
+  @override
+  State<DashboardScreen> createState() => _DashboardScreenState();
 }
 
 class _DashboardScreenState extends State<DashboardScreen> {
-  Map<String,dynamic> data = <String,dynamic>{};
-  List<dynamic> options = <dynamic>[];
-  String index = 'NIFTY';
-  String period = '1D';
-  String connection = 'CONNECTING';
+  Map<String, dynamic> terminalData = <String, dynamic>{};
+  List<dynamic> liveMarket = <dynamic>[];
+  List<dynamic> liveOptionRows = <dynamic>[];
+  String connection = 'Connecting...';
   bool busy = false;
   Timer? timer;
-  static const indices = <String>['NIFTY','BANKNIFTY','FINNIFTY','MIDCPNIFTY','SENSEX','BANKEX'];
 
-  @override void initState() {
+  Map<String, String> get headers => <String, String>{
+        if (widget.apiToken.trim().isNotEmpty) 'x-token': widget.apiToken.trim(),
+      };
+
+  Uri backendUri(String path) => Uri.parse(
+        widget.backendUrl.trim().replaceFirst(RegExp(r'/+$'), '') + path,
+      );
+
+  String value(dynamic value, [String fallback = '—']) {
+    if (value == null) return fallback;
+    final text = value.toString().trim();
+    return text.isEmpty ? fallback : text;
+  }
+
+  Map<String, dynamic> get signal {
+    final raw = terminalData['signals'];
+    if (raw is Map<String, dynamic>) return raw;
+    if (raw is Map) return Map<String, dynamic>.from(raw);
+    return <String, dynamic>{};
+  }
+
+  bool get nseConnected {
+    final raw = terminalData['connection'];
+    return raw is Map && raw['nse'] == true;
+  }
+
+  @override
+  void initState() {
     super.initState();
     load();
-    timer = Timer.periodic(const Duration(seconds:5), (_) => load());
+    timer = Timer.periodic(const Duration(seconds: 5), (_) => load());
   }
-  @override void didUpdateWidget(covariant DashboardScreen old) {
-    super.didUpdateWidget(old);
-    if (old.backendUrl != widget.backendUrl || old.apiToken != widget.apiToken) load();
+
+  @override
+  void didUpdateWidget(covariant DashboardScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.backendUrl != widget.backendUrl ||
+        oldWidget.apiToken != widget.apiToken) {
+      load();
+    }
   }
-  @override void dispose() { timer?.cancel(); super.dispose(); }
 
-  Map<String,String> get headers => <String,String>{
-    if (widget.apiToken.trim().isNotEmpty) 'x-token': widget.apiToken.trim(),
-  };
-  Uri uri(String p) => Uri.parse(widget.backendUrl.trim().replaceFirst(RegExp(r'/+$'), '') + p);
-  String val(dynamic v, [String d='—']) => v == null || v.toString().trim().isEmpty ? d : v.toString();
-  double numv(dynamic v) => double.tryParse((v ?? 0).toString().replaceAll(',', '')) ?? 0;
-
-  Color tone(String s) {
-    final x=s.toUpperCase();
-    if (x.contains('UP') || x.contains('CALL') || x.contains('BULL')) return const Color(0xFF32D583);
-    if (x.contains('DOWN') || x.contains('PUT') || x.contains('BEAR')) return const Color(0xFFFF6B6B);
-    return const Color(0xFF70A3FF);
+  @override
+  void dispose() {
+    timer?.cancel();
+    super.dispose();
   }
 
   Future<void> load() async {
     if (busy || widget.backendUrl.trim().isEmpty) return;
-    busy=true;
+    busy = true;
     try {
-      final r=await Future.wait<dynamic>([
-        http.get(uri('/v1/terminal'),headers:headers).timeout(const Duration(seconds:6)),
-        http.get(uri('/v1/angel/option-chain?symbol=$index&count=12'),headers:headers).timeout(const Duration(seconds:10)),
+      final responses = await Future.wait<http.Response>(<Future<http.Response>>[
+        http.get(backendUri('/v1/terminal'), headers: headers)
+            .timeout(const Duration(seconds: 6)),
+        http.get(backendUri('/v1/angel/market'), headers: headers)
+            .timeout(const Duration(seconds: 8)),
+        http.get(
+          backendUri('/v1/angel/option-chain?symbol=NIFTY&count=10'),
+          headers: headers,
+        ).timeout(const Duration(seconds: 10)),
       ]);
+
       if (!mounted) return;
-      dynamic a,b;
-      try { a=jsonDecode((r[0] as http.Response).body); } catch (_) {}
-      try { b=jsonDecode((r[1] as http.Response).body); } catch (_) {}
-      final t=a is Map ? Map<String,dynamic>.from(a) : <String,dynamic>{};
-      final c=t['connection'];
-      final angel=c is Map && c['angel']==true;
+
+      Map<String, dynamic> terminal = <String, dynamic>{};
+      List<dynamic> market = <dynamic>[];
+      List<dynamic> options = <dynamic>[];
+
+      try {
+        final decoded = jsonDecode(responses[0].body);
+        if (decoded is Map) terminal = Map<String, dynamic>.from(decoded);
+      } catch (_) {}
+
+      try {
+        final decoded = jsonDecode(responses[1].body);
+        if (decoded is Map && decoded['data'] is Map) {
+          final fetched = decoded['data']['fetched'];
+          if (fetched is List) market = List<dynamic>.from(fetched);
+        } else if (decoded is Map && decoded['data'] is List) {
+          market = List<dynamic>.from(decoded['data']);
+        }
+      } catch (_) {}
+
+      try {
+        final decoded = jsonDecode(responses[2].body);
+        if (decoded is Map && decoded['rows'] is List) {
+          options = List<dynamic>.from(decoded['rows']);
+        }
+      } catch (_) {}
+
+      final conn = terminal['connection'];
+      final angel = conn is Map && conn['angel'] == true;
+      final server = conn is Map && conn['server'] == true;
+
       setState(() {
-        data=t;
-        options=b is Map && b['rows'] is List ? List<dynamic>.from(b['rows']) : <dynamic>[];
-        connection=(r[0] as http.Response).statusCode==200 && angel ? 'CONNECTED' :
-          (r[0] as http.Response).statusCode==200 ? 'SERVER OK' : 'OFFLINE';
+        terminalData = terminal;
+        liveMarket = market;
+        liveOptionRows = options;
+        connection = responses[0].statusCode == 200 && server && angel
+            ? 'Connected'
+            : responses[0].statusCode == 200 && server
+                ? 'Backend connected / Angel not connected'
+                : 'HTTP ' + responses[0].statusCode.toString();
       });
     } catch (_) {
-      if (mounted) setState(()=>connection='OFFLINE');
-    } finally { busy=false; }
+      if (mounted) setState(() => connection = 'Backend not connected');
+    } finally {
+      busy = false;
+    }
   }
 
-  Widget pill(String s,{bool on=false,Color? color}) {
-    final c=color??const Color(0xFF70A3FF);
-    return Container(
-      padding:const EdgeInsets.symmetric(horizontal:11,vertical:7),
-      decoration:BoxDecoration(
-        color:on?c.withValues(alpha:.14):const Color(0xFF111827),
-        borderRadius:BorderRadius.circular(20),
-        border:Border.all(color:on?c:const Color(0xFF263247)),
+  Widget metricTile(String title, String text, IconData icon) {
+    return SizedBox(
+      width: MediaQuery.of(context).size.width > 520
+          ? 180
+          : (MediaQuery.of(context).size.width - 40) / 2,
+      child: Card(
+        child: Padding(
+          padding: const EdgeInsets.all(12),
+          child: Row(
+            children: <Widget>[
+              Icon(icon, size: 20),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: <Widget>[
+                    Text(title, style: const TextStyle(fontSize: 11)),
+                    const SizedBox(height: 3),
+                    Text(
+                      text,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
       ),
-      child:Text(s,style:TextStyle(fontSize:10,fontWeight:FontWeight.w800,color:on?c:const Color(0xFF98A2B3))),
     );
   }
 
-  Widget card(Widget w,{EdgeInsets padding=const EdgeInsets.all(14)}) => Container(
-    width:double.infinity,margin:const EdgeInsets.only(bottom:10),padding:padding,
-    decoration:BoxDecoration(
-      color:const Color(0xFF101827),borderRadius:BorderRadius.circular(20),
-      border:Border.all(color:const Color(0xFF1D2939)),
-      boxShadow:const [BoxShadow(color:Color(0x22000000),blurRadius:16,offset:Offset(0,7))],
-    ),child:w,
-  );
-
-  Widget metric(String k,String v,{Color? c}) => Expanded(child:Column(
-    crossAxisAlignment:CrossAxisAlignment.start,children:[
-      Text(k,style:const TextStyle(fontSize:9,color:Color(0xFF667085))),
-      const SizedBox(height:3),
-      Text(v,overflow:TextOverflow.ellipsis,style:TextStyle(fontSize:12,fontWeight:FontWeight.w900,color:c??const Color(0xFFF2F4F7))),
-    ],
-  ));
-
-  Widget sectionTitle(String a,String b) => Column(
-    crossAxisAlignment:CrossAxisAlignment.start,children:[
-      Text(a,style:const TextStyle(fontSize:14,fontWeight:FontWeight.w900)),
-      const SizedBox(height:3),
-      Text(b,style:const TextStyle(fontSize:9,color:Color(0xFF667085))),
-    ],
-  );
-
-  Map<String,dynamic> get engine {
-    final raw=data['engine_state'];
-    return raw is Map ? Map<String,dynamic>.from(raw) : <String,dynamic>{};
+  Widget infoCard(String title, String text, Color color) {
+    return Card(
+      child: ListTile(
+        leading: Icon(Icons.circle, color: color, size: 13),
+        title: Text(title),
+        subtitle: Text(text),
+      ),
+    );
   }
 
-  Widget topHeader() => Row(children:[
-    Container(width:42,height:42,decoration:BoxDecoration(
-      gradient:const LinearGradient(colors:[Color(0xFF1F6FEB),Color(0xFF7C3AED)]),
-      borderRadius:BorderRadius.circular(13),
-    ),child:const Icon(Icons.candlestick_chart_rounded,color:Colors.white)),
-    const SizedBox(width:10),
-    const Expanded(child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
-      Text('VANDANA',style:TextStyle(fontSize:18,fontWeight:FontWeight.w900)),
-      Text('NSE ALGO TERMINAL',style:TextStyle(fontSize:9,color:Color(0xFF667085),fontWeight:FontWeight.w700,letterSpacing:1.2)),
-    ])),
-    Container(margin:const EdgeInsets.only(right:6),padding:const EdgeInsets.symmetric(horizontal:8,vertical:7),decoration:BoxDecoration(color:const Color(0xFF70A3FF).withValues(alpha:.10),borderRadius:BorderRadius.circular(18),border:Border.all(color:const Color(0xFF70A3FF).withValues(alpha:.30))),child:const Text('PROTOTYPE',style:TextStyle(fontSize:8,color:Color(0xFF70A3FF),fontWeight:FontWeight.w900)),),
-    Container(padding:const EdgeInsets.symmetric(horizontal:10,vertical:7),decoration:BoxDecoration(
-      color:const Color(0xFF32D583).withValues(alpha:.10),borderRadius:BorderRadius.circular(18),
-      border:Border.all(color:const Color(0xFF32D583).withValues(alpha:.35)),
-    ),child:Row(children:[
-      Container(width:6,height:6,decoration:const BoxDecoration(color:Color(0xFF32D583),shape:BoxShape.circle)),
-      const SizedBox(width:6),
-      Text(connection,style:const TextStyle(fontSize:9,color:Color(0xFF32D583),fontWeight:FontWeight.w900)),
-    ])),
-  ]);
-
-  Widget indexSelector() => Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
-    const SizedBox(height:14),
-    SizedBox(height:38,child:ListView.separated(
-      scrollDirection:Axis.horizontal,itemCount:indices.length,
-      separatorBuilder:(_,__)=>const SizedBox(width:6),
-      itemBuilder:(_,i){
-        final n=indices[i];
-        return GestureDetector(onTap:(){setState(()=>index=n);load();},child:pill(n,on:index==n));
-      },
-    )),
-  ]);
-
-  Widget trendHero() {
-    final tr=val(engine['trend'],'WAIT');
-    final c=tone(tr);
-    final live=connection=='CONNECTED' && data['market_open']==true;
-    final market=data['market'];
-    final ltp=val(engine['index_ltp'] ?? (market is Map ? market['spot'] : null));
-    final change=val(engine['change'] ?? engine['percent_change'] ?? engine['percentChange'],'Awaiting live feed');
-    return card(Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
-      Row(children:[
-        Expanded(child:sectionTitle('MARKET TREND',index+' • '+period)),
-        pill(live?'● LIVE':'● LAST STATE',on:true,color:live?const Color(0xFF32D583):const Color(0xFF70A3FF)),
-      ]),
-      const SizedBox(height:12),
-      Row(children:[
-        Expanded(child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
-          Text(index,style:const TextStyle(fontSize:10,color:Color(0xFF98A2B3))),
-          const SizedBox(height:3),
-          Text(ltp,style:const TextStyle(fontSize:31,fontWeight:FontWeight.w900)),
-          const SizedBox(height:2),
-          Text(change,style:TextStyle(color:c,fontSize:11,fontWeight:FontWeight.w800)),
-        ])),
-        Container(width:78,height:78,decoration:BoxDecoration(
-          color:c.withValues(alpha:.10),borderRadius:BorderRadius.circular(22),
-          border:Border.all(color:c.withValues(alpha:.25)),
-        ),child:Column(mainAxisAlignment:MainAxisAlignment.center,children:[
-          Icon(tr.toUpperCase().contains('DOWN')?Icons.south_east:tr.toUpperCase().contains('UP')?Icons.north_east:Icons.remove,color:c,size:24),
-          const SizedBox(height:4),Text(tr,style:TextStyle(color:c,fontWeight:FontWeight.w900,fontSize:10)),
-        ])),
-      ]),
-      const SizedBox(height:13),
-      Row(children:[
-        for(final p in const ['1D','1W','1M']) Padding(
-          padding:const EdgeInsets.only(right:6),
-          child:GestureDetector(onTap:()=>setState(()=>period=p),child:pill(p,on:period==p)),
+  Widget row(String label, dynamic data) => Padding(
+        padding: const EdgeInsets.symmetric(vertical: 4),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: <Widget>[
+            Text(label),
+            Flexible(
+              child: Text(
+                (data ?? '—').toString(),
+                textAlign: TextAlign.right,
+              ),
+            ),
+          ],
         ),
-        const Spacer(),const Text('Change',style:TextStyle(fontSize:9,color:Color(0xFF667085))),
-      ]),
-    ]));
-  }
+      );
 
-  Widget signalCard() {
-    final s=val(engine['signal_status'],'Signal unavailable');
-    final cp=val(engine['ce_pe'],s);
-    final c=tone(cp);
-    final priority=val(engine['priority'],'—');
-    final confidence=val(engine['confidence'],'Awaiting validation');
-    return card(Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
-      Row(children:[
-        Expanded(child:sectionTitle('CALL / PUT SIGNAL','Read-only paper signal')),
-        pill('PRIORITY '+priority,color:c),
-      ]),
-      const SizedBox(height:12),
-      Container(padding:const EdgeInsets.all(13),decoration:BoxDecoration(
-        color:c.withValues(alpha:.10),borderRadius:BorderRadius.circular(15),
-        border:Border.all(color:c.withValues(alpha:.28)),
-      ),child:Row(children:[
-        Icon(cp.toUpperCase().contains('PUT')?Icons.trending_down_rounded:Icons.trending_up_rounded,color:c),
-        const SizedBox(width:8),
-        Expanded(child:Text(s,style:TextStyle(fontSize:18,fontWeight:FontWeight.w900,color:c))),
-      ])),
-      const SizedBox(height:10),
-      Row(children:[
-        metric('ENTRY',val(engine['entry'])),metric('SL',val(engine['stop_loss'])),
-        metric('TARGET',val(engine['target'])),metric('CONFIDENCE',confidence),
-      ]),
-      const SizedBox(height:9),
-      Text(val(engine['reason'],'No live recommendation • awaiting validation'),style:const TextStyle(fontSize:10,color:Color(0xFF98A2B3))),
-      const SizedBox(height:9),
-      Row(children:[
-        Expanded(child:pill('CALL',on:cp.toUpperCase().contains('CALL'),color:const Color(0xFF32D583))),
-        const SizedBox(width:6),
-        Expanded(child:pill('PUT',on:cp.toUpperCase().contains('PUT'),color:const Color(0xFFFF6B6B))),
-      ]),
-    ]));
-  }
+  void navigate(int page) => widget.onNavigate?.call(page);
 
-  Widget oiPressure() {
-    double ce=0,pe=0;
-    for(final r in options){
-      if(r is! Map)continue;
-      final x=numv(r['oi']); final type=(r['type']??'').toString().toUpperCase();
-      if(type=='CE')ce+=x; if(type=='PE')pe+=x;
-    }
-    final total=ce+pe; final ceRatio=total>0?ce/total:.5; final peRatio=total>0?pe/total:.5;
-    return card(Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
-      sectionTitle('OPTION CHAIN / OI PRESSURE','Strike • Call OI • Put OI • '+index),
-      const SizedBox(height:11),
-      if(options.isEmpty) const Text('Market data unavailable',style:TextStyle(fontSize:10,color:Color(0xFF667085)))
-      else Row(children:[
-        metric('CALL OI',ce.toStringAsFixed(0),c:const Color(0xFF32D583)),
-        metric('PUT OI',pe.toStringAsFixed(0),c:const Color(0xFFFF6B6B)),
-        metric('STRIKES',options.length.toString()),
-      ]),
-      const SizedBox(height:10),
-      Row(children:[
-        Expanded(flex:((ceRatio*1000).round().clamp(1,999)).toInt(),child:Container(height:7,decoration:BoxDecoration(color:const Color(0xFF32D583),borderRadius:BorderRadius.circular(7)))),
-        const SizedBox(width:3),
-        Expanded(flex:((peRatio*1000).round().clamp(1,999)).toInt(),child:Container(height:7,decoration:BoxDecoration(color:const Color(0xFFFF6B6B),borderRadius:BorderRadius.circular(7)))),
-      ]),
-      const SizedBox(height:10),
-      Row(children:[
-        Expanded(child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
-          const Text('CALL pressure',style:TextStyle(fontSize:9,color:Color(0xFF98A2B3))),
-          const SizedBox(height:2),Text(ce>pe?'Detected':'Not available',style:TextStyle(fontSize:10,fontWeight:FontWeight.w800,color:ce>pe?const Color(0xFF32D583):const Color(0xFF667085))),
-        ])),
-        Expanded(child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
-          const Text('PUT pressure',style:TextStyle(fontSize:9,color:Color(0xFF98A2B3))),
-          const SizedBox(height:2),Text(pe>ce?'Detected':'Not available',style:TextStyle(fontSize:10,fontWeight:FontWeight.w800,color:pe>ce?const Color(0xFFFF6B6B):const Color(0xFF667085))),
-        ])),
-      ]),
-    ]));
-  }
+  @override
+  Widget build(BuildContext context) {
+    final action = value(signal['action'], 'WAIT').replaceAll('_', ' ');
+    final marketCount = liveMarket.length;
+    final optionCount = liveOptionRows.length;
 
-  Widget sourceCards() => Row(crossAxisAlignment:CrossAxisAlignment.start,children:[
-    Expanded(child:card(Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
-      const Icon(Icons.account_balance_outlined,size:18,color:Color(0xFF70A3FF)),
-      const SizedBox(height:7),const Text('NSE / BSE',style:TextStyle(fontWeight:FontWeight.w800,fontSize:12)),
-      const SizedBox(height:4),Text(connection,style:const TextStyle(fontSize:9,color:Color(0xFF98A2B3))),
-    ]))),
-    const SizedBox(width:8),
-    Expanded(child:card(Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
-      const Icon(Icons.waterfall_chart_rounded,size:18,color:Color(0xFF70A3FF)),
-      const SizedBox(height:7),const Text('COMMODITIES',style:TextStyle(fontWeight:FontWeight.w800,fontSize:12)),
-      const SizedBox(height:4),Text(data['commodity'] is Map?'Connected':'Awaiting feed',style:const TextStyle(fontSize:9,color:Color(0xFF98A2B3))),
-    ]))),
-  ]);
-
-  Widget priceAction() => card(Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
-    sectionTitle('PRICE ACTION','Technical confirmation'),
-    const SizedBox(height:10),
-    Row(children:[
-      for(final x in const ['EMA','VWAP','RSI']) Padding(padding:const EdgeInsets.only(right:6),child:pill(x,on:true)),
-    ]),
-    const SizedBox(height:10),
-    Container(height:76,width:double.infinity,decoration:BoxDecoration(
-      borderRadius:BorderRadius.circular(14),
-      gradient:const LinearGradient(begin:Alignment.bottomLeft,end:Alignment.topRight,colors:[Color(0xFF0B1220),Color(0xFF141E30)]),
-      border:Border.all(color:const Color(0xFF1D2939)),
-    ),child:const Row(children:[
-      SizedBox(width:13),Icon(Icons.show_chart_rounded,color:Color(0xFF70A3FF),size:25),SizedBox(width:9),
-      Expanded(child:Text('Chart data is available in Charts',style:TextStyle(fontSize:10,color:Color(0xFF98A2B3)))),
-      Icon(Icons.chevron_right_rounded,color:Color(0xFF667085)),SizedBox(width:10),
-    ])),
-  ]));
-
-  Widget aiValidation() {
-    const names=<String>['Trend AI','Options AI','Pattern AI','Consensus AI','Risk AI','News AI'];
-    final x=data['ai'];
-    return card(Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
-      sectionTitle('AI VALIDATION','Six-layer server-side validation'),const SizedBox(height:8),
-      for(final n in names) Padding(padding:const EdgeInsets.symmetric(vertical:5),child:Row(children:[
-        Container(width:25,height:25,decoration:BoxDecoration(color:const Color(0xFF70A3FF).withValues(alpha:.10),borderRadius:BorderRadius.circular(8)),child:const Icon(Icons.psychology_alt_rounded,size:14,color:Color(0xFF70A3FF))),
-        const SizedBox(width:9),Expanded(child:Text(n,style:const TextStyle(fontSize:10,fontWeight:FontWeight.w700))),
-        Text(x is Map&&x[n]!=null?val(x[n]):'Pending',style:const TextStyle(fontSize:9,color:Color(0xFF98A2B3))),
-      ])),
-      const Divider(color:Color(0xFF1D2939)),
-      Row(children:[
-        const Icon(Icons.verified_outlined,size:16,color:Color(0xFF70A3FF)),const SizedBox(width:7),
-        Expanded(child:Text('Final: '+val(engine['signal_status'],'WAIT'),style:const TextStyle(fontSize:11,fontWeight:FontWeight.w900))),
-      ]),
-    ]));
-  }
-
-  Widget bottomNav() => Container(
-    margin:const EdgeInsets.only(top:2),
-    padding:const EdgeInsets.symmetric(horizontal:6,vertical:7),
-    decoration:BoxDecoration(color:const Color(0xFF0C1320),borderRadius:BorderRadius.circular(18),border:Border.all(color:const Color(0xFF1D2939))),
-    child:Row(children:[
-      for(final item in const <Map<String,dynamic>>[
-        {'i':0,'t':'Dashboard','icon':Icons.dashboard_rounded}, {'i':6,'t':'Option Chain','icon':Icons.table_chart_rounded}, {'i':5,'t':'Charts','icon':Icons.show_chart_rounded}, {'i':14,'t':'AI Models','icon':Icons.psychology_alt_rounded}, {'i':15,'t':'Settings','icon':Icons.settings_rounded},
-      ]) Expanded(child:InkWell(onTap:()=>widget.onNavigate?.call(item['i'] as int),borderRadius:BorderRadius.circular(12),child:Padding(padding:const EdgeInsets.symmetric(vertical:6),child:Column(mainAxisSize:MainAxisSize.min,children:[Icon(item['icon'] as IconData,size:16,color:const Color(0xFF70A3FF)),const SizedBox(height:3),Text(item['t'] as String,textAlign:TextAlign.center,style:const TextStyle(fontSize:7,fontWeight:FontWeight.w800,color:Color(0xFF98A2B3)))]))))
-    ]),
-  );
-
-  @override Widget build(BuildContext context) {
-    return Container(color:const Color(0xFF070B14),child:RefreshIndicator(
-      onRefresh:load,color:const Color(0xFF70A3FF),backgroundColor:const Color(0xFF101827),
-      child:ListView(physics:const AlwaysScrollableScrollPhysics(),padding:const EdgeInsets.fromLTRB(14,14,14,30),children:[
-        topHeader(),indexSelector(),const SizedBox(height:10),
-        trendHero(),signalCard(),oiPressure(),sourceCards(),priceAction(),aiValidation(),
-        card(Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
-          Row(children:[const Icon(Icons.shield_outlined,color:Color(0xFF70A3FF),size:18),const SizedBox(width:8),Expanded(child:Text('Visual prototype only • not for live trading',style:TextStyle(fontSize:10,fontWeight:FontWeight.w900))),]),
-          const SizedBox(height:5),
-          const Text('READ ONLY • PAPER SIGNALS • NO ORDER PLACEMENT',style:TextStyle(fontSize:8,color:Color(0xFF667085),fontWeight:FontWeight.w800)),
-        ])),
-        const SizedBox(height:4),
-        bottomNav(),
-      ]),
-    ));
+    return RefreshIndicator(
+      onRefresh: load,
+      child: ListView(
+        padding: const EdgeInsets.fromLTRB(12, 10, 12, 20),
+        children: <Widget>[
+          Card(
+            child: Padding(
+              padding: const EdgeInsets.all(14),
+              child: Row(
+                children: <Widget>[
+                  const CircleAvatar(
+                    radius: 22,
+                    child: Icon(Icons.candlestick_chart),
+                  ),
+                  const SizedBox(width: 10),
+                  const Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: <Widget>[
+                        Text(
+                          'NSE Algo Signal',
+                          style: TextStyle(
+                            fontSize: 19,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        Text(
+                          'Fast market workspace • 18 screens',
+                          style: TextStyle(fontSize: 12),
+                        ),
+                      ],
+                    ),
+                  ),
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 9,
+                      vertical: 5,
+                    ),
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(20),
+                      color: Colors.blue.withOpacity(.12),
+                    ),
+                    child: Text(
+                      connection,
+                      style: TextStyle(
+                        fontSize: 11,
+                        color: connection == 'Connected'
+                            ? Colors.green
+                            : Colors.orange,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 10),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: <Widget>[
+              metricTile('Connection', connection, Icons.link),
+              metricTile(
+                'Indices',
+                marketCount == 0 ? '—' : marketCount.toString(),
+                Icons.show_chart,
+              ),
+              metricTile('Candles', '—', Icons.candlestick_chart),
+              metricTile(
+                'Option rows',
+                optionCount == 0 ? '—' : optionCount.toString(),
+                Icons.table_chart,
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          Card(
+            child: Padding(
+              padding: const EdgeInsets.all(14),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: <Widget>[
+                  Row(
+                    children: <Widget>[
+                      const Icon(Icons.bolt, size: 18),
+                      const SizedBox(width: 7),
+                      const Text(
+                        'CURRENT SIGNAL',
+                        style: TextStyle(fontWeight: FontWeight.bold),
+                      ),
+                      const Spacer(),
+                      IconButton(
+                        onPressed: busy ? null : load,
+                        icon: const Icon(Icons.refresh),
+                        tooltip: 'Refresh signal',
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    action,
+                    style: const TextStyle(
+                      fontSize: 25,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  if (signal.isNotEmpty) ...<Widget>[
+                    row('Symbol', signal['symbol'] ?? signal['optionSymbol']),
+                    row('Spot', signal['spot'] ?? signal['underlyingLtp']),
+                    row('LTP', signal['ltp'] ?? signal['optionLtp']),
+                    row('Strike', signal['strike']),
+                    row('Entry', signal['entry']),
+                    row('Stop Loss', signal['sl'] ?? signal['stopLoss']),
+                    row('Target', signal['target']),
+                  ] else
+                    const Text(
+                      'No live signal payload received.',
+                      style: TextStyle(fontSize: 12),
+                    ),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 10),
+          Card(
+            child: Padding(
+              padding: const EdgeInsets.all(14),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: <Widget>[
+                  const Text(
+                    'QUICK ACCESS',
+                    style: TextStyle(fontWeight: FontWeight.bold),
+                  ),
+                  const SizedBox(height: 8),
+                  Wrap(
+                    spacing: 7,
+                    runSpacing: 7,
+                    children: <Widget>[
+                      ActionChip(
+                        label: const Text('Indian Indices'),
+                        avatar: const Icon(Icons.show_chart, size: 16),
+                        onPressed: () => navigate(1),
+                      ),
+                      ActionChip(
+                        label: const Text('Option Chain'),
+                        avatar: const Icon(Icons.table_chart, size: 16),
+                        onPressed: () => navigate(6),
+                      ),
+                      ActionChip(
+                        label: const Text('Charts'),
+                        avatar: const Icon(Icons.candlestick_chart, size: 16),
+                        onPressed: () => navigate(5),
+                      ),
+                      ActionChip(
+                        label: const Text('Strategies'),
+                        avatar: const Icon(Icons.schema, size: 16),
+                        onPressed: () => navigate(13),
+                      ),
+                      ActionChip(
+                        label: const Text('NSE MCP'),
+                        avatar: const Icon(Icons.hub, size: 16),
+                        onPressed: () => navigate(11),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 10),
+          Card(
+            child: ListTile(
+              leading: Icon(
+                nseConnected
+                    ? Icons.check_circle
+                    : Icons.warning_amber_rounded,
+                color: nseConnected ? Colors.green : Colors.orange,
+              ),
+              title: const Text('NSE SIGNAL FEED'),
+              subtitle: Text(
+                signal['action']?.toString().replaceAll('_', ' ') ??
+                    'WAIT • awaiting engine payload',
+              ),
+              trailing: IconButton(
+                onPressed: busy ? null : load,
+                icon: const Icon(Icons.refresh),
+              ),
+            ),
+          ),
+          const SizedBox(height: 10),
+          infoCard(
+            'Data policy',
+            'Real API/data only. No fabricated market values. Strategy engine remains evidence-gated.',
+            Colors.blue,
+          ),
+        ],
+      ),
+    );
   }
 }
