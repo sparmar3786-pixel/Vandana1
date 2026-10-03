@@ -169,8 +169,18 @@ async def native_market_websocket(websocket: WebSocket):
 
 
 def angel_required():
+    # Every live Angel data endpoint uses the same server-side session path.
+    # If Railway has complete ANGEL_* credentials, connect/reuse the Angel
+    # session automatically; the APK never needs to submit credentials just
+    # to read market data.
+    try:
+        _ensure_angel()
+    except Exception as e:
+        state["error"]=str(e)
+        state["angel_message"]="Angel connection failed."
+        client.api=None
     if client.api is None:
-        raise HTTPException(503,"Angel One is not connected. Connect from Angel API screen first.")
+        raise HTTPException(503,"Angel One is not connected. Configure server-side ANGEL_* credentials on Railway or use Angel API login.")
 
 @app.get("/v1/angel/commodities")
 def angel_commodities(x_token:str=Header(None)):
