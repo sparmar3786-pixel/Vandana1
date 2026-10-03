@@ -110,10 +110,10 @@ class IntegratedBuildContractTests(unittest.TestCase):
     def test_workflow_builds_and_verifies_apk(self):
         src = read(".github/workflows/build-apk.yml")
         for marker in (
-            "flutter analyze",
+            "gradle --no-daemon :app:assembleDebug",
             "Validate backend Python source",
             "Build installable APK",
-            "test -f flutter_app/build/app/outputs/flutter-apk/app-debug.apk",
+            "test -f native_android/app/build/outputs/apk/debug/app-debug.apk",
             "name: Parmar-Trading-APK",
         ):
             self.assertIn(marker, src)
