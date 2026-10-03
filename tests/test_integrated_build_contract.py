@@ -126,7 +126,7 @@ class IntegratedBuildContractTests(unittest.TestCase):
         self.assertIn("assembleDebug", workflow)
         main = read("native_android/app/src/main/kotlin/com/parmar/trading/MainActivity.kt")
         self.assertIn("WebView", main)
-        self.assertIn("assets/index.html", main)
+        self.assertIn("android_asset/index.html", main)
         self.assertIn('com.parmar.trading', main)
 
 if __name__ == "__main__":
