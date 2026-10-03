@@ -111,7 +111,7 @@ class IntegratedBuildContractTests(unittest.TestCase):
         src = read(".github/workflows/build-apk.yml")
         for marker in (
             "flutter analyze",
-            "Run backend data-layer regression tests",
+            "Validate backend Python source",
             "Build installable APK",
             "test -f flutter_app/build/app/outputs/flutter-apk/app-debug.apk",
             "name: Parmar-Trading-APK",
