@@ -6,7 +6,6 @@ import 'package:http/http.dart' as http;
 import 'package:file_saver/file_saver.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 import 'signal_alerts.dart';
-import 'puter_ai_page.dart';
 import 'signals_screen.dart';
 import 'dashboard_screen.dart';
 import 'ai_validate_page.dart';
@@ -662,12 +661,6 @@ class _TerminalState extends State<Terminal> {
       ],
     );
   }
-  Widget aiModelsPage() => PuterAiPage(
-    backendUrl: backendUrl,
-    apiToken: apiToken,
-    initialSnapshot: terminalData,
-    symbol: selectedOptionSymbol,
-  );
 
   Widget nseMcp() => ListView(padding: const EdgeInsets.all(16), children: <Widget>[
     const Text('NSE MCP', style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
