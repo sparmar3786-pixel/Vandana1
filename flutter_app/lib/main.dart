@@ -112,7 +112,12 @@ class _TerminalState extends State<Terminal> {
     };
     alertService!.start();
     timer = Timer.periodic(const Duration(seconds: 5), (_) { fetchTerminal(); if (selected == 6) fetchCandles(); if (selected == 14) fetchStrategy(); });
-    marketTimer = Timer.periodic(const Duration(seconds: 10), (_) {\n      fetchIndices();\n      fetchCommodities();\n      if (selected == 4 || selected == 7) fetchOptionRows();\n    });
+    marketTimer = Timer.periodic(const Duration(seconds: 10), (_) {
+      fetchIndices();
+      fetchCommodities();
+      if (selected == 4) fetchOptionRows();
+      if (selected == 7) fetchOptionRows();
+    });
   }
   @override void dispose() { timer?.cancel(); marketTimer?.cancel(); alertService?.stop(); super.dispose(); }
 
