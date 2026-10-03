@@ -72,6 +72,19 @@ class IntegratedBuildContractTests(unittest.TestCase):
         self.assertIn("backendUri('/v1/angel/option-chain", src)
         self.assertIn("backendUri('/v1/angel/oi-buildup", src)
 
+
+    def test_build_322_dashboard_contract(self):
+        src = read("flutter_app/lib/dashboard_screen.dart")
+        for marker in (
+            "NSE Algo Signal",
+            "CURRENT ENGINE STATE",
+            "SIGNAL DETAILS",
+            "Live snapshot • no fabricated values",
+            "Paper signals only • No order placement.",
+            "/v1/terminal",
+        ):
+            self.assertIn(marker, src)
+
     def test_market_terminal_is_first_screen(self):
         src = read("flutter_app/lib/main.dart")
         self.assertIn("'Market Terminal'", src)
