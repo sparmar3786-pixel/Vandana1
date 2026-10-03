@@ -7,6 +7,7 @@ import 'package:file_saver/file_saver.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 import 'dashboard_screen.dart';
 import 'ai_validate_page.dart';
+import 'signal_alerts.dart';
 
 const String railwayBackendUrl =
     String.fromEnvironment('RAILWAY_BACKEND_URL', defaultValue: '');
@@ -78,6 +79,8 @@ class _TerminalState extends State<Terminal> {
   Timer? marketTimer;
   bool chartBusy = false;
   Map<String,dynamic> strategyData=<String,dynamic>{};
+  SignalAlertService? alertService;
+  SignalAlert? latestAlert;
   bool strategyBusy=false;
   late final WebViewController proChartController;
   bool proChartReady = false;
