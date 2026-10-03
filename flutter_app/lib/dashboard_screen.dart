@@ -6,7 +6,8 @@ import 'package:http/http.dart' as http;
 class DashboardScreen extends StatefulWidget {
   final String backendUrl;
   final String apiToken;
-  const DashboardScreen({super.key, this.backendUrl = '', this.apiToken = ''});
+  final ValueChanged<int>? onNavigate;
+  const DashboardScreen({super.key, this.backendUrl = '', this.apiToken = '', this.onNavigate});
   @override State<DashboardScreen> createState() => _DashboardScreenState();
 }
 
@@ -124,6 +125,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
       Text('VANDANA',style:TextStyle(fontSize:18,fontWeight:FontWeight.w900)),
       Text('NSE ALGO TERMINAL',style:TextStyle(fontSize:9,color:Color(0xFF667085),fontWeight:FontWeight.w700,letterSpacing:1.2)),
     ])),
+    Container(margin:const EdgeInsets.only(right:6),padding:const EdgeInsets.symmetric(horizontal:8,vertical:7),decoration:BoxDecoration(color:const Color(0xFF70A3FF).withValues(alpha:.10),borderRadius:BorderRadius.circular(18),border:Border.all(color:const Color(0xFF70A3FF).withValues(alpha:.30))),child:const Text('PROTOTYPE',style:TextStyle(fontSize:8,color:Color(0xFF70A3FF),fontWeight:FontWeight.w900)),),
     Container(padding:const EdgeInsets.symmetric(horizontal:10,vertical:7),decoration:BoxDecoration(
       color:const Color(0xFF32D583).withValues(alpha:.10),borderRadius:BorderRadius.circular(18),
       border:Border.all(color:const Color(0xFF32D583).withValues(alpha:.35)),
@@ -309,16 +311,30 @@ class _DashboardScreenState extends State<DashboardScreen> {
     ]));
   }
 
+  Widget bottomNav() => Container(
+    margin:const EdgeInsets.only(top:2),
+    padding:const EdgeInsets.symmetric(horizontal:6,vertical:7),
+    decoration:BoxDecoration(color:const Color(0xFF0C1320),borderRadius:BorderRadius.circular(18),border:Border.all(color:const Color(0xFF1D2939))),
+    child:Row(children:[
+      for(final item in const <Map<String,dynamic>>[
+        {'i':0,'t':'Dashboard','icon':Icons.dashboard_rounded}, {'i':7,'t':'Option Chain','icon':Icons.table_chart_rounded}, {'i':3,'t':'Signals','icon':Icons.notifications_active_rounded}, {'i':6,'t':'Charts','icon':Icons.show_chart_rounded}, {'i':15,'t':'AI Models','icon':Icons.psychology_alt_rounded}, {'i':16,'t':'Settings','icon':Icons.settings_rounded},
+      ]) Expanded(child:InkWell(onTap:()=>widget.onNavigate?.call(item['i'] as int),borderRadius:BorderRadius.circular(12),child:Padding(padding:const EdgeInsets.symmetric(vertical:6),child:Column(mainAxisSize:MainAxisSize.min,children:[Icon(item['icon'] as IconData,size:16,color:const Color(0xFF70A3FF)),const SizedBox(height:3),Text(item['t'] as String,textAlign:TextAlign.center,style:const TextStyle(fontSize:7,fontWeight:FontWeight.w800,color:Color(0xFF98A2B3)))]))))
+    ]),
+  );
+
   @override Widget build(BuildContext context) {
     return Container(color:const Color(0xFF070B14),child:RefreshIndicator(
       onRefresh:load,color:const Color(0xFF70A3FF),backgroundColor:const Color(0xFF101827),
       child:ListView(physics:const AlwaysScrollableScrollPhysics(),padding:const EdgeInsets.fromLTRB(14,14,14,30),children:[
         topHeader(),indexSelector(),const SizedBox(height:10),
         trendHero(),signalCard(),oiPressure(),sourceCards(),priceAction(),aiValidation(),
-        card(const Row(children:[
-          Icon(Icons.shield_outlined,color:Color(0xFF70A3FF),size:18),SizedBox(width:8),
-          Expanded(child:Text('READ ONLY • PAPER SIGNALS • NO ORDER PLACEMENT',style:TextStyle(fontSize:9,fontWeight:FontWeight.w800))),
+        card(Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
+          Row(children:[const Icon(Icons.shield_outlined,color:Color(0xFF70A3FF),size:18),const SizedBox(width:8),Expanded(child:Text('Visual prototype only • not for live trading',style:TextStyle(fontSize:10,fontWeight:FontWeight.w900))),]),
+          const SizedBox(height:5),
+          const Text('READ ONLY • PAPER SIGNALS • NO ORDER PLACEMENT',style:TextStyle(fontSize:8,color:Color(0xFF667085),fontWeight:FontWeight.w800)),
         ])),
+        const SizedBox(height:4),
+        bottomNav(),
       ]),
     ));
   }
