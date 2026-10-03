@@ -88,8 +88,12 @@ class IntegratedBuildContractTests(unittest.TestCase):
 
     def test_signal_tab_is_not_in_primary_navigation(self):
         src = read("flutter_app/lib/main.dart")
-        self.assertNotIn("'Signals',", src)
-        self.assertIn("'Signal Flow',", src)
+        start = src.find("static const screens = <String>[")
+        end = src.find("];", start)
+        nav = src[start:end]
+        self.assertNotIn("'Signals'", nav)
+        self.assertIn("'Market Terminal'", nav)
+        self.assertIn("'Signal Flow'", nav)
 
     def test_market_terminal_is_first_screen(self):
         src = read("flutter_app/lib/main.dart")
