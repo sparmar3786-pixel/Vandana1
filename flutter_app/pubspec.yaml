@@ -16,7 +16,6 @@ flutter:
   uses-material-design: true
   assets:
     - assets/prochart.html
-    - assets/signals_v2.html
     - assets/dashboard.html
 
 
