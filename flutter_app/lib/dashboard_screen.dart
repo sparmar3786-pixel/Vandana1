@@ -6,242 +6,106 @@ import 'package:http/http.dart' as http;
 class DashboardScreen extends StatefulWidget {
   final String backendUrl;
   final String apiToken;
-
-  const DashboardScreen({
-    super.key,
-    this.backendUrl = '',
-    this.apiToken = '',
-  });
-
-  @override
-  State<DashboardScreen> createState() => _DashboardScreenState();
+  const DashboardScreen({super.key, this.backendUrl = '', this.apiToken = ''});
+  @override State<DashboardScreen> createState() => _DashboardScreenState();
 }
 
 class _DashboardScreenState extends State<DashboardScreen> {
-  Map<String, dynamic>? _terminal;
-  String _connection = 'Connecting...';
-  bool _busy = false;
-  Timer? _refreshTimer;
+  Map<String,dynamic> data = <String,dynamic>{};
+  List<dynamic> options = <dynamic>[];
+  String index = 'NIFTY';
+  String connection = 'CONNECTING';
+  bool busy = false;
+  Timer? timer;
+  static const indices = <String>['NIFTY','BANKNIFTY','FINNIFTY','MIDCPNIFTY','SENSEX','BANKEX'];
 
-  @override
-  void initState() {
-    super.initState();
-    _fetchTerminal();
-    _refreshTimer = Timer.periodic(const Duration(seconds: 5), (_) {
-      _fetchTerminal();
-    });
+  @override void initState() { super.initState(); load(); timer=Timer.periodic(const Duration(seconds:5),(_)=>load()); }
+  @override void didUpdateWidget(covariant DashboardScreen old) { super.didUpdateWidget(old); if(old.backendUrl!=widget.backendUrl||old.apiToken!=widget.apiToken) load(); }
+  @override void dispose(){timer?.cancel();super.dispose();}
+
+  Map<String,String> get headers => <String,String>{if(widget.apiToken.trim().isNotEmpty)'x-token':widget.apiToken.trim()};
+  Uri uri(String p)=>Uri.parse(widget.backendUrl.trim().replaceFirst(RegExp(r'/+$'),'')+p);
+  String val(dynamic v,[String d='—'])=>v==null||v.toString().trim().isEmpty?d:v.toString();
+  Color tone(String s){final x=s.toUpperCase();if(x.contains('UP')||x.contains('CALL')||x.contains('BULL'))return const Color(0xFF32D583);if(x.contains('DOWN')||x.contains('PUT')||x.contains('BEAR'))return const Color(0xFFFF6B6B);return const Color(0xFF70A3FF);}
+  double numv(dynamic v)=>double.tryParse((v??0).toString().replaceAll(',',''))??0;
+
+  Future<void> load() async {
+    if(busy||widget.backendUrl.trim().isEmpty)return; busy=true;
+    try{
+      final r=await Future.wait<dynamic>([
+        http.get(uri('/v1/terminal'),headers:headers).timeout(const Duration(seconds:6)),
+        http.get(uri('/v1/angel/option-chain?symbol='+index+'&count=8'),headers:headers).timeout(const Duration(seconds:10)),
+      ]);
+      if(!mounted)return;
+      dynamic a,b;try{a=jsonDecode((r[0] as http.Response).body);}catch(_){}
+      try{b=jsonDecode((r[1] as http.Response).body);}catch(_){}
+      final t=a is Map?Map<String,dynamic>.from(a):<String,dynamic>{};
+      final c=t['connection']; final angel=c is Map&&c['angel']==true;
+      setState((){data=t;options=b is Map&&b['rows'] is List?List<dynamic>.from(b['rows']):<dynamic>[];connection=(r[0] as http.Response).statusCode==200&&angel?'LIVE':(r[0] as http.Response).statusCode==200?'BACKEND OK':'OFFLINE';});
+    }catch(_){if(mounted)setState(()=>connection='OFFLINE');}finally{busy=false;}
   }
 
-  @override
-  void didUpdateWidget(covariant DashboardScreen oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (oldWidget.backendUrl != widget.backendUrl ||
-        oldWidget.apiToken != widget.apiToken) {
-      _fetchTerminal();
-    }
+  Widget pill(String s,{bool on=false,Color? color}){final c=color??const Color(0xFF70A3FF);return Container(padding:const EdgeInsets.symmetric(horizontal:11,vertical:7),decoration:BoxDecoration(color:on?c.withValues(alpha:.15):const Color(0xFF101827),borderRadius:BorderRadius.circular(20),border:Border.all(color:on?c:const Color(0xFF263247))),child:Text(s,style:TextStyle(fontSize:10,fontWeight:FontWeight.w800,color:on?c:const Color(0xFF98A2B3))));}
+  Widget card(Widget w)=>Container(width:double.infinity,margin:const EdgeInsets.only(bottom:10),padding:const EdgeInsets.all(14),decoration:BoxDecoration(color:const Color(0xFF101827),borderRadius:BorderRadius.circular(18),border:Border.all(color:const Color(0xFF1D2939))),child:w);
+  Widget metric(String k,String v,{Color? c})=>Expanded(child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[Text(k,style:const TextStyle(fontSize:9,color:Color(0xFF667085))),const SizedBox(height:3),Text(v,overflow:TextOverflow.ellipsis,style:TextStyle(fontSize:12,fontWeight:FontWeight.w900,color:c))]));
+  Widget title(String a,String b)=>Padding(padding:const EdgeInsets.only(bottom:9),child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[Text(a,style:const TextStyle(fontSize:14,fontWeight:FontWeight.w900)),const SizedBox(height:2),Text(b,style:const TextStyle(fontSize:9,color:Color(0xFF667085)))]));
+  Widget sectionRow(String a,String b)=>Row(children:[Expanded(child:Text(a,style:const TextStyle(fontSize:12,fontWeight:FontWeight.w800))),Text(b,style:const TextStyle(fontSize:10,color:Color(0xFF98A2B3)))]);
+
+  Widget hero(Map<String,dynamic> e){
+    final tr=val(e['trend'],'WAIT');final c=tone(tr);final live=connection=='LIVE'&&data['market_open']==true;
+    return card(Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
+      Row(children:[const Icon(Icons.bolt_rounded,size:21),const SizedBox(width:7),const Expanded(child:Text('VANDANA • NSE ALGO TERMINAL',style:TextStyle(fontSize:12,fontWeight:FontWeight.w900))),pill(live?'● LIVE':'● LAST STATE',on:true,color:live?const Color(0xFF32D583):const Color(0xFF70A3FF))]),
+      const SizedBox(height:15),
+      Row(crossAxisAlignment:CrossAxisAlignment.end,children:[
+        Expanded(child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[Text(index,style:const TextStyle(fontSize:10,color:Color(0xFF98A2B3))),const SizedBox(height:3),Text(val(e['index_ltp']),style:const TextStyle(fontSize:30,fontWeight:FontWeight.w900)),Text(val(e['change']??e['percent_change']??e['percentChange']),style:TextStyle(color:c,fontWeight:FontWeight.w800))])),
+        Container(padding:const EdgeInsets.all(12),decoration:BoxDecoration(color:c.withValues(alpha:.13),borderRadius:BorderRadius.circular(14)),child:Column(children:[Icon(tr.toUpperCase().contains('DOWN')?Icons.south_east:tr.toUpperCase().contains('UP')?Icons.north_east:Icons.remove,color:c),Text(tr,style:TextStyle(color:c,fontWeight:FontWeight.w900,fontSize:10))]))
+      ])
+    ]));
   }
 
-  @override
-  void dispose() {
-    _refreshTimer?.cancel();
-    super.dispose();
+  Widget signal(Map<String,dynamic> e){
+    final s=val(e['signal_status'],'WAIT');final c=tone(val(e['ce_pe'],s));
+    return card(Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
+      Row(children:[const Expanded(child:Text('CALL / PUT SIGNAL',style:TextStyle(fontSize:14,fontWeight:FontWeight.w900))),pill('PRIORITY '+val(e['priority']),color:c)]),
+      const SizedBox(height:10),
+      Row(children:[Expanded(child:Text(s,style:TextStyle(fontSize:24,fontWeight:FontWeight.w900,color:c))),Text('Confidence '+val(e['confidence']),style:const TextStyle(fontSize:9,color:Color(0xFF98A2B3)))]),
+      const SizedBox(height:11),
+      Row(children:[metric('STRIKE',val(e['strike'])),metric('ENTRY',val(e['entry'])),metric('SL',val(e['stop_loss'])),metric('TARGET',val(e['target']))]),
+      const SizedBox(height:8),Text(val(e['reason'],'Awaiting live validation'),style:const TextStyle(fontSize:10,color:Color(0xFF98A2B3)))
+    ]));
   }
 
-  Uri _uri(String path) {
-    final base = widget.backendUrl.trim().replaceFirst(RegExp(r'/+$'), '');
-    return Uri.parse(base + path);
+  Widget oi(){
+    num ce=0,pe=0;for(final r in options){if(r is! Map)continue;final x=numv(r['oi']);if((r['type']??'').toString().toUpperCase()=='CE')ce+=x;if((r['type']??'').toString().toUpperCase()=='PE')pe+=x;}
+    return card(Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
+      title('OPTION CHAIN / OI PRESSURE','Live CE / PE snapshot • '+index),
+      options.isEmpty?const Text('Market data unavailable',style:TextStyle(fontSize:10,color:Color(0xFF667085))):Row(children:[metric('CALL OI',ce.toStringAsFixed(0),c:const Color(0xFF32D583)),metric('PUT OI',pe.toStringAsFixed(0),c:const Color(0xFFFF6B6B)),metric('ROWS',options.length.toString())]),
+      const SizedBox(height:9),
+      Row(children:[Expanded(child:Container(height:5,decoration:BoxDecoration(color:const Color(0xFF32D583),borderRadius:BorderRadius.circular(6)))),const SizedBox(width:4),Expanded(child:Container(height:5,decoration:BoxDecoration(color:const Color(0xFFFF6B6B),borderRadius:BorderRadius.circular(6))))])
+    ]));
   }
 
-  Future<void> _fetchTerminal() async {
-    if (_busy || widget.backendUrl.trim().isEmpty) return;
-    _busy = true;
-    try {
-      final response = await http.get(
-        _uri('/v1/terminal'),
-        headers: <String, String>{'x-token': widget.apiToken},
-      ).timeout(const Duration(seconds: 6));
-      if (!mounted) return;
-      final decoded = jsonDecode(response.body);
-      final data = decoded is Map<String, dynamic> ? decoded : <String, dynamic>{};
-      final connection = data['connection'];
-      final angel = connection is Map && connection['angel'] == true;
-      setState(() {
-        _terminal = data;
-        _connection = response.statusCode == 200 && angel
-            ? 'Connected'
-            : response.statusCode == 200
-                ? 'Backend connected / Angel not connected'
-                : 'HTTP ${response.statusCode}';
-      });
-    } catch (_) {
-      if (mounted) setState(() => _connection = 'Backend not connected');
-    } finally {
-      _busy = false;
-    }
+  Widget ai(Map<String,dynamic> e){
+    const names=<String>['Trend AI','Options AI','Pattern AI','Consensus AI','Risk AI','News AI'];final x=data['ai'];
+    return card(Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
+      title('6-LAYER AI VALIDATION','Server-side • no Puter sign-in'),
+      for(final n in names)Padding(padding:const EdgeInsets.symmetric(vertical:4),child:Row(children:[const Icon(Icons.psychology_alt,size:15,color:Color(0xFF70A3FF)),const SizedBox(width:8),Expanded(child:Text(n,style:const TextStyle(fontSize:10,fontWeight:FontWeight.w700))),Text(x is Map&&x[n]!=null?val(x[n]):'Pending',style:const TextStyle(fontSize:9,color:Color(0xFF98A2B3)))])),
+      const Divider(color:Color(0xFF1D2939)),Text('Final: '+val(e['signal_status'],'WAIT'),style:const TextStyle(fontWeight:FontWeight.w900))
+    ]));
   }
 
-  String _value(dynamic value) {
-    if (value == null || value.toString().trim().isEmpty) {
-      return 'DATA UNAVAILABLE';
-    }
-    return value.toString();
+  @override Widget build(BuildContext context){
+    final raw=data['engine_state'];final e=raw is Map<String,dynamic>?raw:raw is Map?Map<String,dynamic>.from(raw):<String,dynamic>{};
+    return Container(color:const Color(0xFF070B14),child:RefreshIndicator(onRefresh:load,color:const Color(0xFF70A3FF),backgroundColor:const Color(0xFF101827),child:ListView(physics:const AlwaysScrollableScrollPhysics(),padding:const EdgeInsets.fromLTRB(12,12,12,28),children:[
+      Row(children:[const Expanded(child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[Text('Dashboard',style:TextStyle(fontSize:24,fontWeight:FontWeight.w900)),SizedBox(height:2),Text('Professional market command center',style:TextStyle(fontSize:10,color:Color(0xFF667085)))])),IconButton(onPressed:busy?null:load,icon:Icon(busy?Icons.sync:Icons.refresh_rounded))]),
+      const SizedBox(height:6),
+      SizedBox(height:39,child:ListView.separated(scrollDirection:Axis.horizontal,itemCount:indices.length,separatorBuilder:(_,__)=>const SizedBox(width:6),itemBuilder:(_,i){final n=indices[i];return GestureDetector(onTap:(){setState(()=>index=n);load();},child:pill(n,on:index==n));})),
+      const SizedBox(height:10),hero(e),signal(e),
+      Row(crossAxisAlignment:CrossAxisAlignment.start,children:[Expanded(child:card(Column(crossAxisAlignment:CrossAxisAlignment.start,children:[const Text('NSE / BSE',style:TextStyle(fontWeight:FontWeight.w800)),const SizedBox(height:6),Text(connection,style:const TextStyle(fontSize:10,color:Color(0xFF98A2B3)))]))),const SizedBox(width:8),Expanded(child:card(const Column(crossAxisAlignment:CrossAxisAlignment.start,children:[Text('COMMODITIES',style:TextStyle(fontWeight:FontWeight.w800)),SizedBox(height:6),Text('MCX feed',style:TextStyle(fontSize:10,color:Color(0xFF98A2B3)))])))]),
+      oi(),
+      card(Column(crossAxisAlignment:CrossAxisAlignment.start,children:[title('PRICE ACTION','Live chart data remains in Charts'),Row(children:[pill('EMA'),const SizedBox(width:5),pill('VWAP'),const SizedBox(width:5),pill('RSI'),const SizedBox(width:5),pill('1D',on:true)]),const SizedBox(height:11),Container(height:64,alignment:Alignment.center,decoration:BoxDecoration(borderRadius:BorderRadius.circular(12),border:Border.all(color:const Color(0xFF1D2939))),child:const Text('Open Charts for live candlestick data',style:TextStyle(fontSize:10,color:Color(0xFF667085))))])),
+      ai(e),
+      card(const Row(children:[Icon(Icons.shield_outlined,color:Color(0xFF70A3FF),size:18),SizedBox(width:8),Expanded(child:Text('READ ONLY • PAPER SIGNALS • NO ORDER PLACEMENT',style:TextStyle(fontSize:9,fontWeight:FontWeight.w800)))]))
+    ])));
   }
-
-  Widget _row(String label, dynamic value) => Padding(
-    padding: const EdgeInsets.symmetric(vertical: 4),
-    child: Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: <Widget>[
-        SizedBox(width: 150, child: Text(label, style: TextStyle(color: Colors.grey.shade400))),
-        Expanded(child: Text(_value(value), style: const TextStyle(fontWeight: FontWeight.w600))),
-      ],
-    ),
-  );
-
-  Widget _infoCard(String title, String value, Color color) => Card(
-    color: color.withOpacity(.10),
-    shape: RoundedRectangleBorder(
-      borderRadius: BorderRadius.circular(12),
-      side: BorderSide(color: color.withOpacity(.45)),
-    ),
-    child: Padding(
-      padding: const EdgeInsets.all(13),
-      child: Row(
-        children: <Widget>[
-          Icon(Icons.circle, size: 10, color: color),
-          const SizedBox(width: 10),
-          Expanded(child: Text(title, style: const TextStyle(fontWeight: FontWeight.bold))),
-          Flexible(child: Text(value, textAlign: TextAlign.end)),
-        ],
-      ),
-    ),
-  );
-
-  @override
-  Widget build(BuildContext context) {
-    final marketOpen = _terminal?['market_open'] == true;
-    final raw = _terminal?['engine_state'];
-    final engine = raw is Map<String, dynamic>
-        ? raw
-        : raw is Map
-            ? Map<String, dynamic>.from(raw)
-            : <String, dynamic>{};
-    final trend = _value(engine['trend']);
-    final action = _value(engine['signal_status']);
-    final up = trend.toUpperCase().contains('UP');
-    final down = trend.toUpperCase().contains('DOWN');
-    final accent = !marketOpen
-        ? Colors.blue
-        : up
-            ? Colors.green
-            : down
-                ? Colors.red
-                : Colors.blue;
-
-    return Container(
-      color: const Color(0xFF0A0F16),
-      child: RefreshIndicator(
-        onRefresh: _fetchTerminal,
-        child: ListView(
-          physics: const AlwaysScrollableScrollPhysics(),
-          padding: const EdgeInsets.fromLTRB(12, 14, 12, 28),
-          children: <Widget>[
-            Card(
-              color: accent.withOpacity(.18),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(14),
-                side: BorderSide(color: accent, width: 1.5),
-              ),
-              child: Padding(
-                padding: const EdgeInsets.all(16),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: <Widget>[
-                    Row(
-                      children: <Widget>[
-                        const Icon(Icons.bolt, size: 30),
-                        const SizedBox(width: 10),
-                        const Expanded(
-                          child: Text(
-                            'NSE Algo Signal',
-                            style: TextStyle(fontSize: 21, fontWeight: FontWeight.bold),
-                          ),
-                        ),
-                        Chip(
-                          backgroundColor: accent,
-                          label: Text(
-                            marketOpen ? trend : 'MARKET CLOSED',
-                            style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 8),
-                    Text(
-                      'Engine status: ' + _value(engine['status']),
-                      style: TextStyle(color: accent, fontWeight: FontWeight.bold),
-                    ),
-                    const SizedBox(height: 2),
-                    const Text('Live snapshot • no fabricated values'),
-                  ],
-                ),
-              ),
-            ),
-            const SizedBox(height: 10),
-            Card(
-              child: Padding(
-                padding: const EdgeInsets.all(14),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: <Widget>[
-                    const Text('CURRENT ENGINE STATE', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-                    const Divider(height: 20),
-                    _row('Symbol', engine['symbol']),
-                    _row('Index / Underlying LTP', engine['index_ltp']),
-                    _row('CE / PE', engine['ce_pe']),
-                    _row('Strike Price', engine['strike']),
-                    _row('Option LTP', engine['option_ltp']),
-                    _row('OI', engine['oi']),
-                    _row('OI Change', engine['oi_change']),
-                    _row('Volume', engine['volume']),
-                    _row('ATM', engine['atm']),
-                    _row('Trend', trend),
-                    _row('Signal Status', action),
-                  ],
-                ),
-              ),
-            ),
-            const SizedBox(height: 10),
-            Card(
-              child: Padding(
-                padding: const EdgeInsets.all(14),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: <Widget>[
-                    const Text('SIGNAL DETAILS', style: TextStyle(fontSize: 17, fontWeight: FontWeight.bold)),
-                    _row('Option Symbol', engine['option_symbol']),
-                    _row('Entry', engine['entry']),
-                    _row('Stop Loss', engine['stop_loss']),
-                    _row('Target', engine['target']),
-                  ],
-                ),
-              ),
-            ),
-            const SizedBox(height: 8),
-            _infoCard(
-              'Connection',
-              _connection,
-              _connection == 'Connected' ? Colors.green : Colors.orange,
-            ),
-            _infoCard('Mode', 'Paper signals only • No order placement.', Colors.blue),
-            const SizedBox(height: 4),
-            FilledButton.icon(
-              onPressed: _busy ? null : _fetchTerminal,
-              icon: Icon(_busy ? Icons.sync : Icons.refresh),
-              label: const Text('REFRESH LIVE ENGINE'),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
+}
