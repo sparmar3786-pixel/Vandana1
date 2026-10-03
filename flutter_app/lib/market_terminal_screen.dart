@@ -7,6 +7,7 @@ import 'package:file_saver/file_saver.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 import 'signal_alerts.dart';
 import 'dashboard_screen.dart';
+import 'ai_validate_page.dart';
 
 const String railwayBackendUrl =
     String.fromEnvironment('RAILWAY_BACKEND_URL', defaultValue: '');
@@ -654,10 +655,9 @@ class _TerminalState extends State<Terminal> {
       ],
     );
   }
-  Widget aiModelsPage() => PuterAiPage(
+  Widget aiModelsPage() => AiValidatePage(
     backendUrl: backendUrl,
     apiToken: apiToken,
-    initialSnapshot: terminalData,
     symbol: selectedOptionSymbol,
   );
 
