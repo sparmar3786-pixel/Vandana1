@@ -9,6 +9,7 @@ import 'signal_alerts.dart';
 import 'puter_ai_page.dart';
 import 'signals_screen.dart';
 import 'dashboard_screen.dart';
+import 'ai_validate_page.dart';
 
 const String railwayBackendUrl =
     String.fromEnvironment('RAILWAY_BACKEND_URL', defaultValue: '');
@@ -243,7 +244,7 @@ class _TerminalState extends State<Terminal> {
     if (selected == 10) return angelApi();
     if (selected == 12) return nseMcp();
     if (selected == 14) return strategiesPage();
-    if (selected == 15) return aiModelsPage();
+    if (selected == 15) return AiValidatePage(backendUrl: backendUrl, apiToken: apiToken, symbol: selectedOptionSymbol);
     if (selected == 16) return settingsPage();
     if (selected == 17) return morePage();
     if (selected >= 18) return referenceLayoutScreen(selected);
