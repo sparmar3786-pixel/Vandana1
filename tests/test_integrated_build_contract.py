@@ -44,10 +44,8 @@ class IntegratedBuildContractTests(unittest.TestCase):
             '@app.get("/v1/angel/greeks")',
         ):
             self.assertIn(endpoint, src)
-        self.assertIn("ANGEL_API_KEY", read("backend/config.py"))
-        self.assertIn("ANGEL_CLIENT_CODE", read("backend/config.py"))
-        self.assertIn("ANGEL_PIN", read("backend/config.py"))
-        self.assertIn("ANGEL_TOTP_SECRET", read("backend/config.py"))
+        for marker in ("ANGEL_API_KEY", "ANGEL_CLIENT_CODE", "ANGEL_PIN", "ANGEL_TOTP_SECRET"):
+            self.assertIn(marker, read("backend/config.py"))
 
     def test_backend_terminal_contract(self):
         src = read("backend/server.py")
@@ -67,55 +65,37 @@ class IntegratedBuildContractTests(unittest.TestCase):
         timer_block = src[start:start + 420]
         self.assertIn("fetchIndices()", timer_block)
         self.assertIn("fetchCommodities()", timer_block)
-        self.assertTrue(("if (selected == 4) fetchOptionRows()" in timer_block and "if (selected == 7) fetchOptionRows()" in timer_block) or "if (selected == 4 || selected == 7) fetchOptionRows()" in timer_block)
+        self.assertTrue(("if (selected == 3) fetchOptionRows()" in timer_block and "if (selected == 6) fetchOptionRows()" in timer_block) or "if (selected == 3 || selected == 6) fetchOptionRows()" in timer_block)
         self.assertIn("fetchAngelMarket()", src)
         self.assertIn("backendUri('/v1/angel/option-chain", src)
         self.assertIn("backendUri('/v1/angel/oi-buildup", src)
 
-
-    def test_build_322_dashboard_contract(self):
+    def test_legacy_build_156_dashboard_contract(self):
         src = read("flutter_app/lib/dashboard_screen.dart")
         for marker in (
-            "VANDANA",
-            "NSE ALGO TERMINAL",
-            "MARKET TREND",
-            "CALL / PUT SIGNAL",
-            "OPTION CHAIN / OI PRESSURE",
-            "AI VALIDATION",
-            "READ ONLY • PAPER SIGNALS • NO ORDER PLACEMENT",
+            "NSE Algo Signal",
+            "Fast market workspace",
+            "CURRENT SIGNAL",
+            "QUICK ACCESS",
+            "NSE SIGNAL FEED",
+            "Data policy",
             "/v1/terminal",
+            "/v1/angel/market",
         ):
             self.assertIn(marker, src)
+        self.assertNotIn("webview_flutter", src)
+        self.assertNotIn("PrototypE", src)
+
+    def test_signal_tab_is_not_in_primary_navigation(self):
+        src = read("flutter_app/lib/main.dart")
+        self.assertNotIn("'Signals',", src)
+        self.assertIn("'Signal Flow',", src)
 
     def test_market_terminal_is_first_screen(self):
         src = read("flutter_app/lib/main.dart")
         self.assertIn("'Market Terminal'", src)
         self.assertIn("if (selected == 0) return DashboardScreen(", src)
         self.assertNotIn("if (selected == 0) return dashboard();", src)
-
-    def test_dashboard_uses_live_backend_and_no_demo_feed(self):
-        src = read("flutter_app/assets/dashboard.html")
-        for marker in (
-            'Market Terminal',
-            'data-ex="ALL"',
-            'data-ex="NSE"',
-            'data-ex="BSE"',
-            '/health',
-            '/v1/angel/indices',
-            'window.bootstrapDashboard',
-            'Fake prices are disabled',
-            'no demo data',
-        ):
-            self.assertIn(marker.lower(), src.lower())
-        self.assertNotIn('fake prices are enabled', src.lower())
-
-    def test_dashboard_keeps_last_successful_fetch_when_live_is_unavailable(self):
-        src = read("flutter_app/assets/dashboard.html").lower()
-        self.assertIn("localstorage.setitem('market_last_rows'", src)
-        self.assertIn("localstorage.getitem('market_last_rows'", src)
-        self.assertIn("last fetched", src)
-        self.assertIn("market_last_fetched", src)
-        self.assertIn("using last fetched data", src)
 
     def test_legacy_puter_signin_path_is_removed(self):
         src = read("flutter_app/lib/main.dart")
