@@ -118,5 +118,16 @@ class IntegratedBuildContractTests(unittest.TestCase):
         ):
             self.assertIn(marker, src)
 
+    def test_native_android_build_does_not_depend_on_dart(self):
+        workflow = read(".github/workflows/build-apk.yml")
+        self.assertNotIn("subosito/flutter-action", workflow)
+        self.assertNotIn("flutter create", workflow)
+        self.assertIn("gradle", workflow)
+        self.assertIn("assembleDebug", workflow)
+        main = read("native_android/app/src/main/kotlin/com/parmar/trading/MainActivity.kt")
+        self.assertIn("WebView", main)
+        self.assertIn("assets/index.html", main)
+        self.assertIn('com.parmar.trading', main)
+
 if __name__ == "__main__":
     unittest.main()
