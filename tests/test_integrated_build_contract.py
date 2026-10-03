@@ -61,6 +61,14 @@ class IntegratedBuildContractTests(unittest.TestCase):
             self.assertIn(marker.lower(), src.lower())
         self.assertNotIn('fake prices are enabled', src.lower())
 
+    def test_dashboard_keeps_last_successful_fetch_when_live_is_unavailable(self):
+        src = read("flutter_app/assets/dashboard.html").lower()
+        self.assertIn("localstorage.setitem('market_last_rows'", src)
+        self.assertIn("localstorage.getitem('market_last_rows'", src)
+        self.assertIn("last fetched", src)
+        self.assertIn("market_last_fetched", src)
+        self.assertIn("using last fetched data", src)
+
     def test_signals_screen_is_wired_to_asset(self):
         src = read("flutter_app/lib/signals_screen.dart")
         self.assertIn("assets/signals_v2.html", src)
