@@ -1,0 +1,31 @@
+name: Build Native Android APK
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+          cache: gradle
+      - name: Verify Gradle
+        run: gradle --version
+      - name: Unit tests
+        run: gradle test --no-daemon --stacktrace
+      - name: Release APK
+        run: gradle :app:assembleRelease --no-daemon --stacktrace
+      - uses: actions/upload-artifact@v4
+        with:
+          name: vandana1-native-release
+          path: app/build/outputs/apk/release/app-release.apk
+          if-no-files-found: error
