@@ -27,6 +27,28 @@ class IntegratedBuildContractTests(unittest.TestCase):
         self.assertIn('validate(x)', src)
         self.assertIn('AI final WAIT override', src)
 
+    def test_all_angel_data_endpoints_use_server_side_auto_login(self):
+        src = read("backend/server.py")
+        self.assertIn("def _ensure_angel():", src)
+        self.assertRegex(src, r"def angel_required\\(\\):\\s+_ensure_angel\\(\\)")
+        for endpoint in (
+            '@app.get("/v1/angel/commodities")',
+            '@app.get("/v1/angel/indices")',
+            '@app.get("/v1/angel/market")',
+            '@app.get("/v1/angel/candles")',
+            '@app.get("/v1/angel/option-chain")',
+            '@app.get("/v1/angel/oi")',
+            '@app.get("/v1/angel/search")',
+            '@app.get("/v1/angel/gainers-losers")',
+            '@app.get("/v1/angel/oi-buildup")',
+            '@app.get("/v1/angel/greeks")',
+        ):
+            self.assertIn(endpoint, src)
+        self.assertIn("ANGEL_API_KEY", read("backend/config.py"))
+        self.assertIn("ANGEL_CLIENT_CODE", read("backend/config.py"))
+        self.assertIn("ANGEL_PIN", read("backend/config.py"))
+        self.assertIn("ANGEL_TOTP_SECRET", read("backend/config.py"))
+
     def test_backend_terminal_contract(self):
         src = read("backend/server.py")
         for endpoint in (
