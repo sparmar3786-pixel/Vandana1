@@ -76,11 +76,13 @@ class IntegratedBuildContractTests(unittest.TestCase):
     def test_build_322_dashboard_contract(self):
         src = read("flutter_app/lib/dashboard_screen.dart")
         for marker in (
-            "NSE Algo Signal",
-            "CURRENT ENGINE STATE",
-            "SIGNAL DETAILS",
-            "Live snapshot • no fabricated values",
-            "Paper signals only • No order placement.",
+            "VANDANA",
+            "NSE ALGO TERMINAL",
+            "MARKET TREND",
+            "CALL / PUT SIGNAL",
+            "OPTION CHAIN / OI PRESSURE",
+            "AI VALIDATION",
+            "READ ONLY • PAPER SIGNALS • NO ORDER PLACEMENT",
             "/v1/terminal",
         ):
             self.assertIn(marker, src)
