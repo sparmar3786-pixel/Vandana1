@@ -125,6 +125,12 @@ class IntegratedBuildContractTests(unittest.TestCase):
         self.assertIn("assets/signals_v2.html", src)
         self.assertIn("window.bootstrapSignals", src)
 
+    def test_legacy_puter_signin_path_is_removed(self):
+        src = read("flutter_app/lib/main.dart")
+        self.assertNotIn("puter_ai_page.dart", src)
+        self.assertNotIn("PuterAiPage", src)
+        self.assertFalse((ROOT / "flutter_app/lib/puter_ai_page.dart").exists())
+
     def test_workflow_builds_and_verifies_apk(self):
         src = read(".github/workflows/build-apk.yml")
         for marker in (
