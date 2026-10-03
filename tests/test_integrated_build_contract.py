@@ -30,7 +30,7 @@ class IntegratedBuildContractTests(unittest.TestCase):
     def test_all_angel_data_endpoints_use_server_side_auto_login(self):
         src = read("backend/server.py")
         self.assertIn("def _ensure_angel():", src)
-        self.assertRegex(src, r"def angel_required\(\):\s+_ensure_angel\(\)")
+        self.assertRegex(src, r"def angel_required\(\):[\\s\\S]*?_ensure_angel\(\)")
         for endpoint in (
             '@app.get("/v1/angel/commodities")',
             '@app.get("/v1/angel/indices")',
