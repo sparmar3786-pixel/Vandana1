@@ -67,7 +67,7 @@ class IntegratedBuildContractTests(unittest.TestCase):
         timer_block = src[start:start + 420]
         self.assertIn("fetchIndices()", timer_block)
         self.assertIn("fetchCommodities()", timer_block)
-        self.assertTrue(\n            "if (selected == 4) fetchOptionRows()" in timer_block and\n            "if (selected == 7) fetchOptionRows()" in timer_block\n            or "if (selected == 4 || selected == 7) fetchOptionRows()" in timer_block\n        )
+        self.assertTrue(("if (selected == 4) fetchOptionRows()" in timer_block and "if (selected == 7) fetchOptionRows()" in timer_block) or "if (selected == 4 || selected == 7) fetchOptionRows()" in timer_block)
         self.assertIn("fetchAngelMarket()", src)
         self.assertIn("backendUri('/v1/angel/option-chain", src)
         self.assertIn("backendUri('/v1/angel/oi-buildup", src)
