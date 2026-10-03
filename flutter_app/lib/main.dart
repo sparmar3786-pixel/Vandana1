@@ -5,8 +5,6 @@ import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
 import 'package:file_saver/file_saver.dart';
 import 'package:webview_flutter/webview_flutter.dart';
-import 'signal_alerts.dart';
-import 'signals_screen.dart';
 import 'dashboard_screen.dart';
 import 'ai_validate_page.dart';
 
@@ -37,7 +35,7 @@ class _TerminalState extends State<Terminal> {
   // while screens 19-30 provide the complete design-system views from the supplied
   // 30 Screen Layout reference. No order-placement UI is added.
   static const screens = <String>[
-    'Market Terminal','Market','Commodity','Signals','OI Lab','Watchlist','Charts',
+    'Market Terminal','Market','Commodity','OI Lab','Watchlist','Charts',
     'Option Chain','News','Market Details','Angel API','NSE','NSE MCP','Data',
     'Strategies','AI Models','Settings','More',
     'Splash / Launch','Login / Authentication','Market Overview','OI Heatmap',
@@ -46,7 +44,7 @@ class _TerminalState extends State<Terminal> {
   ];
   static const icons = <IconData>[
     Icons.show_chart, Icons.show_chart, Icons.precision_manufacturing,
-    Icons.notifications_active, Icons.analytics, Icons.star, Icons.candlestick_chart,
+    Icons.analytics, Icons.star, Icons.candlestick_chart,
     Icons.table_chart, Icons.article, Icons.info_outline, Icons.key, Icons.language,
     Icons.hub, Icons.storage, Icons.rule, Icons.psychology, Icons.tune, Icons.more_horiz,
     Icons.rocket_launch, Icons.login, Icons.dashboard_customize, Icons.bar_chart,
@@ -66,7 +64,6 @@ class _TerminalState extends State<Terminal> {
   String nseMcpStatus = 'Not checked';
   String angelLoginStatus = '';
   String csvStatus = '';
-  Map<String,dynamic>? signal;
   List<dynamic> liveMarket = <dynamic>[];
   List<dynamic> liveCandles = <dynamic>[];
   List<dynamic> liveOptionRows = <dynamic>[];
@@ -82,8 +79,6 @@ class _TerminalState extends State<Terminal> {
   bool chartBusy = false;
   Map<String,dynamic> strategyData=<String,dynamic>{};
   bool strategyBusy=false;
-  SignalAlertService? alertService;
-  SignalAlert? latestAlert;
   late final WebViewController proChartController;
   bool proChartReady = false;
 
@@ -102,24 +97,15 @@ class _TerminalState extends State<Terminal> {
     fetchTerminal();
     fetchIndices();
     fetchCommodities();
-    alertService = SignalAlertService(backendUrl, apiToken);
-    alertService!.onAlert = (a) {
-      if (!mounted) return;
-      setState(() => latestAlert = a);
-      Future.delayed(const Duration(seconds: 8), () {
-        if (mounted && latestAlert?.seq == a.seq) setState(() => latestAlert = null);
-      });
-    };
-    alertService!.start();
-    timer = Timer.periodic(const Duration(seconds: 5), (_) { fetchTerminal(); if (selected == 6) fetchCandles(); if (selected == 14) fetchStrategy(); });
+    timer = Timer.periodic(const Duration(seconds: 5), (_) { fetchTerminal(); if (selected == 5) fetchCandles(); if (selected == 13) fetchStrategy(); });
     marketTimer = Timer.periodic(const Duration(seconds: 10), (_) {
       fetchIndices();
       fetchCommodities();
-      if (selected == 4) fetchOptionRows();
-      if (selected == 7) fetchOptionRows();
+      if (selected == 3) fetchOptionRows();
+      if (selected == 6) fetchOptionRows();
     });
   }
-  @override void dispose() { timer?.cancel(); marketTimer?.cancel(); alertService?.stop(); super.dispose(); }
+  @override void dispose() { timer?.cancel(); marketTimer?.cancel(); super.dispose(); }
 
   Future<void> fetchTerminal() async {
     try {
@@ -134,9 +120,7 @@ class _TerminalState extends State<Terminal> {
       final angel = conn is Map && conn['angel'] == true;
       setState(() {
         terminalData = decoded is Map<String,dynamic> ? decoded : null;
-        final s = terminalData?['signals'];
         final m = terminalData?['nse_mcp'];
-        signal = s is Map<String,dynamic> ? s : null;
         connection = response.statusCode == 200 && conn is Map && conn['server'] == true && conn['angel'] == true ? 'Connected' : response.statusCode == 200 && conn is Map && conn['server'] == true ? 'Backend connected / Angel not connected' : 'HTTP ' + response.statusCode.toString();
         nseMcpStatus = m is Map && m['connected'] == true ? 'Connected' : 'Not connected';
       });
@@ -203,27 +187,6 @@ class _TerminalState extends State<Terminal> {
     body: Stack(
       children: <Widget>[
         buildScreen(),
-        if (latestAlert != null)
-          Positioned(
-            top: 8, left: 8, right: 8,
-            child: Material(
-              elevation: 8,
-              borderRadius: BorderRadius.circular(12),
-              color: latestAlert!.kind == 'ENTRY' ? Colors.green.shade700 : Colors.red.shade700,
-              child: InkWell(
-                borderRadius: BorderRadius.circular(12),
-                onTap: () => setState(() => latestAlert = null),
-                child: Padding(
-                  padding: const EdgeInsets.all(13),
-                  child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: <Widget>[
-                    Text(latestAlert!.title, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16)),
-                    const SizedBox(height: 3),
-                    Text(latestAlert!.body, style: const TextStyle(color: Colors.white, fontSize: 13)),
-                  ]),
-                ),
-              ),
-            ),
-          ),
       ],
     ),
   ),
@@ -233,23 +196,21 @@ class _TerminalState extends State<Terminal> {
     if (selected == 0) return DashboardScreen(backendUrl: backendUrl, apiToken: apiToken, onNavigate: (int page) { if (page >= 0 && page < screens.length) setState(() => selected = page); });
     if (selected == 1) return marketPage();
     if (selected == 2) return commodityPage();
-    if (selected == 3) return SignalsScreen(backendUrl: backendUrl, apiToken: apiToken);
-    if (selected == 4) return oiLabPage();
-    if (selected == 5) return watchlistPage();
-    if (selected == 6) return chartsPage();
-    if (selected == 7) return optionChain();
-    if (selected == 8) return newsPage();
-    if (selected == 9) return marketDetailsPage();
-    if (selected == 10) return angelApi();
-    if (selected == 12) return nseMcp();
-    if (selected == 14) return strategiesPage();
-    if (selected == 15) return AiValidatePage(backendUrl: backendUrl, apiToken: apiToken, symbol: selectedOptionSymbol);
-    if (selected == 16) return settingsPage();
-    if (selected == 17) return morePage();
-    if (selected >= 18) return referenceLayoutScreen(selected);
+    if (selected == 3) return oiLabPage();
+    if (selected == 4) return watchlistPage();
+    if (selected == 5) return chartsPage();
+    if (selected == 6) return optionChain();
+    if (selected == 7) return newsPage();
+    if (selected == 8) return marketDetailsPage();
+    if (selected == 9) return angelApi();
+    if (selected == 11) return nseMcp();
+    if (selected == 13) return strategiesPage();
+    if (selected == 14) return AiValidatePage(backendUrl: backendUrl, apiToken: apiToken, symbol: selectedOptionSymbol);
+    if (selected == 15) return settingsPage();
+    if (selected == 16) return morePage();
+    if (selected >= 17) return referenceLayoutScreen(selected);
     return dataPage(screens[selected]);
   }
-
   Future<void> fetchIndices() async {
     try {
       final r=await http.get(backendUri('/v1/angel/indices'),headers:<String,String>{'x-token':apiToken}).timeout(const Duration(seconds:8));
@@ -842,7 +803,7 @@ class _TerminalState extends State<Terminal> {
       content.add(section('BROKER AUTHENTICATION', Column(children: <Widget>[
         infoCard('Angel One', 'Client ID • MPIN • TOTP • API key', Colors.blue),
         infoCard('Backend', backendUrl.isEmpty ? 'Not configured' : backendUrl, Colors.orange),
-        FilledButton(onPressed: () => setState(() => selected = 10), child: const Text('OPEN ANGEL API LOGIN')),
+        FilledButton(onPressed: () => setState(() => selected = 9), child: const Text('OPEN ANGEL API LOGIN')),
       ])));
     } else if (index == 20) {
       content.add(section('INDICES', Column(children: <Widget>[
@@ -919,7 +880,7 @@ class _TerminalState extends State<Terminal> {
         ]),
         const SizedBox(height: 8),
         miniBars(),
-        FilledButton(onPressed: () => setState(() => selected = 14), child: const Text('OPEN STRATEGIES')),
+        FilledButton(onPressed: () => setState(() => selected = 13), child: const Text('OPEN STRATEGIES')),
       ])));
     } else if (index == 28) {
       content.add(section('STRATEGY REGISTRY', Column(children: <Widget>[
