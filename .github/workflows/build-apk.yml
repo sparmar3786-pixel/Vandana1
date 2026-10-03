@@ -1,11 +1,15 @@
 name: Build Parmar Trading APK
 on:
   push:
-    branches: [main]
+    branches: [main, feature/add-market-terminal-dashboard]
   workflow_dispatch:
 
 permissions:
   contents: read
+
+concurrency:
+  group: apk-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   apk:
@@ -36,15 +40,14 @@ jobs:
         run: |
           python - <<'PY'
           from pathlib import Path
+          import re
 
           manifest = Path("android/app/src/main/AndroidManifest.xml")
           s = manifest.read_text()
-          import re
           s = re.sub(r'android:label="[^"]+"', 'android:label="Parmar Trading"', s, count=1)
           if 'android:label=' not in s:
               s = s.replace('<application ', '<application android:label="Parmar Trading" ', 1)
           if 'android:icon=' in s:
-              import re
               s = re.sub(r'android:icon="[^"]+"', 'android:icon="@drawable/parmar_trading_icon"', s, count=1)
           else:
               s = s.replace('<application ', '<application android:icon="@drawable/parmar_trading_icon" ', 1)
@@ -136,43 +139,24 @@ jobs:
           if p.exists():
               s = p.read_text()
               if "isCoreLibraryDesugaringEnabled" not in s:
-                  s = s.replace(
-                      "    compileOptions {",
-                      "    compileOptions {\n"
-                      "        isCoreLibraryDesugaringEnabled = true",
-                      1,
-                  )
+                  s = s.replace("    compileOptions {", "    compileOptions {\n        isCoreLibraryDesugaringEnabled = true", 1)
               if "coreLibraryDesugaring(" not in s:
-                  s += (
-                      "\n\ndependencies {\n"
-                      "    coreLibraryDesugaring(\"com.android.tools:desugar_jdk_libs:2.1.4\")\n"
-                      "}\n"
-                  )
+                  s += "\n\ndependencies {\n    coreLibraryDesugaring(\"com.android.tools:desugar_jdk_libs:2.1.4\")\n}\n"
               p.write_text(s)
           else:
               p = Path("android/app/build.gradle")
               s = p.read_text()
               if "coreLibraryDesugaringEnabled" not in s:
-                  s = s.replace(
-                      "    compileOptions {",
-                      "    compileOptions {\n"
-                      "        coreLibraryDesugaringEnabled true",
-                      1,
-                  )
+                  s = s.replace("    compileOptions {", "    compileOptions {\n        coreLibraryDesugaringEnabled true", 1)
               if "coreLibraryDesugaring" not in s:
-                  s += (
-                      "\n\ndependencies {\n"
-                      "    coreLibraryDesugaring 'com.android.tools:desugar_jdk_libs:2.1.4'\n"
-                      "}\n"
-                  )
+                  s += "\n\ndependencies {\n    coreLibraryDesugaring 'com.android.tools:desugar_jdk_libs:2.1.4'\n}\n"
               p.write_text(s)
           PY
           grep -n "CoreLibraryDesugaring\|coreLibraryDesugaring\|desugar_jdk_libs" android/app/build.gradle* || true
           python - <<'PY'
           from pathlib import Path
           p = Path("android/app/build.gradle.kts")
-          s = p.read_text()
-          s = s.replace("minSdk = flutter.minSdkVersion", "minSdk = 24")
+          s = p.read_text().replace("minSdk = flutter.minSdkVersion", "minSdk = 24")
           p.write_text(s)
           PY
           grep -q "minSdk = 24" android/app/build.gradle.kts
@@ -189,17 +173,18 @@ jobs:
           p = Path("android/app/src/main/AndroidManifest.xml")
           s = p.read_text()
           if "android.permission.INTERNET" not in s:
-              s = s.replace("marker", "marker")
-              marker = "<application"
-              s = s.replace(marker, '<uses-permission android:name="android.permission.INTERNET"/>\n    ' + marker, 1)
-          s = s.replace('<application ', '<application android:usesCleartextTraffic="true" ', 1)
+              s = s.replace("<application", '<uses-permission android:name="android.permission.INTERNET"/>\n    <application', 1)
+          if 'android:usesCleartextTraffic=' not in s:
+              s = s.replace('<application ', '<application android:usesCleartextTraffic="true" ', 1)
           p.write_text(s)
           PY
           grep -n "INTERNET\|usesCleartextTraffic" android/app/src/main/AndroidManifest.xml
 
-      - name: Get dependencies
+      - name: Get dependencies (retry)
         working-directory: flutter_app
-        run: flutter pub get
+        run: |
+          for i in 1 2 3; do flutter pub get && exit 0; echo "pub get failed ($i)"; sleep 10; done
+          exit 1
 
       - name: Install backend test dependencies
         working-directory: backend
@@ -212,7 +197,12 @@ jobs:
 
       - name: Run backend data-layer regression tests
         working-directory: backend
-        run: python -m unittest discover -s . -p 'test_*.py' -v
+        run: |
+          set -o pipefail
+          python -m unittest discover -s . -p 'test_*.py' -v 2>&1 | tee ../backend-test.log
+
+      - name: Verify integrated feature contract
+        run: python -m unittest tests.test_integrated_build_contract -v
 
       - name: Validate Dart source
         working-directory: flutter_app
@@ -272,3 +262,21 @@ jobs:
           name: Parmar-Trading-APK
           path: flutter_app/build/app/outputs/flutter-apk/app-debug.apk
           if-no-files-found: error
+
+      - name: Failure summary
+        if: failure()
+        run: |
+          for f in backend-test.log flutter_app/flutter-analyze.log flutter_app/flutter-build.log; do
+            [ -f "$f" ] && { echo "### $f (last 40 lines)"; echo '```'; tail -n 40 "$f"; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+          done
+
+      - name: Upload all logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ci-logs
+          path: |
+            backend-test.log
+            flutter_app/flutter-analyze.log
+            flutter_app/flutter-build.log
+          if-no-files-found: ignore
