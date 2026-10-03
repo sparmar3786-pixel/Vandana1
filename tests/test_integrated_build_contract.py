@@ -62,7 +62,8 @@ class IntegratedBuildContractTests(unittest.TestCase):
         self.assertRegex(src, r'"paper_only"\s*:\s*True')
 
     def test_live_pages_refresh_from_shared_backend_without_manual_page_action(self):
-        src = read("flutter_app/lib/main.dart")        start = src.find("marketTimer = Timer.periodic")
+        src = read("flutter_app/lib/main.dart")
+        start = src.find("marketTimer = Timer.periodic")
         timer_block = src[start:start + 420]
         self.assertIn("fetchIndices()", timer_block)
         self.assertIn("fetchCommodities()", timer_block)
