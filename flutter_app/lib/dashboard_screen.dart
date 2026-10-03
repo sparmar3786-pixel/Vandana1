@@ -88,42 +88,34 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 
   Widget _row(String label, dynamic value) => Padding(
-        padding: const EdgeInsets.symmetric(vertical: 5),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: <Widget>[
-            SizedBox(
-              width: 150,
-              child: Text(label, style: TextStyle(color: Colors.grey.shade400)),
-            ),
-            Expanded(
-              child: Text(
-                _value(value),
-                style: const TextStyle(fontWeight: FontWeight.w600),
-              ),
-            ),
-          ],
-        ),
-      );
+    padding: const EdgeInsets.symmetric(vertical: 4),
+    child: Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: <Widget>[
+        SizedBox(width: 150, child: Text(label, style: TextStyle(color: Colors.grey.shade400))),
+        Expanded(child: Text(_value(value), style: const TextStyle(fontWeight: FontWeight.w600))),
+      ],
+    ),
+  );
 
   Widget _infoCard(String title, String value, Color color) => Card(
-        color: color.withOpacity(.10),
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(12),
-          side: BorderSide(color: color.withOpacity(.45)),
-        ),
-        child: Padding(
-          padding: const EdgeInsets.all(13),
-          child: Row(
-            children: <Widget>[
-              Icon(Icons.circle, size: 10, color: color),
-              const SizedBox(width: 10),
-              Expanded(child: Text(title, style: const TextStyle(fontWeight: FontWeight.bold))),
-              Flexible(child: Text(value, textAlign: TextAlign.end)),
-            ],
-          ),
-        ),
-      );
+    color: color.withOpacity(.10),
+    shape: RoundedRectangleBorder(
+      borderRadius: BorderRadius.circular(12),
+      side: BorderSide(color: color.withOpacity(.45)),
+    ),
+    child: Padding(
+      padding: const EdgeInsets.all(13),
+      child: Row(
+        children: <Widget>[
+          Icon(Icons.circle, size: 10, color: color),
+          const SizedBox(width: 10),
+          Expanded(child: Text(title, style: const TextStyle(fontWeight: FontWeight.bold))),
+          Flexible(child: Text(value, textAlign: TextAlign.end)),
+        ],
+      ),
+    ),
+  );
 
   @override
   Widget build(BuildContext context) {
@@ -155,10 +147,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
           padding: const EdgeInsets.fromLTRB(12, 14, 12, 28),
           children: <Widget>[
             Card(
-              color: accent.withOpacity(.16),
+              color: accent.withOpacity(.18),
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(14),
-                side: BorderSide(color: accent, width: 1.4),
+                side: BorderSide(color: accent, width: 1.5),
               ),
               child: Padding(
                 padding: const EdgeInsets.all(16),
@@ -185,7 +177,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
                       ],
                     ),
                     const SizedBox(height: 8),
-                    Text('Engine status: ${_value(engine['status'])}', style: TextStyle(color: accent, fontWeight: FontWeight.bold)),
+                    Text(
+                      'Engine status: ' + _value(engine['status']),
+                      style: TextStyle(color: accent, fontWeight: FontWeight.bold),
+                    ),
                     const SizedBox(height: 2),
                     const Text('Live snapshot • no fabricated values'),
                   ],
@@ -233,7 +228,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
               ),
             ),
             const SizedBox(height: 8),
-            _infoCard('Connection', _connection, _connection == 'Connected' ? Colors.green : Colors.orange),
+            _infoCard(
+              'Connection',
+              _connection,
+              _connection == 'Connected' ? Colors.green : Colors.orange,
+            ),
             _infoCard('Mode', 'Paper signals only • No order placement.', Colors.blue),
             const SizedBox(height: 4),
             FilledButton.icon(
@@ -246,4 +245,3 @@ class _DashboardScreenState extends State<DashboardScreen> {
       ),
     );
   }
-}
