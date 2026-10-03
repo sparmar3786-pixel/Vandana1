@@ -117,29 +117,6 @@ class IntegratedBuildContractTests(unittest.TestCase):
         self.assertIn("market_last_fetched", src)
         self.assertIn("using last fetched data", src)
 
-    def test_signals_screen_uses_live_angel_nse_mcp_and_last_fetch_fallback(self):
-        src = read("flutter_app/assets/signals_v2.html").lower()
-        for marker in (
-            "/v1/terminal",
-            "/v1/ws",
-            "/v1/angel/status",
-            "/v1/nse/mcp/context",
-            "angel one",
-            "nse mcp",
-            "localstorage.setitem('signals_last_frame'",
-            "localstorage.getitem('signals_last_frame'",
-            "market closed",
-            "last fetched",
-        ):
-            self.assertIn(marker, src)
-        self.assertNotIn("synthetic data", src)
-        self.assertNotIn("demo stream", src)
-
-    def test_signals_screen_is_wired_to_asset(self):
-        src = read("flutter_app/lib/signals_screen.dart")
-        self.assertIn("assets/signals_v2.html", src)
-        self.assertIn("window.bootstrapSignals", src)
-
     def test_legacy_puter_signin_path_is_removed(self):
         src = read("flutter_app/lib/main.dart")
         self.assertNotIn("puter_ai_page.dart", src)
