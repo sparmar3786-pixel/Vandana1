@@ -173,7 +173,7 @@ class _TerminalState extends State<Terminal> {
             SizedBox(height: 10),
             Text('Parmar Trading', style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
             SizedBox(height: 4),
-            Text('30-screen NSE AI terminal'),
+            Text('29-screen NSE AI terminal'),
           ])),
           for (int i=0; i<screens.length; i++) ListTile(
             leading: Icon(icons[i]),
