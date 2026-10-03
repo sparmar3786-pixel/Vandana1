@@ -317,7 +317,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
     decoration:BoxDecoration(color:const Color(0xFF0C1320),borderRadius:BorderRadius.circular(18),border:Border.all(color:const Color(0xFF1D2939))),
     child:Row(children:[
       for(final item in const <Map<String,dynamic>>[
-        {'i':0,'t':'Dashboard','icon':Icons.dashboard_rounded}, {'i':7,'t':'Option Chain','icon':Icons.table_chart_rounded}, {'i':3,'t':'Signals','icon':Icons.notifications_active_rounded}, {'i':6,'t':'Charts','icon':Icons.show_chart_rounded}, {'i':15,'t':'AI Models','icon':Icons.psychology_alt_rounded}, {'i':16,'t':'Settings','icon':Icons.settings_rounded},
+        {'i':0,'t':'Dashboard','icon':Icons.dashboard_rounded}, {'i':6,'t':'Option Chain','icon':Icons.table_chart_rounded}, {'i':5,'t':'Charts','icon':Icons.show_chart_rounded}, {'i':14,'t':'AI Models','icon':Icons.psychology_alt_rounded}, {'i':15,'t':'Settings','icon':Icons.settings_rounded},
       ]) Expanded(child:InkWell(onTap:()=>widget.onNavigate?.call(item['i'] as int),borderRadius:BorderRadius.circular(12),child:Padding(padding:const EdgeInsets.symmetric(vertical:6),child:Column(mainAxisSize:MainAxisSize.min,children:[Icon(item['icon'] as IconData,size:16,color:const Color(0xFF70A3FF)),const SizedBox(height:3),Text(item['t'] as String,textAlign:TextAlign.center,style:const TextStyle(fontSize:7,fontWeight:FontWeight.w800,color:Color(0xFF98A2B3)))]))))
     ]),
   );
