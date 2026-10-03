@@ -61,6 +61,17 @@ class IntegratedBuildContractTests(unittest.TestCase):
         self.assertRegex(src, r'"orders_enabled"\s*:\s*False')
         self.assertRegex(src, r'"paper_only"\s*:\s*True')
 
+    def test_live_pages_refresh_from_shared_backend_without_manual_page_action(self):
+        src = read("flutter_app/lib/main.dart")
+        timer_block = src[src.indexOf("marketTimer = Timer.periodic"):src.indexOf("marketTimer = Timer.periodic") + 420]
+        self.assertIn("fetchIndices()", timer_block)
+        self.assertIn("fetchCommodities()", timer_block)
+        self.assertIn("if (selected == 4) fetchOptionRows()", timer_block)
+        self.assertIn("if (selected == 7) fetchOptionRows()", timer_block)
+        self.assertIn("fetchAngelMarket()", src)
+        self.assertIn("backendUri('/v1/angel/option-chain", src)
+        self.assertIn("backendUri('/v1/angel/oi-buildup", src)
+
     def test_market_terminal_is_first_screen(self):
         src = read("flutter_app/lib/main.dart")
         self.assertIn("'Market Terminal'", src)
