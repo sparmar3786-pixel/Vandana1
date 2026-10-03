@@ -32,7 +32,7 @@ jobs:
           gradle --version
 
       - name: Unit tests
-        run: gradle test --no-daemon --stacktrace
+        run: gradle :app:testDebugUnitTest --no-daemon --stacktrace
 
       - name: Build release APK
         run: gradle :app:assembleRelease --no-daemon --stacktrace
