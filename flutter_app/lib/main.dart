@@ -230,7 +230,7 @@ class _TerminalState extends State<Terminal> {
   );
 
   Widget buildScreen() {
-    if (selected == 0) return DashboardScreen(backendUrl: backendUrl, apiToken: apiToken);
+    if (selected == 0) return DashboardScreen(backendUrl: backendUrl, apiToken: apiToken, onNavigate: (int page) { if (page >= 0 && page < screens.length) setState(() => selected = page); });
     if (selected == 1) return marketPage();
     if (selected == 2) return commodityPage();
     if (selected == 3) return SignalsScreen(backendUrl: backendUrl, apiToken: apiToken);
