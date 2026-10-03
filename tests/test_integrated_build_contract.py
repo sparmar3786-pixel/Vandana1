@@ -30,7 +30,7 @@ class IntegratedBuildContractTests(unittest.TestCase):
     def test_all_angel_data_endpoints_use_server_side_auto_login(self):
         src = read("backend/server.py")
         self.assertIn("def _ensure_angel():", src)
-        self.assertRegex(src, r"def angel_required\\(\\):\\s+_ensure_angel\\(\\)")
+        self.assertRegex(src, r"def angel_required\(\):\s+_ensure_angel\(\)")
         for endpoint in (
             '@app.get("/v1/angel/commodities")',
             '@app.get("/v1/angel/indices")',
@@ -63,7 +63,7 @@ class IntegratedBuildContractTests(unittest.TestCase):
 
     def test_live_pages_refresh_from_shared_backend_without_manual_page_action(self):
         src = read("flutter_app/lib/main.dart")
-        timer_block = src[src.indexOf("marketTimer = Timer.periodic"):src.indexOf("marketTimer = Timer.periodic") + 420]
+        start = src.index("marketTimer = Timer.periodic")\n        timer_block = src[start:start + 420]
         self.assertIn("fetchIndices()", timer_block)
         self.assertIn("fetchCommodities()", timer_block)
         self.assertIn("if (selected == 4) fetchOptionRows()", timer_block)
