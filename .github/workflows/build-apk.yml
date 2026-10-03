@@ -7,6 +7,10 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: apk-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   apk:
     runs-on: ubuntu-latest
@@ -176,9 +180,11 @@ jobs:
           PY
           grep -n "INTERNET\|usesCleartextTraffic" android/app/src/main/AndroidManifest.xml
 
-      - name: Get dependencies
+      - name: Get dependencies (retry)
         working-directory: flutter_app
-        run: flutter pub get
+        run: |
+          for i in 1 2 3; do flutter pub get && exit 0; echo "pub get failed ($i)"; sleep 10; done
+          exit 1
 
       - name: Install backend test dependencies
         working-directory: backend
@@ -191,7 +197,9 @@ jobs:
 
       - name: Run backend data-layer regression tests
         working-directory: backend
-        run: python -m unittest discover -s . -p 'test_*.py' -v
+        run: |
+          set -o pipefail
+          python -m unittest discover -s . -p 'test_*.py' -v 2>&1 | tee ../backend-test.log
 
       - name: Verify integrated feature contract
         run: python -m unittest tests.test_integrated_build_contract -v
@@ -254,3 +262,21 @@ jobs:
           name: Parmar-Trading-APK
           path: flutter_app/build/app/outputs/flutter-apk/app-debug.apk
           if-no-files-found: error
+
+      - name: Failure summary
+        if: failure()
+        run: |
+          for f in backend-test.log flutter_app/flutter-analyze.log flutter_app/flutter-build.log; do
+            [ -f "$f" ] && { echo "### $f (last 40 lines)"; echo '```'; tail -n 40 "$f"; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+          done
+
+      - name: Upload all logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ci-logs
+          path: |
+            backend-test.log
+            flutter_app/flutter-analyze.log
+            flutter_app/flutter-build.log
+          if-no-files-found: ignore
