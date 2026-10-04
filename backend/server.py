@@ -37,6 +37,7 @@ def market_open():
 
 @app.on_event("startup")
 def start_workers():
+    """Start market polling threads once and attempt to schedule the MCP session task."""
     global workers_started, mcp_task
     if workers_started:
         return
@@ -49,11 +50,13 @@ def start_workers():
         mcp_task=None
 
 async def _mcp_session_loop():
+    """Keep the MCP session manager running until the task is cancelled."""
     async with mcp.session_manager.run():
         await asyncio.Event().wait()
 
 @app.on_event("shutdown")
 def stop_workers():
+    """Cancel and clear the MCP session task when the application shuts down."""
     global mcp_task
     if mcp_task:
         mcp_task.cancel()
@@ -61,10 +64,12 @@ def stop_workers():
 
 
 def _ensure_angel():
+    """Log in with server credentials if the Angel API session is missing."""
     if client.api is None:
         client.login(); state["angel_message"]="Connected using server credentials."
 
 def loop():
+    """Poll Angel during market hours, update shared data/signals, and save OI periodically."""
     global last_oi_save
     while True:
         try:
@@ -85,6 +90,7 @@ def loop():
         time.sleep(C.POLL_SEC)
 
 def nse_loop():
+    """Poll NSE during market hours and publish only successful fresh fetches."""
     while True:
         try:
             if market_open():
@@ -275,6 +281,7 @@ def signal(x_token:str=Header(None)): auth(x_token); return terminal_snapshot()
 def terminal_snapshot_endpoint(x_token:str=Header(None)): auth(x_token); return terminal_snapshot()
 
 def terminal_snapshot():
+    """Assemble cached market, signal, and connection state for the terminal UI."""
     last=eng.last if isinstance(eng.last,dict) else {}; nse_view=eng.nse_view if isinstance(eng.nse_view,dict) else {}
     return {"ts":time.time(),"market_open":market_open(),"connection":{"angel":client.api is not None,"nse":state["nse_error"] is None,"server":True,"last_update":state["last_update"],"error":state["error"],"nse_error":state["nse_error"],"angel_message":state["angel_message"]},"market":{"symbol":C.SYMBOL,"spot":last.get("spot"),"atm":last.get("strike"),"action":last.get("action","WAIT"),"ltp":last.get("ltp")},"signals":last,"oi_lab":nse_view,"option_chain":last.get("chain",last.get("opts")),"charts":{"spot":last.get("spot"),"ltp":last.get("ltp"),"timestamp":state["last_update"],"source":"Angel One SmartAPI","endpoint":"/v1/angel/candles"},"nse":nse_view,"angel_data":{"market_endpoint":"/v1/angel/market","candles_endpoint":"/v1/angel/candles","option_chain_endpoint":"/v1/angel/option-chain","oi_endpoint":"/v1/angel/oi","search_endpoint":"/v1/angel/search","portfolio_endpoint":"/v1/angel/portfolio","gainers_losers_endpoint":"/v1/angel/gainers-losers","oi_buildup_endpoint":"/v1/angel/oi-buildup","greeks_endpoint":"/v1/angel/greeks"},"nse_mcp":{"status":"official NSE Streamable HTTP MCP","endpoint":nse_mcp.url,"connected":state["nse_mcp_error"] is None,"error":state["nse_mcp_error"],"csv_endpoint":"/v1/nse/option-chain.csv"},"angel_api":{"connected":client.api is not None,"message":state["angel_message"]},"data":last,"instruments":{"source":"Angel One SmartAPI instrument master","loaded":bool(client.chain),"expiry":str(client.expiry) if client.expiry else None,"strike_count":len(client.strikes)},"watchlist":{"source":"Angel One SmartAPI","items":[]},"search":{"source":"Angel One SmartAPI","items":[]},"commodity":{"source":"Angel One SmartAPI","items":[]},"market_details":nse_view,"news":{"source":"server-side news adapter","items":[]},"settings":{"symbol":C.SYMBOL,"poll_sec":C.POLL_SEC,"nse_poll_sec":C.NSE_POLL_SEC},"more":{"paper_only":True,"orders_enabled":False},"error":state["error"],"nse_error":state["nse_error"]}
 

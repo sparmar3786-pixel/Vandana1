@@ -134,6 +134,7 @@ class AngelClient:
         self.ws.subscribe("VNDWS001",SmartWebSocketV2.SNAP_QUOTE,groups)
 
     def _ws_on_data(self, wsapp, message):
+        """Cache an Angel WebSocket quote and mirror matching option ticks to the store."""
         if not isinstance(message,dict):
             return
         token=str(message.get("token",""))

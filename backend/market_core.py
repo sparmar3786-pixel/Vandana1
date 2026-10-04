@@ -21,23 +21,32 @@ LOCK=threading.RLock()
 STORE={}
 
 def _idx(index):
+    """Normalize an index name or alias, defaulting an empty value to NIFTY."""
     s=str(index or "NIFTY").upper().replace(" ","")
     return {"NIFTY50":"NIFTY","NIFTYBANK":"BANKNIFTY","BANKNIFTY":"BANKNIFTY",
             "FINNIFTY":"FINNIFTY","MIDCAPSELECT":"MIDCPNIFTY","MIDCPNIFTY":"MIDCPNIFTY",
             "SENSEX":"SENSEX","BANKEX":"BANKEX"}.get(s,s)
 
 def _ts(value):
+    """Convert a timestamp to float, using the current time if conversion fails."""
     try: return float(value)
     except (TypeError,ValueError): return time.time()
 
 def _fresh(ts):
+    """Return whether a nonzero timestamp is within the configured stale window."""
     return bool(ts and time.time()-float(ts)<=STALE_SEC)
 
 def _ensure(index):
+    """Return or create an index store entry; callers must hold LOCK."""
     return STORE.setdefault(_idx(index),{"spot":None,"atm":None,"expiry":None,"ts":0.0,
                                          "source":None,"source_ts":{},"rows":{}})
 
 def put(index,strike,side,src,ts=None,**values):
+    """Merge non-null fields into an option leg under the store lock.
+
+    Reject invalid legs, older timestamps, and lower-priority sources at equal
+    timestamps. Fresh Angel WebSocket legs also reject NSE updates. Return
+    whether the update was accepted."""
     side=str(side or "").upper()
     if side not in ("CE","PE"): return False
     try: strike=float(strike)
@@ -56,6 +65,10 @@ def put(index,strike,side,src,ts=None,**values):
         return True
 
 def put_spot(index,spot,src,ts=None,atm=None,expiry=None):
+    """Update spot metadata under the lock, returning whether it was accepted.
+
+    Reject older timestamps, lower-priority sources at equal timestamps, and
+    NSE updates while the current Angel WebSocket source is fresh."""
     incoming=_ts(ts)
     with LOCK:
         idx=_ensure(index)
@@ -71,6 +84,7 @@ def put_spot(index,spot,src,ts=None,atm=None,expiry=None):
         return True
 
 def ingest_chain(payload,src):
+    """Ingest nested or flat chain rows and return the number of accepted leg updates."""
     if not isinstance(payload,dict): return 0
     index=_idx(payload.get("symbol") or payload.get("index") or "NIFTY")
     ts=_ts(payload.get("ts"))
@@ -103,6 +117,7 @@ def ingest_chain(payload,src):
     return count
 
 def ingest_angel_snapshot(index,snapshot):
+    """Store Angel spot and option quotes, returning the accepted leg count."""
     if not isinstance(snapshot,dict): return 0
     ts=_ts(snapshot.get("ts")); spot=snapshot.get("spot")
     put_spot(index,spot,"angel_ws",ts,snapshot.get("atm"),snapshot.get("expiry"))
@@ -117,6 +132,10 @@ def ingest_angel_snapshot(index,snapshot):
     return count
 
 def snapshot(index,limit=MAX_ROWS,include_stale=True):
+    """Return a bounded copy of stored option legs with freshness metadata.
+
+    Select strikes nearest ATM when available and optionally omit stale legs.
+    Data is ready only with a fresh spot and at least four fresh returned legs."""
     index=_idx(index); now=time.time()
     with LOCK: idx=deepcopy(_ensure(index))
     rows=[]
@@ -148,6 +167,7 @@ def snapshot(index,limit=MAX_ROWS,include_stale=True):
             "row_count":len(rows),"rows":rows}
 
 def evidence(index):
+    """Summarize fresh snapshot legs as PCR, OI totals, and the top five legs per side."""
     s=snapshot(index,MAX_ROWS,True)
     fresh=[r for r in s["rows"] if not r["stale"]]
     ce=[r for r in fresh if r["type"]=="CE"]; pe=[r for r in fresh if r["type"]=="PE"]
@@ -165,14 +185,17 @@ router=APIRouter()
 
 @router.get("/api/chain/{index}")
 def api_chain(index:str):
+    """Return the bounded in-memory option chain for the REST endpoint."""
     return snapshot(index)
 
 @router.get("/api/evidence/{index}")
 def api_evidence(index:str):
+    """Return in-memory OI and freshness evidence for the REST endpoint."""
     return evidence(index)
 
 @router.get("/api/market-core/health")
 def core_health():
+    """Report stored leg counts and freshness/auth configuration without provider calls."""
     with LOCK:
         counts={k:sum(len(vv) for vv in v["rows"].values()) for k,v in STORE.items()}
     return {"ok":True,"store_indexes":counts,"stale_sec":STALE_SEC,
@@ -192,18 +215,22 @@ def get_evidence(index:str="NIFTY")->dict:
     return evidence(index)
 
 def mcp_http_app():
+    """Build the stateless Streamable HTTP app serving MCP requests at /mcp."""
     # Mounted at the parent application's root with /mcp as the MCP path.
     # host=0.0.0.0 prevents the SDK's localhost-only host check on Render.
     return mcp.streamable_http_app(streamable_http_path="/mcp",
                                    host="0.0.0.0",json_response=True,stateless_http=True)
 
 def mount_mcp(app):
+    """Mount the MCP HTTP app at the parent root and return the parent app."""
     app.mount("/",mcp_http_app())
     return app
 
 def install_mcp_auth(app):
+    """Install middleware requiring a configured token for paths starting with /mcp."""
     @app.middleware("http")
     async def _mcp_guard(request,call_next):
+        """Validate the MCP header or Bearer token before forwarding the request."""
         if request.url.path.startswith("/mcp"):
             expected=os.getenv("MCP_AUTH_TOKEN","").strip()
             supplied=request.headers.get("x-mcp-token","").strip()
