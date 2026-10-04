@@ -32,7 +32,7 @@ class AiValidatePage extends StatefulWidget {
 class _AiValidatePageState extends State<AiValidatePage> {
   bool running = false;
   bool auto = false;
-  String status = 'Tap RUN 6-AI VALIDATION. API keys stay on the Railway server.';
+  String status = 'Tap RUN 6-AI VALIDATION. Free NSE MCP validation needs no provider API key.';
   Map<String, dynamic> ctx = <String, dynamic>{};
   Map<String, dynamic> result = <String, dynamic>{};
   final Set<String> expanded = <String>{};
@@ -106,7 +106,7 @@ class _AiValidatePageState extends State<AiValidatePage> {
     try {
       final c = await loadContext();
       if (c == null) return;
-      if (mounted) setState(() => status = 'Six AI models are analysing on the server...');
+      if (mounted) setState(() => status = '6-AI + free NSE MCP validation is analysing on the server...');
       final r = await http
           .post(
             Uri.parse('$_base/v1/ai/validate'),
@@ -316,7 +316,7 @@ class _AiValidatePageState extends State<AiValidatePage> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: <Widget>[
                   const Text(
-                    'LOCAL FALLBACK (not a 6-AI consensus)',
+                    'NSE MCP FREE AI (not a 6-AI consensus)',
                     style: TextStyle(fontWeight: FontWeight.bold),
                   ),
                   const SizedBox(height: 6),
