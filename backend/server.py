@@ -384,8 +384,32 @@ def ai_context(index:str="NIFTY",x_token:str=Header(None)):
 @app.post("/v1/ai/validate")
 def ai_validate(body:AIValidationRequest,x_token:str=Header(None)):
     auth(x_token)
-    payload=body.payload if isinstance(body.payload,dict) else {}
+    payload=dict(body.payload) if isinstance(body.payload,dict) else {}
     try:
+        terminal=payload.get("terminal") if isinstance(payload.get("terminal"),dict) else {}
+        market=terminal.get("market") if isinstance(terminal.get("market"),dict) else {}
+        index=str(
+            payload.get("index")
+            or market.get("symbol")
+            or payload.get("symbol")
+            or "NIFTY"
+        ).upper()
+        try:
+            payload["nse_mcp"]=nse_mcp.context(index)
+            state["nse_mcp_checked"]=True
+            state["nse_mcp_error"]=None
+        except Exception as mcp_error:
+            payload["nse_mcp"]={
+                "connected":False,
+                "endpoint":nse_mcp.url,
+                "tool_count":0,
+                "tools":[],
+                "data":[],
+                "tool_errors":[{"tool":"context","error":str(mcp_error)[:300]}],
+                "error":str(mcp_error)[:500],
+            }
+            state["nse_mcp_checked"]=True
+            state["nse_mcp_error"]=str(mcp_error)
         return validate_all(payload)
     except Exception as e:
         return {"final":"WAIT","cross_verified":False,"reason":"AI orchestration failed safely; local evidence path remains active.",
