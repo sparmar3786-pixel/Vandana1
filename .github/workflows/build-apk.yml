@@ -1,0 +1,65 @@
+name: Build Parmar Trading APK (Kotlin)
+
+on:
+  push:
+    branches: [main, feature/add-market-terminal-dashboard]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: native-apk-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  apk:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Validate native Android source
+        run: |
+          test -f native_android/settings.gradle.kts
+          test -f native_android/app/build.gradle.kts
+          test -f native_android/app/src/main/kotlin/com/parmar/trading/MainActivity.kt
+          test -f native_android/app/src/main/assets/index.html
+          grep -q 'com.parmar.trading' native_android/app/build.gradle.kts
+          grep -q 'WebView' native_android/app/src/main/kotlin/com/parmar/trading/MainActivity.kt
+          grep -q 'DASH_API_BASE' native_android/app/src/main/assets/index.html
+
+      - name: Validate backend Python source
+        run: |
+          python -m py_compile backend/server.py backend/config.py signal_engine.py
+          python -m py_compile backend/angel_data_layer.py backend/trade_verifier.py
+
+      - name: Run integrated contract
+        run: python -m unittest tests/test_integrated_build_contract.py -v
+
+      - name: Build installable APK
+        working-directory: native_android
+        run: |
+          gradle --no-daemon :app:assembleDebug -PversionCode=${{ github.run_number }}
+
+      - name: Verify APK
+        run: |
+          test -f native_android/app/build/outputs/apk/debug/app-debug.apk
+          ls -lh native_android/app/build/outputs/apk/debug/app-debug.apk
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: Parmar-Trading-APK
+          path: native_android/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
