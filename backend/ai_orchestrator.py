@@ -155,6 +155,11 @@ def _local_fallback(payload):
     if action not in {"CALL BUY","PUT BUY","WAIT","NO QUALIFYING TRADE"}: action="WAIT"
     market_open=bool(terminal.get("market_open"))
     spot=signal.get("spot", signal.get("ltp"))
+    mcp=payload.get("nse_mcp") if isinstance(payload.get("nse_mcp"),dict) else {}
+    mcp_connected=bool(mcp.get("connected"))
+    mcp_tool_count=int(mcp.get("tool_count") or 0)
+    mcp_data=mcp.get("data") if isinstance(mcp.get("data"),list) else []
+    mcp_errors=mcp.get("tool_errors") if isinstance(mcp.get("tool_errors"),list) else []
     ltp=signal.get("ltp")
     strike=signal.get("strike")
     entry=signal.get("entry")
@@ -174,7 +179,7 @@ def _local_fallback(payload):
           +"MISSING_DATA: Only fields present in the supplied snapshot are used.\\n"
           +"OVERRIDE: No external AI consensus; use WAIT when the engine payload is insufficient.\\n"
           +"SOURCE: Build-156 terminal payload ("+freshness+").")
-    return {"id":"local-nse-ai","name":"NSE Local AI Fallback","model":"build-156-local","role":"offline evidence summarization","status":"ok_local","text":text,"final":action,"cross_verified":False,"error":"","elapsed_ms":0}
+    return {"id":"local-nse-ai","name":"NSE MCP Free AI Fallback","model":"nse-mcp-local-v1","role":"offline MCP evidence validation","status":"ok_local","text":text,"final":action,"cross_verified":False,"error":"","elapsed_ms":0,"mcp":{"connected":mcp_connected,"tool_count":mcp_tool_count,"data_count":len(mcp_data),"error_count":len(mcp_errors)}}
 
 def validate_all(payload):
     payload=dict(payload or {})
