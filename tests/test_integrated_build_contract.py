@@ -47,6 +47,26 @@ class IntegratedBuildContractTests(unittest.TestCase):
         for marker in ("ANGEL_API_KEY", "ANGEL_CLIENT_CODE", "ANGEL_PIN", "ANGEL_TOTP_SECRET"):
             self.assertIn(marker, read("backend/config.py"))
 
+    def test_angel_login_contract_uses_session_tokens_not_profile_probe(self):
+        src = read("backend/angel_client.py")
+        self.assertIn("generateSession(client_code,pin,totp)", src)
+        self.assertIn("jwtToken", src)
+        self.assertIn("refreshToken", src)
+        self.assertNotIn("self.api.getProfile(", src)
+        self.assertIn("requested_api_key == self.active_api_key", src)
+        self.assertIn("totp=None, force=True", src)
+
+    def test_runtime_ai_access_key_contract(self):
+        src = read("backend/ai_orchestrator.py")
+        server = read("backend/server.py")
+        self.assertIn("configure_provider", src)
+        self.assertIn("_runtime_keys", src)
+        self.assertIn("runtime Access Key", src)
+        self.assertIn('@app.get("/v1/ai/providers")', server)
+        self.assertIn('@app.post("/v1/ai/access-key")', server)
+        self.assertIn("providerId", server)
+        self.assertIn("accessKey", server)
+
     def test_backend_terminal_contract(self):
         src = read("backend/server.py")
         for endpoint in (
