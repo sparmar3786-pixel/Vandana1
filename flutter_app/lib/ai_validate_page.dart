@@ -75,7 +75,7 @@ class _AiValidatePageState extends State<AiValidatePage> {
         body:jsonEncode({'payload':jsonDecode(c.body)})).timeout(const Duration(seconds:120));
       if(r.statusCode!=200)throw Exception(err(r));
       final d=m(jsonDecode(r.body));
-      if(mounted)setState(()=>{result=d,layers=l(d['layers'].isNotEmpty?d['layers']:d['providers']),status='Done • ${d['successful']??0}/6 layers responded'});
+      if(mounted)setState(() { result=d; final rawLayers=l(d['layers']); layers=rawLayers.isNotEmpty?rawLayers:l(d['providers']); status='Done • ${d['successful']??0}/6 layers responded'; });
     }catch(e){if(mounted)setState(()=>status='AI error: ${e.toString().replaceFirst('Exception: ','')}');}
     finally{if(mounted)setState(()=>running=false);}
   }
