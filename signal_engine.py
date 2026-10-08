@@ -111,7 +111,7 @@ def qualify(sym,spot,legs,x,prev):
 
 async def ask(n,role,payload):
  # Standalone legacy engine now uses the same OpenAI 6-Layer key/model.
- key=E("OPENAI_API_KEY"); model=E("OPENAI_MODEL") or "gpt-5.6-luna"
+ key=E("OPENAI_API_KEY"); model=E("OPENAI_MODEL") or "gpt-6-luna"
  out={"n":n,"role":role,"model":model,"s":"skipped","note":"OpenAI Access Key not configured"}
  if not key:return out
  msg=[{"role":"system","content":f"You are layer {n} ({role}) in the OpenAI six-layer trading validator. Check only supplied engine evidence. Reply JSON only: {{\"status\":\"pass|flag\",\"note\":\"max 20 words\"}}. Never propose or modify strike, entry, SL, target or size."},{"role":"user","content":json.dumps(payload)}]
