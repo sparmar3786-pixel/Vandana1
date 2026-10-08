@@ -1,7 +1,7 @@
 name: Build Parmar Trading APK
 on:
   push:
-    branches: [main, feature/add-market-terminal-dashboard, build-322-free-nse-mcp-ai]
+    branches: [main, feature/add-market-terminal-dashboard, build-322-free-nse-mcp-ai, fresh-build-322-2026-10-08]
   workflow_dispatch:
 
 permissions:
