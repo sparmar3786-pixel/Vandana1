@@ -4,7 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 
 /// Server-side 6-AI validation.
-/// Provider API keys remain on Railway; the APK never stores provider keys.
+/// Provider Access Keys are submitted over HTTPS and retained only in backend memory.
 const Map<String, String> _kEnv = <String, String>{
   'gpt56-luna': 'OPENAI_API_KEY',
   'gpt56-sol': 'OPENAI_API_KEY',
@@ -36,6 +36,10 @@ class _AiValidatePageState extends State<AiValidatePage> {
   Map<String, dynamic> ctx = <String, dynamic>{};
   Map<String, dynamic> result = <String, dynamic>{};
   final Set<String> expanded = <String>{};
+  final accessKey = TextEditingController();
+  String selectedProvider = 'gpt56-luna';
+  List<dynamic> providerConfig = <dynamic>[];
+  bool keyBusy = false;
   Timer? timer;
 
   String get _base => widget.backendUrl.trim().replaceFirst(RegExp(r'/+$'), '');
@@ -68,13 +72,57 @@ class _AiValidatePageState extends State<AiValidatePage> {
   @override
   void initState() {
     super.initState();
+    loadProviders();
     loadContext();
   }
 
   @override
   void dispose() {
     timer?.cancel();
+    accessKey.dispose();
     super.dispose();
+  }
+
+  Future<void> loadProviders() async {
+    if (_base.isEmpty) return;
+    try {
+      final r = await http.get(Uri.parse('$_base/v1/ai/providers'), headers: _headers)
+          .timeout(const Duration(seconds: 15));
+      if (r.statusCode == 200 && mounted) {
+        final d = _m(jsonDecode(r.body));
+        setState(() => providerConfig = _l(d['providers']));
+      }
+    } catch (_) {}
+  }
+
+  Future<void> saveAccessKey() async {
+    final key = accessKey.text.trim();
+    if (key.length < 8) {
+      setState(() => status = 'Enter a valid AI Access Key.');
+      return;
+    }
+    setState(() {
+      keyBusy = true;
+      status = 'Securing AI Access Key on backend...';
+    });
+    try {
+      final r = await http.post(
+        Uri.parse('$_base/v1/ai/access-key'),
+        headers: _headers,
+        body: jsonEncode(<String, String>{
+          'providerId': selectedProvider,
+          'accessKey': key,
+        }),
+      ).timeout(const Duration(seconds: 20));
+      if (r.statusCode != 200) throw Exception(_err(r));
+      accessKey.clear();
+      await loadProviders();
+      if (mounted) setState(() => status = 'AI Access Key connected • stored in backend memory only.');
+    } catch (e) {
+      if (mounted) setState(() => status = 'AI Access Key error: ' + _clean(e));
+    } finally {
+      if (mounted) setState(() => keyBusy = false);
+    }
   }
 
   Future<Map<String, dynamic>?> loadContext() async {
@@ -238,6 +286,62 @@ class _AiValidatePageState extends State<AiValidatePage> {
         ),
         const SizedBox(height: 4),
         const Text('Server-side • Angel API + NSE MCP + official NSE evidence • paper only'),
+        const SizedBox(height: 10),
+        Card(
+          child: Padding(
+            padding: const EdgeInsets.all(12),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: <Widget>[
+                const Text('AI ACCESS KEY', style: TextStyle(fontWeight: FontWeight.bold)),
+                const SizedBox(height: 4),
+                const Text('Choose a provider and connect its Access Key. The key is not returned to the APK or written to Git.'),
+                const SizedBox(height: 10),
+                DropdownButtonFormField<String>(
+                  value: selectedProvider,
+                  decoration: const InputDecoration(labelText: 'AI Provider', border: OutlineInputBorder()),
+                  items: const <DropdownMenuItem<String>>[
+                    DropdownMenuItem(value: 'gpt56-luna', child: Text('GPT-5.6 Luna / OpenAI')),
+                    DropdownMenuItem(value: 'gpt56-sol', child: Text('GPT-5.6 Sol / OpenAI')),
+                    DropdownMenuItem(value: 'claude-sonnet', child: Text('Claude Sonnet')),
+                    DropdownMenuItem(value: 'deepseek', child: Text('DeepSeek Chat')),
+                    DropdownMenuItem(value: 'gemini-flash', child: Text('Gemini Flash')),
+                    DropdownMenuItem(value: 'grok-4', child: Text('Grok 4')),
+                  ],
+                  onChanged: keyBusy ? null : (v) { if (v != null) setState(() => selectedProvider = v); },
+                ),
+                const SizedBox(height: 10),
+                TextField(
+                  controller: accessKey,
+                  obscureText: true,
+                  autocorrect: false,
+                  enableSuggestions: false,
+                  decoration: const InputDecoration(
+                    labelText: 'AI Access Key',
+                    hintText: 'Paste provider API / Access Key',
+                    border: OutlineInputBorder(),
+                  ),
+                ),
+                const SizedBox(height: 10),
+                SizedBox(
+                  width: double.infinity,
+                  child: FilledButton.icon(
+                    onPressed: keyBusy ? null : saveAccessKey,
+                    icon: const Icon(Icons.vpn_key),
+                    label: Text(keyBusy ? 'CONNECTING...' : 'CONNECT AI ACCESS KEY'),
+                  ),
+                ),
+                if (providerConfig.isNotEmpty) ...<Widget>[
+                  const SizedBox(height: 8),
+                  Text(
+                    providerConfig.map((p) => _m(p)['name'].toString() + ': ' + ((_m(p)['configured'] == true) ? 'READY' : 'NOT SET')).join('  •  '),
+                    style: const TextStyle(fontSize: 10),
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ),
         const SizedBox(height: 10),
         Row(
           children: <Widget>[
