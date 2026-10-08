@@ -38,10 +38,12 @@ jobs:
           grep -q 'com.parmar.trading' native_android/app/build.gradle.kts
           grep -q 'WebView' native_android/app/src/main/kotlin/com/parmar/trading/MainActivity.kt
           grep -q 'DASH_API_BASE' native_android/app/src/main/assets/index.html
+          grep -q 'CONNECT ANGEL ONE' native_android/app/src/main/assets/index.html
+          grep -q 'CONNECT AI ACCESS KEY' native_android/app/src/main/assets/index.html
 
       - name: Validate backend Python source
         run: |
-          python -m py_compile backend/server.py backend/config.py signal_engine.py
+          python -m py_compile backend/server.py backend/config.py backend/angel_client.py backend/ai_orchestrator.py signal_engine.py
           python -m py_compile backend/angel_data_layer.py backend/trade_verifier.py
 
       - name: Run integrated contract
