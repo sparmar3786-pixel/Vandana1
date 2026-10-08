@@ -18,7 +18,7 @@ import requests
 
 TIMEOUT = int(os.getenv("AI_TIMEOUT_SEC", "30"))
 AI_CACHE_SEC = int(os.getenv("AI_CACHE_SEC", "30"))
-OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-5.6-luna")
+OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-6-luna")
 OPENAI_URL = "https://api.openai.com/v1/responses"
 NSE_SITE_URL = os.getenv("NSE_SITE_URL", "https://www.nseindia.com/option-chain")
 
