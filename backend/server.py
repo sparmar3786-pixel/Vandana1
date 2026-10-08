@@ -12,7 +12,7 @@ from nse_client import NSEClient
 import nse_features
 from nse_mcp import NSEMCP,result_to_csv
 from ai_model import p_up,label
-from ai_orchestrator import provider_status, validate_all, NSE_SITE_URL, _nse_site_evidence
+from ai_orchestrator import provider_status, configure_provider, clear_provider, validate_all, NSE_SITE_URL, _nse_site_evidence
 from market_core import router as market_core_router, ingest_chain, put_spot, evidence as market_evidence, mount_mcp, install_mcp_auth
 from strategy_api import router as strategy_router
 from council import router as council_router
@@ -34,6 +34,10 @@ install_mcp_auth(app)
 
 class AIValidationRequest(BaseModel):
     payload:dict = {}
+
+class AIAccessKeyRequest(BaseModel):
+    providerId:str
+    accessKey:str
 
 class AngelLoginRequest(BaseModel):
     # The APK uses clientId/pin/totp/apiKey. clientCode is accepted as a
@@ -381,6 +385,25 @@ def ai_context(index:str="NIFTY",x_token:str=Header(None)):
         "trend":strategy.get("trend"),"support":strategy.get("support"),"resistance":strategy.get("resistance"),
         "max_pain":strategy.get("max_pain")
     },"ai_rule":"Reconcile Angel API + official NSE MCP + Internet evidence. Missing or conflicting evidence forces WAIT."}
+@app.get("/v1/ai/providers")
+def ai_providers(x_token:str=Header(None)):
+    auth(x_token)
+    return {"providers":provider_status(),"runtime_keys_memory_only":True}
+
+@app.post("/v1/ai/access-key")
+def ai_access_key(body:AIAccessKeyRequest,x_token:str=Header(None)):
+    auth(x_token)
+    try:
+        return {"ok":True,"provider":configure_provider(body.providerId,body.accessKey)}
+    except ValueError as e:
+        raise HTTPException(400,str(e))
+
+@app.delete("/v1/ai/access-key/{provider_id}")
+def ai_access_key_clear(provider_id:str,x_token:str=Header(None)):
+    auth(x_token)
+    clear_provider(provider_id)
+    return {"ok":True,"provider_id":provider_id,"configured":False}
+
 @app.post("/v1/ai/validate")
 def ai_validate(body:AIValidationRequest,x_token:str=Header(None)):
     auth(x_token)
@@ -394,7 +417,7 @@ def ai_validate(body:AIValidationRequest,x_token:str=Header(None)):
 
 @app.get("/v1/diagnostics")
 def diagnostics(x_token:str=Header(None)):
-    auth(x_token); providers=ai_status(x_token)["providers"]; ev=getattr(eng,"strategy_evidence",[]) if hasattr(eng,"strategy_evidence") else []
+    auth(x_token); providers=provider_status(); ev=getattr(eng,"strategy_evidence",[]) if hasattr(eng,"strategy_evidence") else []
     return {"angel":{"connected":client.api is not None,"message":state["angel_message"]},"nse":{"available":state["nse_error"] is None,"error":state["nse_error"]},"ai":{"configured":sum(1 for p in providers if p["configured"]),"providers":providers},"strategies":{"registered":len(ev),"evaluated":len(ev),"active":sum(1 for x in ev if isinstance(x,dict) and x.get("state")=="active"),"unavailable":sum(1 for x in ev if isinstance(x,dict) and x.get("state")=="unavailable"),"not_evaluated":0}}
 
 @app.get("/v1/audit/latest")
