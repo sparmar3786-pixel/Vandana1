@@ -1,239 +1,212 @@
-"""Server-side multi-provider AI validation for the trading terminal.
-API keys stay on the backend; the APK never receives provider secrets.
+"""Six-layer OpenAI AI engine for the NSE options terminal.
+
+All six analytical layers use the SAME OpenAI Access Key. No other AI provider,
+local ML model, Puter model, or offline AI fallback is used.
+
+The key may be supplied as OPENAI_API_KEY on the server or at runtime from the
+app's OpenAI Access Key setting. Runtime keys are kept in process memory only.
 """
 from __future__ import annotations
 import concurrent.futures
+import hashlib
+import json
 import os
 import re
+import threading
 import time
 import requests
-import json
-import hashlib
-import threading
 
-TIMEOUT = int(os.getenv("AI_TIMEOUT_SEC", "15"))
-AI_CACHE_SEC = int(os.getenv("AI_CACHE_SEC", "45"))
+TIMEOUT = int(os.getenv("AI_TIMEOUT_SEC", "30"))
+AI_CACHE_SEC = int(os.getenv("AI_CACHE_SEC", "30"))
+OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-5.6-luna")
+OPENAI_URL = "https://api.openai.com/v1/responses"
 NSE_SITE_URL = os.getenv("NSE_SITE_URL", "https://www.nseindia.com/option-chain")
+
+_runtime_key = ""
+_runtime_lock = threading.Lock()
 _ai_cache = {}
 _ai_cache_lock = threading.Lock()
 
-PROVIDERS = [
-    {"id":"gpt56-luna","name":"GPT-5.6 Luna","env":"OPENAI_API_KEY","kind":"openai","model":os.getenv("OPENAI_LUNA_MODEL","gpt-5.6-luna")},
-    {"id":"claude-sonnet","name":"Claude Sonnet 4.6","env":"ANTHROPIC_API_KEY","kind":"anthropic","model":os.getenv("ANTHROPIC_MODEL","claude-sonnet-4-6")},
-    {"id":"gpt56-sol","name":"GPT-5.6 Sol","env":"OPENAI_API_KEY","kind":"openai","model":os.getenv("OPENAI_SOL_MODEL","gpt-5.6-sol")},
-    {"id":"deepseek","name":"DeepSeek Chat","env":"DEEPSEEK_API_KEY","kind":"openai_compat","model":os.getenv("DEEPSEEK_MODEL","deepseek-chat"),"base":"https://api.deepseek.com/v1/chat/completions"},
-    {"id":"gemini-flash","name":"Gemini 2.5 Flash","env":"GEMINI_API_KEY","kind":"gemini","model":os.getenv("GEMINI_MODEL","gemini-2.5-flash")},
-    {"id":"grok-4","name":"Grok 4","env":"XAI_API_KEY","kind":"openai_compat","model":os.getenv("XAI_MODEL","grok-4"),"base":"https://api.x.ai/v1/chat/completions"},
+LAYERS = [
+    {"id":"layer-1","name":"Layer 1 • Data Collection","role":"collect and normalize only supplied Angel One, NSE MCP and official NSE evidence"},
+    {"id":"layer-2","name":"Layer 2 • Market Structure","role":"analyze trend, price structure, support, resistance, PCR and option-chain context"},
+    {"id":"layer-3","name":"Layer 3 • OI + Greeks","role":"cross-check OI buildup/unwinding, volume, IV and Greeks consistency"},
+    {"id":"layer-4","name":"Layer 4 • Strategy Validation","role":"check the deterministic strategy candidate against supplied rules and evidence"},
+    {"id":"layer-5","name":"Layer 5 • Risk + Contradiction","role":"find missing data, contradictions, liquidity/risk issues and downgrade conditions"},
+    {"id":"layer-6","name":"Layer 6 • Final Risk Audit","role":"make the final AI-only recommendation; WAIT on uncertainty or conflicting evidence"},
 ]
 
-ROLE_PROMPTS = {
-    "gpt56-luna":"live data collection and candidate extraction",
-    "claude-sonnet":"verification, contradiction and evidence audit",
-    "gpt56-sol":"independent final validation of the supplied numbers",
-    "deepseek":"quantitative/OI/Greeks mathematical cross-check",
-    "gemini-flash":"market structure and chart-context cross-check",
-    "grok-4":"risk audit, failure conditions and WAIT override",
-}
+# Compatibility alias: callers that previously iterated PROVIDERS now receive
+# six layers, but every layer is OpenAI.
+PROVIDERS = [
+    {"id":x["id"],"name":x["name"],"role":x["role"],"env":"OPENAI_API_KEY","kind":"openai","model":OPENAI_MODEL}
+    for x in LAYERS
+]
+ROLE_PROMPTS = {x["id"]:x["role"] for x in LAYERS}
 
-SYSTEM = """You are a market-data validation component inside an Indian index options terminal.
-Use ONLY the supplied market payload. Do not invent news, prices, OI, Greeks or trades.
-Do not claim hidden institutional orders. Do not promise returns or a win rate.
-The engine's final decision remains CALL BUY / PUT BUY / WAIT / NO QUALIFYING TRADE.
-Return concise evidence, contradictions, missing-data warnings and a recommendation state."""
+SYSTEM = """You are one layer of a six-layer AI decision system inside an Indian index-options analysis terminal.
+Use ONLY the supplied payload. Never invent prices, OI, Greeks, news, trades or guarantees.
+The deterministic engine owns market data and trade levels. AI may only validate or downgrade.
+Allowed final states: CALL BUY, PUT BUY, WAIT, NO QUALIFYING TRADE.
+Missing or conflicting evidence must produce WAIT.
+Paper/analysis only; never place an order.
+Return concise evidence and risks."""
+
+def _key() -> str:
+    with _runtime_lock:
+        runtime = _runtime_key
+    return runtime or os.getenv("OPENAI_API_KEY", "").strip()
+
+def configure_provider(provider_id: str, access_key: str):
+    global _runtime_key
+    if provider_id not in {x["id"] for x in LAYERS} and provider_id not in {"openai","openai-6-layer"}:
+        raise ValueError("Only OpenAI 6-Layer AI is supported.")
+    key = (access_key or "").strip()
+    if len(key) < 8:
+        raise ValueError("OpenAI Access Key is too short.")
+    with _runtime_lock:
+        _runtime_key = key
+    with _ai_cache_lock:
+        _ai_cache.clear()
+    return {"ok":True,"provider":"openai-6-layer","layers":len(LAYERS),"runtime_key":True}
+
+def clear_provider(provider_id: str = "openai-6-layer"):
+    global _runtime_key
+    with _runtime_lock:
+        _runtime_key = ""
+    with _ai_cache_lock:
+        _ai_cache.clear()
+    return {"ok":True,"provider":"openai-6-layer","cleared":True}
+
+def provider_status():
+    configured = bool(_key())
+    return [{
+        "id":x["id"], "name":x["name"], "model":OPENAI_MODEL,
+        "role":x["role"], "configured":configured,
+        "provider":"OpenAI", "shared_access_key":True
+    } for x in LAYERS]
+
+def _compact(payload):
+    return json.dumps(payload, ensure_ascii=False, separators=(",",":"), default=str)[:30000]
 
 def _nse_site_evidence(payload):
-    """Read-only official NSE page metadata used as external evidence for AI.
-    Numeric market values continue to come from the server-side NSE/Angel adapters;
-    this fetch only confirms the current official NSE page and timestamp text.
-    """
     symbol="NIFTY"
     if isinstance(payload,dict):
         terminal=payload.get("terminal") or {}
         market=terminal.get("market") if isinstance(terminal,dict) else {}
         symbol=str((market or {}).get("symbol") or payload.get("symbol") or "NIFTY").upper()
-    url=NSE_SITE_URL
     try:
-        r=requests.get(url,headers={"User-Agent":"Mozilla/5.0","Accept":"text/html,application/xhtml+xml"},timeout=8)
+        r=requests.get(NSE_SITE_URL,headers={"User-Agent":"Mozilla/5.0","Accept":"text/html,application/xhtml+xml"},timeout=8)
         r.raise_for_status()
         html=r.text
         m=re.search(r"Underlying Index[^<]{0,120}?(NIFTY[^<]{0,80})",html,re.I)
         asof=re.search(r"As on[^<]{0,120}",html,re.I)
-        return {"connected":True,"url":url,"symbol":symbol,"http_status":r.status_code,
-                "page_timestamp":(asof.group(0).strip() if asof else ""),
-                "page_hint":(m.group(1).strip() if m else ""),
-                "note":"Official NSE page metadata only; option values come from server-side market adapters."}
+        return {"connected":True,"url":NSE_SITE_URL,"symbol":symbol,"http_status":r.status_code,
+                "page_timestamp":asof.group(0).strip() if asof else "",
+                "page_hint":m.group(1).strip() if m else ""}
     except Exception as e:
-        return {"connected":False,"url":url,"symbol":symbol,"error":str(e)[:200],
-                "note":"NSE web metadata unavailable; server-side NSE adapter remains the primary source."}
+        return {"connected":False,"url":NSE_SITE_URL,"symbol":symbol,"error":str(e)[:200]}
 
-def _prompt(provider, payload):
-    role = ROLE_PROMPTS[provider["id"]]
-    return (SYSTEM + "\nYour role: " + role + ".\n"
-            + "Return exactly these headings: STATE, EVIDENCE, RISKS, MISSING_DATA, OVERRIDE.\n"
-            + "STATE must be CALL BUY, PUT BUY, WAIT, or NO QUALIFYING TRADE.\n"
-            + "Payload:\n" + _compact(payload))
-
-def _compact(payload):
-    import json
-    return json.dumps(payload, ensure_ascii=False, separators=(",",":"), default=str)[:30000]
+def _prompt(layer, payload, previous=None):
+    prior = ""
+    if previous:
+        prior = "\nPrevious layer evidence (do not blindly trust it):\n" + json.dumps(previous, ensure_ascii=False, separators=(",",":"), default=str)[:9000]
+    return (SYSTEM + "\nYour layer: " + layer["name"] + "\nYour role: " + layer["role"] +
+            "\nReturn exactly:\nSTATE: CALL BUY|PUT BUY|WAIT|NO QUALIFYING TRADE\n"
+            "EVIDENCE: concise evidence\nRISKS: concise risks\nMISSING_DATA: missing/conflicting fields\nOVERRIDE: WAIT or NONE\n"
+            + prior + "\nPayload:\n" + _compact(payload))
 
 def _openai(p, text):
-    r=requests.post("https://api.openai.com/v1/responses",
-        headers={"Authorization":"Bearer "+os.environ[p["env"]],"Content-Type":"application/json"},
-        json={"model":p["model"],"input":[{"role":"system","content":SYSTEM},{"role":"user","content":text}],"max_output_tokens":700},
+    key = _key()
+    if not key:
+        raise RuntimeError("OpenAI Access Key is not configured.")
+    r=requests.post(OPENAI_URL,
+        headers={"Authorization":"Bearer "+key,"Content-Type":"application/json"},
+        json={"model":OPENAI_MODEL,
+              "input":[{"role":"system","content":SYSTEM},{"role":"user","content":text}],
+              "max_output_tokens":700},
         timeout=TIMEOUT)
-    r.raise_for_status(); d=r.json()
-    if d.get("output_text"): return d["output_text"]
+    r.raise_for_status()
+    d=r.json()
+    if d.get("output_text"):
+        return d["output_text"].strip()
     out=[]
     for item in d.get("output",[]):
         for c in item.get("content",[]) if isinstance(item,dict) else []:
             if isinstance(c,dict) and c.get("text"): out.append(c["text"])
     return "\n".join(out).strip()
 
-def _openai_compat(p, text):
-    r=requests.post(p["base"],
-        headers={"Authorization":"Bearer "+os.environ[p["env"]],"Content-Type":"application/json"},
-        json={"model":p["model"],"messages":[{"role":"system","content":SYSTEM},{"role":"user","content":text}],"temperature":0.1,"max_tokens":700},
-        timeout=TIMEOUT)
-    r.raise_for_status(); return (((r.json().get("choices") or [{}])[0].get("message") or {}).get("content") or "").strip()
+# Compatibility wrappers for older modules. They all route to OpenAI only.
+def _openai_compat(p, text): return _openai(p, text)
+def _anthropic(p, text): return _openai(p, text)
+def _gemini(p, text): return _openai(p, text)
 
-def _anthropic(p, text):
-    r=requests.post("https://api.anthropic.com/v1/messages",
-        headers={"x-api-key":os.environ[p["env"]],"anthropic-version":"2023-06-01","content-type":"application/json"},
-        json={"model":p["model"],"max_tokens":700,"system":SYSTEM,"messages":[{"role":"user","content":text}]},
-        timeout=TIMEOUT)
-    r.raise_for_status()
-    return "\n".join(x.get("text","") for x in r.json().get("content",[]) if isinstance(x,dict)).strip()
+def _state(text):
+    m=re.search(r"(?im)^\s*STATE\s*:\s*(CALL BUY|PUT BUY|WAIT|NO QUALIFYING TRADE)\b", text or "")
+    return m.group(1).upper() if m else ""
 
-def _gemini(p, text):
-    key=os.environ[p["env"]]
-    url=f"https://generativelanguage.googleapis.com/v1beta/models/{p['model']}:generateContent?key={key}"
-    r=requests.post(url,headers={"Content-Type":"application/json"},
-        json={"systemInstruction":{"parts":[{"text":SYSTEM}]},"contents":[{"parts":[{"text":text}]}],"generationConfig":{"temperature":0.1,"maxOutputTokens":700}},
-        timeout=TIMEOUT)
-    r.raise_for_status(); d=r.json()
-    return "\n".join(x.get("text","") for x in (((d.get("candidates") or [{}])[0].get("content") or {}).get("parts") or []) if isinstance(x,dict)).strip()
-
-def _run_one(p, payload):
-    base={"id":p["id"],"name":p["name"],"model":p["model"],"role":ROLE_PROMPTS[p["id"]]}
-    if not os.getenv(p["env"]):
-        return {**base,"status":"not_configured","text":"","error":"Provider API key is not configured on the server.","elapsed_ms":0}
+def _run_layer(layer, payload, previous=None):
     started=time.monotonic()
+    base={"id":layer["id"],"name":layer["name"],"model":OPENAI_MODEL,"role":layer["role"],"provider":"OpenAI"}
+    if not _key():
+        return {**base,"status":"not_configured","state":"WAIT","text":"","error":"OpenAI Access Key is not configured.","elapsed_ms":0}
     try:
-        text=_prompt(p,payload)
-        if p["kind"]=="openai": answer=_openai(p,text)
-        elif p["kind"]=="anthropic": answer=_anthropic(p,text)
-        elif p["kind"]=="gemini": answer=_gemini(p,text)
-        else: answer=_openai_compat(p,text)
-        return {**base,"status":"ok","text":answer,"elapsed_ms":round((time.monotonic()-started)*1000)}
+        answer=_openai(layer,_prompt(layer,payload,previous))
+        return {**base,"status":"ok","state":_state(answer),"text":answer,
+                "elapsed_ms":round((time.monotonic()-started)*1000)}
     except Exception as e:
-        return {**base,"status":"error","text":"","error":str(e)[:300],"elapsed_ms":round((time.monotonic()-started)*1000)}
-
-def _state_from_text(text):
-    if not text:
-        return ""
-    m=re.search(r"(?im)^\s*STATE\s*:\s*(CALL BUY|PUT BUY|WAIT|NO QUALIFYING TRADE)\b", text)
-    if m:
-        return m.group(1).upper()
-    first=text.splitlines()[0].strip().upper() if text.splitlines() else ""
-    return first if first in {"CALL BUY","PUT BUY","WAIT","NO QUALIFYING TRADE"} else ""
-
-def provider_status():
-    return [{"id":p["id"],"name":p["name"],"model":p["model"],"configured":bool(os.getenv(p["env"]))} for p in PROVIDERS]
-
-def _local_fallback(payload):
-    """Deterministic offline/local validation using ONLY Build-156 payload data.
-    This is intentionally not presented as a six-provider consensus result.
-    """
-    import json
-    terminal=payload.get("terminal") if isinstance(payload,dict) else {}
-    signal=payload.get("signal") if isinstance(payload,dict) else {}
-    if not isinstance(terminal,dict): terminal={}
-    if not isinstance(signal,dict): signal={}
-    if not signal and isinstance(terminal.get("signals"),dict): signal=terminal.get("signals")
-    action=str(signal.get("action") or "WAIT").upper().replace("_"," ").strip()
-    if action not in {"CALL BUY","PUT BUY","WAIT","NO QUALIFYING TRADE"}: action="WAIT"
-    market_open=bool(terminal.get("market_open"))
-    spot=signal.get("spot", signal.get("ltp"))
-    mcp=payload.get("nse_mcp") if isinstance(payload.get("nse_mcp"),dict) else {}
-    mcp_connected=bool(mcp.get("connected"))
-    mcp_tool_count=int(mcp.get("tool_count") or 0)
-    mcp_data=mcp.get("data") if isinstance(mcp.get("data"),list) else []
-    mcp_errors=mcp.get("tool_errors") if isinstance(mcp.get("tool_errors"),list) else []
-    ltp=signal.get("ltp")
-    strike=signal.get("strike")
-    entry=signal.get("entry")
-    sl=signal.get("sl")
-    target=signal.get("target")
-    reasons=[]
-    for label,value in (("spot",spot),("LTP",ltp),("strike",strike),("entry",entry),("SL",sl),("target",target)):
-        if value not in (None,""): reasons.append(label+"="+str(value))
-    oi=terminal.get("oi_lab") if isinstance(terminal.get("oi_lab"),dict) else {}
-    chain=terminal.get("option_chain")
-    if isinstance(chain,list) and chain: reasons.append("option-chain rows="+str(len(chain)))
-    if oi: reasons.append("OI evidence supplied")
-    if not reasons: reasons.append("No numeric market evidence was supplied in the Build-156 snapshot.")
-    freshness="market open/current snapshot" if market_open else "last available/off-market snapshot"
-    text=("LOCAL NSE AI FALLBACK\\nSTATE: "+action+"\\nEVIDENCE: "+"; ".join(reasons)+"\\n"
-          +"RISKS: Local fallback is not six-provider cross-verification.\\n"
-          +"MISSING_DATA: Only fields present in the supplied snapshot are used.\\n"
-          +"OVERRIDE: No external AI consensus; use WAIT when the engine payload is insufficient.\\n"
-          +"SOURCE: Build-156 terminal payload ("+freshness+").")
-    return {"id":"local-nse-ai","name":"NSE MCP Free AI Fallback","model":"nse-mcp-local-v1","role":"offline MCP evidence validation","status":"ok_local","text":text,"final":action,"cross_verified":False,"error":"","elapsed_ms":0,"mcp":{"connected":mcp_connected,"tool_count":mcp_tool_count,"data_count":len(mcp_data),"error_count":len(mcp_errors)}}
+        return {**base,"status":"error","state":"WAIT","text":"","error":str(e)[:300],
+                "elapsed_ms":round((time.monotonic()-started)*1000)}
 
 def validate_all(payload):
     payload=dict(payload or {})
     payload["nse_official_site"]=_nse_site_evidence(payload)
-    payload.setdefault("ai_sources",{})["nse_official_site"]=NSE_SITE_URL
+    if not _key():
+        return {"final":"WAIT","providers":[], "layers":[], "configured":0,
+                "successful":0,"parsed_states":0,"total":6,"cross_verified":False,
+                "reason":"OpenAI Access Key is not configured. Connect it in AI Settings.",
+                "mode":"openai_6_layer","cached":False}
     raw=json.dumps(payload,ensure_ascii=False,sort_keys=True,separators=(",",":"),default=str)
-    cache_key=hashlib.sha256(raw.encode("utf-8")).hexdigest()
+    cache_key=hashlib.sha256(raw.encode()).hexdigest()
     now=time.monotonic()
     with _ai_cache_lock:
         cached=_ai_cache.get(cache_key)
         if cached and now-cached["ts"] < AI_CACHE_SEC:
             return {**cached["result"],"cached":True,"cache_age_sec":round(now-cached["ts"],1)}
-    with concurrent.futures.ThreadPoolExecutor(max_workers=len(PROVIDERS)) as ex:
-        results=list(ex.map(lambda p:_run_one(p,payload),PROVIDERS))
-    ok=[r for r in results if r["status"]=="ok"]
-    states=[_state_from_text(r.get("text","")) for r in ok]
-    states=[s for s in states if s]
-    configured=sum(1 for p in PROVIDERS if os.getenv(p["env"]))
-    local=_local_fallback(payload)
-    final=local["final"]
-    cross_verified=False
-    reason="Local NSE AI fallback is active using the supplied Build-156 market snapshot."
-    if not configured:
-        reason="Six-provider keys are not configured; local NSE AI fallback is analyzing the supplied Build-156 snapshot."
-    elif not ok:
-        reason="Configured AI providers returned no successful response; local NSE AI fallback analyzed the supplied Build-156 snapshot."
-    elif len(states) < 2:
-        final=states[0] if len(states)==1 else local["final"]
-        reason="Only one or fewer provider states were available; local NSE AI fallback remains active. Six-provider consensus is not verified."
-    elif len(set(states)) == 1 and states[0] in {"CALL BUY","PUT BUY"}:
-        final=states[0]
-        cross_verified=True
-        reason="All " + str(len(states)) + " successful AI responses agree."
-    elif len(set(states)) == 1 and states[0] == "NO QUALIFYING TRADE":
-        final="NO QUALIFYING TRADE"
-        cross_verified=True
-        reason="All " + str(len(states)) + " successful AI responses found no qualifying trade."
-    else:
+    results=[]
+    previous=[]
+    # Sequential layers make later risk/strategy layers aware of earlier evidence.
+    for layer in LAYERS:
+        result=_run_layer(layer,payload,previous[-2:] if previous else None)
+        results.append(result)
+        if result.get("status")=="ok":
+            previous.append({"layer":layer["name"],"state":result.get("state"),"text":result.get("text","")[:5000]})
+    ok=[r for r in results if r.get("status")=="ok"]
+    states=[r.get("state") for r in ok if r.get("state")]
+    final="WAIT"
+    reason="Six-layer OpenAI validation did not produce a complete agreement; WAIT is the safe result."
+    if len(ok)==6 and len(states)==6 and len(set(states))==1:
+        final=states[-1]
+        reason="All six OpenAI layers returned the same state."
+    elif states and states[-1] == "WAIT":
         final="WAIT"
-        reason="AI responses are not fully aligned; conflicting or WAIT evidence forces WAIT."
-    result={
-        "final":final,
-        "providers":results,
-        "configured":configured,
-        "successful":len(ok),
-        "parsed_states":len(states),
-        "total":len(results),
-        "cross_verified":cross_verified,
-        "reason":reason,
-        "local_fallback":local,
-        "mode":"six_provider_consensus" if cross_verified else "local_nse_fallback",
-        "sources":{"ai_api":"server-side provider API keys","nse_official_site":payload.get("nse_official_site"),"nse_mcp":"https://mcp.nseindia.in/cmmkt/mcp"},
-        "cached":False,
-    }
+        reason="Final risk-audit layer returned WAIT."
+    elif states and states.count(states[-1]) >= 5:
+        final=states[-1]
+        reason="Five or more OpenAI layers agree and the final layer confirms the state."
+    result={"final":final,"providers":results,"layers":results,"configured":6 if _key() else 0,
+            "successful":len(ok),"parsed_states":len(states),"total":6,
+            "cross_verified":len(ok)==6 and len(states)==6 and len(set(states))==1,
+            "reason":reason,"mode":"openai_6_layer","cached":False,
+            "sources":{"ai_api":"OpenAI Responses API","nse_official_site":payload.get("nse_official_site"),
+                       "nse_mcp":"server-side NSE MCP"}}
     with _ai_cache_lock:
         _ai_cache[cache_key]={"ts":time.monotonic(),"result":result}
     return result
+
+def _local_fallback(payload):
+    # Kept only as a compatibility symbol for old callers; it is NEVER used.
+    return {"status":"disabled","final":"WAIT","text":"Legacy local AI fallback disabled. Use OpenAI 6-Layer AI."}
+
+def _state_from_text(text):
+    return _state(text)
