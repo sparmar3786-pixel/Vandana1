@@ -18,16 +18,20 @@ class AngelClient:
     def login(self, api_key=None, client_code=None, pin=None, totp=None, force=False):
         # Reuse one successful Angel session for 6 hours; avoid repeated TOTP/session calls.
         now=time.time()
-        if not force and self.api is not None and now-self.session_started < self.session_ttl:
+        requested_api_key = (api_key or C.API_KEY or "").strip()
+        requested_client_code = (client_code or C.CLIENT or "").strip()
+        if not force and self.api is not None and now-self.session_started < self.session_ttl and requested_api_key == self.active_api_key and requested_client_code == self.active_client_code:
             return {"status": True, "message": "Existing Angel session reused.", "data": {"session_reused": True}}
         with self.login_lock:
             now=time.time()
-            if not force and self.api is not None and now-self.session_started < self.session_ttl:
+            requested_api_key = (api_key or C.API_KEY or "").strip()
+            requested_client_code = (client_code or C.CLIENT or "").strip()
+            if not force and self.api is not None and now-self.session_started < self.session_ttl and requested_api_key == self.active_api_key and requested_client_code == self.active_client_code:
                 return {"status": True, "message": "Existing Angel session reused.", "data": {"session_reused": True}}
-            api_key=api_key or C.API_KEY; client_code=client_code or C.CLIENT; pin=pin or C.PIN
-            totp=totp or (pyotp.TOTP(C.TOTP_SECRET).now() if C.TOTP_SECRET else None)
+            api_key=(api_key or C.API_KEY or "").strip(); client_code=(client_code or C.CLIENT or "").strip(); pin=(pin or C.PIN or "").strip()
+            totp=(totp or (pyotp.TOTP(C.TOTP_SECRET).now() if C.TOTP_SECRET else None) or "").strip()
             if not api_key or not client_code or not pin or not totp:
-                raise RuntimeError("Angel credentials are not configured.")
+                raise RuntimeError("Angel credentials are incomplete. SmartAPI requires API key, Client ID, PIN and current TOTP.")
             self.api=SmartConnect(api_key=api_key)
             self.active_api_key=api_key
             self.active_client_code=client_code
@@ -37,15 +41,13 @@ class AngelClient:
             if not d.get("status"):
                 self.api=None; self.session_started=0.0
                 raise RuntimeError(f"Angel login failed: {d.get('message', d)}")
-            try:
-                profile = self.api.getProfile(d.get("data", {}).get("refreshToken") or d.get("data", {}).get("refresh_token"))
-                if isinstance(profile, dict) and profile.get("status") is False:
-                    raise RuntimeError(
-                        f"SmartAPI data authentication rejected: {profile.get('errorcode','UNKNOWN')} {profile.get('message','')}"
-                    )
-            except Exception as ex:
+            data=d.get("data") or {}
+            jwt=data.get("jwtToken") or data.get("jwt_token")
+            refresh=data.get("refreshToken") or data.get("refresh_token")
+            if not jwt or not refresh:
                 self.api=None; self.session_started=0.0
-                raise RuntimeError(f"SmartAPI API key/data authentication rejected: {str(ex)[:220]}")
+                code=d.get("errorcode") or "SMARTAPI_LOGIN_INVALID"
+                raise RuntimeError(f"SmartAPI login did not return session tokens ({code}): {d.get('message','Unknown authentication response')}")
             self.session_started=time.time()
             self.build_chain()
             self._start_stream(d)
@@ -332,7 +334,7 @@ class AngelClient:
                 if attempt==0:
                     try:
                         self.api=None
-                        self.login(api_key=self.active_api_key, client_code=self.active_client_code, pin=self.active_pin, totp=self.active_totp, force=True)
+                        self.login(api_key=self.active_api_key, client_code=self.active_client_code, pin=self.active_pin, totp=None, force=True)
                     except Exception as relogin_error:
                         last=relogin_error
                         break
