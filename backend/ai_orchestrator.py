@@ -16,6 +16,9 @@ AI_CACHE_SEC = int(os.getenv("AI_CACHE_SEC", "45"))
 NSE_SITE_URL = os.getenv("NSE_SITE_URL", "https://www.nseindia.com/option-chain")
 _ai_cache = {}
 _ai_cache_lock = threading.Lock()
+_runtime_keys = {}
+_runtime_lock = threading.Lock()
+
 
 PROVIDERS = [
     {"id":"gpt56-luna","name":"GPT-5.6 Luna","env":"OPENAI_API_KEY","kind":"openai","model":os.getenv("OPENAI_LUNA_MODEL","gpt-5.6-luna")},
@@ -77,9 +80,34 @@ def _compact(payload):
     import json
     return json.dumps(payload, ensure_ascii=False, separators=(",",":"), default=str)[:30000]
 
-def _openai(p, text):
+def _provider_key(p):
+    with _runtime_lock:
+        key = _runtime_keys.get(p["id"])
+    return key or os.getenv(p["env"], "")
+
+def configure_provider(provider_id, access_key):
+    provider = next((p for p in PROVIDERS if p["id"] == provider_id), None)
+    if provider is None:
+        raise ValueError("Unsupported AI provider.")
+    key = (access_key or "").strip()
+    if len(key) < 8:
+        raise ValueError("AI Access Key is too short.")
+    with _runtime_lock:
+        _runtime_keys[provider_id] = key
+    with _ai_cache_lock:
+        _ai_cache.clear()
+    return {"id":provider_id,"name":provider["name"],"configured":True,"source":"runtime","message":"AI Access Key configured in memory for this backend process."}
+
+def clear_provider(provider_id):
+    with _runtime_lock:
+        _runtime_keys.pop(provider_id, None)
+    with _ai_cache_lock:
+        _ai_cache.clear()
+
+def _openai(p, text, api_key=None):
+    key = api_key or _provider_key(p)
     r=requests.post("https://api.openai.com/v1/responses",
-        headers={"Authorization":"Bearer "+os.environ[p["env"]],"Content-Type":"application/json"},
+        headers={"Authorization":"Bearer "+key,"Content-Type":"application/json"},
         json={"model":p["model"],"input":[{"role":"system","content":SYSTEM},{"role":"user","content":text}],"max_output_tokens":700},
         timeout=TIMEOUT)
     r.raise_for_status(); d=r.json()
@@ -90,23 +118,25 @@ def _openai(p, text):
             if isinstance(c,dict) and c.get("text"): out.append(c["text"])
     return "\n".join(out).strip()
 
-def _openai_compat(p, text):
+def _openai_compat(p, text, api_key=None):
+    key = api_key or _provider_key(p)
     r=requests.post(p["base"],
-        headers={"Authorization":"Bearer "+os.environ[p["env"]],"Content-Type":"application/json"},
+        headers={"Authorization":"Bearer "+key,"Content-Type":"application/json"},
         json={"model":p["model"],"messages":[{"role":"system","content":SYSTEM},{"role":"user","content":text}],"temperature":0.1,"max_tokens":700},
         timeout=TIMEOUT)
     r.raise_for_status(); return (((r.json().get("choices") or [{}])[0].get("message") or {}).get("content") or "").strip()
 
-def _anthropic(p, text):
+def _anthropic(p, text, api_key=None):
+    key = api_key or _provider_key(p)
     r=requests.post("https://api.anthropic.com/v1/messages",
-        headers={"x-api-key":os.environ[p["env"]],"anthropic-version":"2023-06-01","content-type":"application/json"},
+        headers={"x-api-key":key,"anthropic-version":"2023-06-01","content-type":"application/json"},
         json={"model":p["model"],"max_tokens":700,"system":SYSTEM,"messages":[{"role":"user","content":text}]},
         timeout=TIMEOUT)
     r.raise_for_status()
     return "\n".join(x.get("text","") for x in r.json().get("content",[]) if isinstance(x,dict)).strip()
 
-def _gemini(p, text):
-    key=os.environ[p["env"]]
+def _gemini(p, text, api_key=None):
+    key=api_key or _provider_key(p)
     url=f"https://generativelanguage.googleapis.com/v1beta/models/{p['model']}:generateContent?key={key}"
     r=requests.post(url,headers={"Content-Type":"application/json"},
         json={"systemInstruction":{"parts":[{"text":SYSTEM}]},"contents":[{"parts":[{"text":text}]}],"generationConfig":{"temperature":0.1,"maxOutputTokens":700}},
@@ -116,15 +146,16 @@ def _gemini(p, text):
 
 def _run_one(p, payload):
     base={"id":p["id"],"name":p["name"],"model":p["model"],"role":ROLE_PROMPTS[p["id"]]}
-    if not os.getenv(p["env"]):
-        return {**base,"status":"not_configured","text":"","error":"Provider API key is not configured on the server.","elapsed_ms":0}
+    api_key = _provider_key(p)
+    if not api_key:
+        return {**base,"status":"not_configured","source":"unconfigured","text":"","error":"Provider API key is not configured. Add an AI Access Key or Railway provider key.","elapsed_ms":0}
     started=time.monotonic()
     try:
         text=_prompt(p,payload)
-        if p["kind"]=="openai": answer=_openai(p,text)
-        elif p["kind"]=="anthropic": answer=_anthropic(p,text)
-        elif p["kind"]=="gemini": answer=_gemini(p,text)
-        else: answer=_openai_compat(p,text)
+        if p["kind"]=="openai": answer=_openai(p,text,api_key)
+        elif p["kind"]=="anthropic": answer=_anthropic(p,text,api_key)
+        elif p["kind"]=="gemini": answer=_gemini(p,text,api_key)
+        else: answer=_openai_compat(p,text,api_key)
         return {**base,"status":"ok","text":answer,"elapsed_ms":round((time.monotonic()-started)*1000)}
     except Exception as e:
         return {**base,"status":"error","text":"","error":str(e)[:300],"elapsed_ms":round((time.monotonic()-started)*1000)}
@@ -139,7 +170,14 @@ def _state_from_text(text):
     return first if first in {"CALL BUY","PUT BUY","WAIT","NO QUALIFYING TRADE"} else ""
 
 def provider_status():
-    return [{"id":p["id"],"name":p["name"],"model":p["model"],"configured":bool(os.getenv(p["env"]))} for p in PROVIDERS]
+    out=[]
+    for p in PROVIDERS:
+        with _runtime_lock:
+            runtime=bool(_runtime_keys.get(p["id"]))
+        env=bool(os.getenv(p["env"]))
+        out.append({"id":p["id"],"name":p["name"],"model":p["model"],"configured":runtime or env,
+                    "source":"runtime" if runtime else ("environment" if env else "unconfigured")})
+    return out
 
 def _local_fallback(payload):
     """Deterministic offline/local validation using ONLY Build-156 payload data.
@@ -192,7 +230,7 @@ def validate_all(payload):
     ok=[r for r in results if r["status"]=="ok"]
     states=[_state_from_text(r.get("text","")) for r in ok]
     states=[s for s in states if s]
-    configured=sum(1 for p in PROVIDERS if os.getenv(p["env"]))
+    configured=sum(1 for p in PROVIDERS if _provider_key(p))
     local=_local_fallback(payload)
     final=local["final"]
     cross_verified=False
@@ -226,7 +264,7 @@ def validate_all(payload):
         "reason":reason,
         "local_fallback":local,
         "mode":"six_provider_consensus" if cross_verified else "local_nse_fallback",
-        "sources":{"ai_api":"server-side provider API keys","nse_official_site":payload.get("nse_official_site"),"nse_mcp":"https://mcp.nseindia.in/cmmkt/mcp"},
+        "sources":{"ai_api":"runtime Access Key or server-side provider API keys","nse_official_site":payload.get("nse_official_site"),"nse_mcp":"https://mcp.nseindia.in/cmmkt/mcp"},
         "cached":False,
     }
     with _ai_cache_lock:
