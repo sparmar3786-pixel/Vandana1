@@ -110,14 +110,18 @@ def qualify(sym,spot,legs,x,prev):
  x["conf"]=min(95,75+int(6*(x["rr"]-MIN_RR))+(5 if vd>=2*avg else 0))
 
 async def ask(n,role,payload):
- base,key,model=E("AI_BASE_URL"),E("AI_API_KEY"),E(f"AI_MODEL_L{n}");out={"n":n,"role":role,"model":model or "-","s":"skipped","note":"AI layer not configured"}
- if not(base and key and model):return out
- msg=[{"role":"system","content":f'You are layer {n} ({role}). Check engine output for data errors or contradictions. Reply JSON only: {{"status":"pass|flag","note":"max 20 words"}}. Never propose strike, entry, stop loss, target or size.'},{"role":"user","content":json.dumps(payload)}]
+ # Standalone legacy engine now uses the same OpenAI 6-Layer key/model.
+ key=E("OPENAI_API_KEY"); model=E("OPENAI_MODEL") or "gpt-5.6-luna"
+ out={"n":n,"role":role,"model":model,"s":"skipped","note":"OpenAI Access Key not configured"}
+ if not key:return out
+ msg=[{"role":"system","content":f"You are layer {n} ({role}) in the OpenAI six-layer trading validator. Check only supplied engine evidence. Reply JSON only: {{\"status\":\"pass|flag\",\"note\":\"max 20 words\"}}. Never propose or modify strike, entry, SL, target or size."},{"role":"user","content":json.dumps(payload)}]
  try:
-  async with httpx.AsyncClient(timeout=20) as c:r=await c.post(f"{base.rstrip('/')}/chat/completions",headers={"Authorization":f"Bearer {key}"},json={"model":model,"messages":msg,"temperature":0});r.raise_for_status()
-  j=json.loads(r.json()["choices"][0]["message"]["content"].strip().strip(chr(96)).removeprefix("json").strip())
+  async with httpx.AsyncClient(timeout=20) as c:
+   r=await c.post("https://api.openai.com/v1/chat/completions",headers={"Authorization":f"Bearer {key}","Content-Type":"application/json"},json={"model":model,"messages":msg,"temperature":0})
+   r.raise_for_status()
+   j=json.loads(r.json()["choices"][0]["message"]["content"].strip().strip(chr(96)).removeprefix("json").strip())
   if j.get("status") in ("pass","flag"):out.update(s=j["status"],note=str(j.get("note",""))[:160])
- except Exception as e:out.update(s="skipped",note=f"AI error: {type(e).__name__}")
+ except Exception as e:out.update(s="skipped",note=f"OpenAI error: {type(e).__name__}")
  return out
 
 async def validate(x):
