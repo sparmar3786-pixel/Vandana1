@@ -3,7 +3,6 @@ import csv, os
 from collections import deque
 import numpy as np
 import config as C
-import ai_model
 
 NSE_LOG = "data/nse_features.csv"
 
@@ -34,10 +33,13 @@ class Engine:
         self.last = {"action": "WAIT", "reasons": ["Warming up... data collect ho raha hai"]}
 
     def set_nse(self, f, ts):
-        p, src = ai_model.p_up(f)
+        # Deterministic NSE feature view. AI decisions are handled by the
+        # dedicated OpenAI 6-Layer service; this engine never uses a local ML model.
         self.nse = f
-        self.nse_view = {"trend": ai_model.label(p), "p_up": p, "source": src,
-                         "pcr": round(f["pcr_oi"], 2), "support": f["_support"],
+        pcr = float(f.get("pcr_oi", 1.0))
+        trend = "BULLISH" if pcr >= 1.05 else "BEARISH" if pcr <= 0.95 else "SIDEWAYS"
+        self.nse_view = {"trend": trend, "p_up": 0.5, "source": "NSE deterministic features",
+                         "pcr": round(pcr, 2), "support": f["_support"],
                          "resistance": f["_resistance"], "max_pain": f["_maxpain"], "ts": ts}
         os.makedirs("data", exist_ok=True)
         new = not os.path.exists(NSE_LOG)
