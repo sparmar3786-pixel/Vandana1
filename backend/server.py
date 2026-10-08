@@ -34,6 +34,10 @@ install_mcp_auth(app)
 class AIValidationRequest(BaseModel):
     payload:dict = {}
 
+class AIAccessKeyRequest(BaseModel):
+    providerId:str
+    accessKey:str
+
 class AngelLoginRequest(BaseModel):
     # The APK uses clientId/pin/totp/apiKey. clientCode is accepted as a
     # compatibility alias for simple Railway clients.
@@ -414,6 +418,25 @@ def ai_validate(body:AIValidationRequest,x_token:str=Header(None)):
         return {"final":"WAIT","cross_verified":False,"reason":"AI orchestration failed safely; local evidence path remains active.",
                 "configured":0,"successful":0,"parsed_states":0,"total":6,"providers":[],
                 "local_fallback":{"status":"error_local","text":str(e)[:300]}}
+
+@app.get("/v1/ai/providers")
+def ai_providers(x_token:str=Header(None)):
+    auth(x_token)
+    return {"provider":"OpenAI","mode":"openai_6_layer","providers":provider_status(),
+            "runtime_keys_memory_only":True,"access_key_required":True}
+
+@app.post("/v1/ai/access-key")
+def ai_access_key(body:AIAccessKeyRequest,x_token:str=Header(None)):
+    auth(x_token)
+    try:
+        return configure_provider(body.providerId, body.accessKey)
+    except ValueError as e:
+        raise HTTPException(400,str(e))
+
+@app.delete("/v1/ai/access-key/{provider_id}")
+def ai_access_key_clear(provider_id:str,x_token:str=Header(None)):
+    auth(x_token)
+    return clear_provider(provider_id)
 
 @app.get("/v1/diagnostics")
 def diagnostics(x_token:str=Header(None)):
