@@ -11,7 +11,6 @@ from signals import Engine
 from nse_client import NSEClient
 import nse_features
 from nse_mcp import NSEMCP,result_to_csv
-from ai_model import p_up,label
 from ai_orchestrator import provider_status, validate_all, NSE_SITE_URL, _nse_site_evidence
 from market_core import router as market_core_router, ingest_chain, put_spot, evidence as market_evidence, mount_mcp, install_mcp_auth
 from strategy_api import router as strategy_router
